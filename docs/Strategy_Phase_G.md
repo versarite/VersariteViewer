@@ -497,9 +497,11 @@ with the user on Day 24:
 
 | # | Item | Decision so far |
 |---|---|---|
-| M1 | Leica files | Read the .lif / .lei XML (pixel size, objective, channels, times); LAS X exports find their project file (`221119_Image017.tif` → `221119.lif`, element "Image017"). The test exports carry no scale (72 dpi placeholder, scale bar burned in). |
+| M1 | Leica files | Read the .lif / .lei XML (pixel size, objective, channels, times); LAS X exports find their project file (`sample_Image017.tif` → `sample.lif`, element "Image017"). The test exports carry no scale (72 dpi placeholder, scale bar burned in). |
 | M2 | Calibration | Named calibrations per objective, by numbers or by measuring a known object; stored with the image width; a scale from the file always wins. |
 | M3 | Measuring | Menu entry "Measurement", enabled only with a calibration; first click starts a straight line that follows the mouse, second click ends it; µm and px. |
 | M4 | Scale bar | Menu entry "Draw scale bar"; horizontal, follows the mouse, length snaps to round values, wheel = thickness, third click finishes; into a saved copy. |
 | M5 | Movies | Frame stacks with time stamps; raw AVI and TIFF stacks own, compressed video through FFmpeg's libraries. |
 | M6 | Editing | Photoshop .8bf host (64-bit), Fiji / ImageJ through Fiji (headless macros); keyboard allowed. |
+
+From Day 25 the microscopy edition has its own specification, `specs\microscopy\Microscopy_Edition_Specification_v0.1.md`, with the refined steps M0–M7 (M0, the plug-in points in the core, built Day 25); this table is kept as the Day 24 record.

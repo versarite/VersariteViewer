@@ -104,6 +104,7 @@ unit uMediaLoader;
                   uExifOrientation, uJpegHeader, uTiffQuick,
                   uAnimation, uGifDecoder, uImageScaling, uWicDecoder,
                   uIOGate, uMemoryGuard, uStopwatch
+  implementation: uIconFile
   Libraries:      Classes, SysUtils, Math, FPImage, BGRABitmap,
                   BGRABitmapTypes
 
@@ -153,7 +154,15 @@ uses
   uWicDecoder,
   uIOGate,
   uMemoryGuard,
-  uStopwatch;
+  uStopwatch,
+  uContainers;
+
+{ A picture of an .ico held in memory (1.1): the entry that fits ASize
+  best (uIconFile.ChooseIconEntry; ASize 0 or larger than every entry:
+  the largest), PNG entries through BGRABitmap, old-style ones through
+  DecodeIconDib. nil if it can't be read. Any thread. Also used by
+  uSortIcons. }
+function DecodeIconBitmap(const ABytes: TBytes; ASize: Integer): TBGRABitmap;
 
 const
   { The error text of a qlPreview result when the file has no cheap
@@ -205,6 +214,9 @@ type
 function MayHavePreview(const AFileName: string): Boolean;
 
 implementation
+
+uses
+  uIconFile;
 
 type
 
@@ -260,7 +272,7 @@ function OrientBitmap(ABitmap: TBGRABitmap; AOrientation: Integer): TBGRABitmap;
 
 function MayHavePreview(const AFileName: string): Boolean;
 begin
-  Result := IsJpegFileName(AFileName);
+  Result := IsJpegFileName(AFileName) and not IsVirtualName(AFileName);
 end;
 
 const
@@ -1003,6 +1015,80 @@ begin
   end;
 end;
 
+{ An image inside a container (M2b): the edition's reader decodes it
+  (a stack: its maximum projection) to RGBA; here it becomes a bitmap
+  and its screen copy, like any other full image. }
+function LoadContainerEntry(const AKey: TImageKey; ACancel: TCancelCheck;
+  APreviewWidth, APreviewHeight: Integer; APriorityRead: Boolean): IDecodedImage;
+var
+  Bitmap: TBGRABitmap;
+  Preview: TBGRACustomBitmap;
+  RGBA: TBytes;
+  W, H, X, Y: Integer;
+  Error: string;
+  Ok: Boolean;
+  StartMs, DecodeMs, PreviewStartMs: Double;
+  Row: PBGRAPixel;
+  P: PtrInt;
+  Reason: string;
+begin
+  StartMs := NowMs;
+  if APriorityRead then
+    IOGate.BeginPriorityRead
+  else
+    IOGate.YieldToDisplay(ACancel);
+  try
+    Ok := DecodeContainerEntry(AKey.FileName, ACancel, W, H, RGBA, Error);
+  finally
+    if APriorityRead then
+      IOGate.EndPriorityRead;
+  end;
+  if IsCancelled(ACancel) then
+    Exit(TDecodedImage.CreateError(AKey, 'Cancelled'));
+  if not Ok then
+    Exit(TDecodedImage.CreateError(AKey, Error, NowMs - StartMs));
+  if (W <= 0) or (H <= 0) or (Int64(Length(RGBA)) < Int64(W) * H * 4) then
+    Exit(TDecodedImage.CreateError(AKey, 'The entry contains no image', NowMs - StartMs));
+  { The memory guard, before the bitmap (the reader's own buffers are
+    gone again by now). }
+  if not DecodeFits(W, H, 0, Reason) then
+    Exit(TDecodedImage.CreateError(AKey, Reason, NowMs - StartMs));
+
+  Bitmap := nil;
+  Preview := nil;
+  try
+    Bitmap := TBGRABitmap.Create(W, H);
+    P := 0;
+    for Y := 0 to H - 1 do
+    begin
+      Row := Bitmap.ScanLine[Y];
+      for X := 0 to W - 1 do
+      begin
+        Row^.red := RGBA[P];
+        Row^.green := RGBA[P + 1];
+        Row^.blue := RGBA[P + 2];
+        Row^.alpha := RGBA[P + 3];
+        Inc(Row);
+        Inc(P, 4);
+      end;
+    end;
+    Bitmap.InvalidateBitmap;
+    RGBA := nil;
+    DecodeMs := NowMs - StartMs;
+    PreviewStartMs := NowMs;
+    Preview := MakePreview(Bitmap, APreviewWidth, APreviewHeight);
+    Result := TDecodedImage.Create(AKey, qlFull, Bitmap, Preview,
+      DecodeMs, NowMs - PreviewStartMs);
+  except
+    on E: Exception do
+    begin
+      Preview.Free;
+      Bitmap.Free;
+      Result := TDecodedImage.CreateError(AKey, E.Message, NowMs - StartMs);
+    end;
+  end;
+end;
+
 constructor TMediaLoader.Create;
 begin
   inherited Create;
@@ -1021,6 +1107,100 @@ begin
   WicThreadEnd;
 end;
 
+function DecodeIconBitmap(const ABytes: TBytes; ASize: Integer): TBGRABitmap;
+var
+  Entries: TIconEntries;
+  Idx, X, Y: Integer;
+  Stream: TMemoryStream;
+  Pixels: TIconPixels;
+  P: PBGRAPixel;
+  C: LongWord;
+begin
+  Result := nil;
+  Stream := nil;
+  try
+    try
+      if not ReadIconDirectory(ABytes, Entries) then
+        Exit;
+      if ASize <= 0 then
+        ASize := MaxInt;
+      Idx := ChooseIconEntry(Entries, ASize);
+      if Idx < 0 then
+        Exit;
+      if Entries[Idx].IsPng then
+      begin
+        Stream := TMemoryStream.Create;
+        Stream.WriteBuffer(ABytes[Entries[Idx].Offset], Entries[Idx].Size);
+        Stream.Position := 0;
+        Result := TBGRABitmap.Create;
+        Result.LoadFromStream(Stream);
+      end
+      else if DecodeIconDib(ABytes, Entries[Idx], Pixels) then
+      begin
+        Result := TBGRABitmap.Create(Pixels.Width, Pixels.Height);
+        for Y := 0 to Pixels.Height - 1 do
+        begin
+          P := Result.ScanLine[Y];
+          for X := 0 to Pixels.Width - 1 do
+          begin
+            C := Pixels.Data[Y * Pixels.Width + X];
+            P^ := BGRA((C shr 16) and $FF, (C shr 8) and $FF, C and $FF, C shr 24);
+            Inc(P);
+          end;
+        end;
+        Result.InvalidateBitmap;
+      end;
+    except
+      FreeAndNil(Result);
+    end;
+  finally
+    Stream.Free;
+  end;
+  if (Result <> nil) and ((Result.Width <= 0) or (Result.Height <= 0)) then
+    FreeAndNil(Result);
+end;
+
+{ An .ico: read by MView itself (the largest picture), as Windows' codec
+  refuses PNG entries without alpha (icons made by MView before 1.1.1,
+  and others). nil: not an icon after all (then WIC is asked). }
+function LoadIcon(const AKey: TImageKey; ACancel: TCancelCheck;
+  APreviewWidth, APreviewHeight: Integer; APriorityRead: Boolean): IDecodedImage;
+const
+  MaxIconFileBytes = 64 * 1024 * 1024;
+var
+  Data: TBytes;
+  Complete: Boolean;
+  Bitmap: TBGRABitmap;
+  Preview: TBGRACustomBitmap;
+  StartMs, DecodeMs, PreviewStartMs: Double;
+begin
+  Result := nil;
+  StartMs := NowMs;
+  if not ReadFileStart(AKey.FileName, MaxIconFileBytes, ACancel, APriorityRead, Data, Complete)
+    or not Complete then
+    Exit;
+  if IsCancelled(ACancel) then
+    Exit(TDecodedImage.CreateError(AKey, 'Cancelled'));
+  Bitmap := DecodeIconBitmap(Data, 0);
+  if Bitmap = nil then
+    Exit;
+  DecodeMs := NowMs - StartMs;
+  Preview := nil;
+  try
+    PreviewStartMs := NowMs;
+    Preview := MakePreview(Bitmap, APreviewWidth, APreviewHeight);
+    Result := TDecodedImage.Create(AKey, qlFull, Bitmap, Preview,
+      DecodeMs, NowMs - PreviewStartMs);
+  except
+    on E: Exception do
+    begin
+      Preview.Free;
+      Bitmap.Free;
+      Result := TDecodedImage.CreateError(AKey, E.Message, NowMs - StartMs);
+    end;
+  end;
+end;
+
 function TMediaLoader.Load(const AFileName: string; AQuality: TQualityLevel;
   ACancel: TCancelCheck; APreviewWidth: Integer; APreviewHeight: Integer;
   APriorityRead: Boolean): IDecodedImage;
@@ -1031,6 +1211,17 @@ begin
 
   if IsCancelled(ACancel) then
     Exit(TDecodedImage.CreateError(Key, 'Cancelled'));
+
+  { An image inside a container (.lif, M2b; never in MView): the
+    edition's reader. No preview level: the full picture. }
+  if IsVirtualName(AFileName) then
+  begin
+    if not FileExists(ContainerFileOf(AFileName)) then
+      Exit(TDecodedImage.CreateError(Key, 'File not found'));
+    if AQuality = qlPreview then
+      Exit(TDecodedImage.CreateError(Key, NoPreviewMessage));
+    Exit(LoadContainerEntry(Key, ACancel, APreviewWidth, APreviewHeight, APriorityRead));
+  end;
 
   if not FileExists(AFileName) then
     Exit(TDecodedImage.CreateError(Key, 'File not found'));
@@ -1059,6 +1250,24 @@ begin
     Result := LoadGif(Key, AQuality, ACancel, APreviewWidth, APreviewHeight, APriorityRead);
     if Result = nil then
       Result := LoadOther(Key, ACancel, APreviewWidth, APreviewHeight, APriorityRead);
+  end
+  { The formats only Windows' codecs read (1.1): WIC, or a clear note
+    which codec is missing. }
+  else if IsWicOnlyFile(AFileName) then
+  begin
+    Result := nil;
+    if LowerCase(ExtractFileExt(AFileName)) = '.ico' then
+      Result := LoadIcon(Key, ACancel, APreviewWidth, APreviewHeight, APriorityRead);
+    if (Result = nil) and WicAvailable then
+      Result := LoadWicBands(Key, AQuality, ACancel, APreviewWidth, APreviewHeight,
+        APriorityRead);
+    if Result = nil then
+    begin
+      if CodecHint(AFileName) <> '' then
+        Result := TDecodedImage.CreateError(Key, CodecHint(AFileName))
+      else
+        Result := TDecodedImage.CreateError(Key, 'Windows can''t read this file');
+    end;
   end
   else if IsWicBandFileName(AFileName) and FUseWic and WicAvailable then
   begin

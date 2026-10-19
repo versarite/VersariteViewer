@@ -1,0 +1,712 @@
+unit uExtensions;
+
+{
+  Unit: uExtensions
+
+  Purpose
+  -------
+  The plug-in points of the core (M0, Day 25). The microscopy edition is
+  a second program from the same source tree; its units plug themselves
+  in here, in their initialization sections, and the core never names
+  them. MView's own program lists none of them, so in MView every list
+  here is empty and nothing changes.
+
+  Owns
+  ----
+  - The registered overlay layers (freed at the end of the program).
+  - The lists of metadata readers and menu entries (plain records).
+
+  Knows
+  -----
+  - OnOverlayChanged: set by TMView; a layer calls OverlayChanged when
+    its picture changed, TMView repaints.
+
+  Responsibilities
+  ----------------
+  - Metadata readers: RegisterMetadataReader(name, function);
+    ReadImageMetadata asks them in turn (first one that understands the
+    file wins) and returns the facts in a TImageMetadata (pixel size in
+    µm, lines for a panel). Pure functions: any thread.
+  - Overlay layers (TOverlayLayer): drawn by both renderers over the
+    image and its lens / selection, under the info line, the badge and
+    the panels, as one picture (with alpha) at a place in the view;
+    offered the mouse over the view (not over the panels) before the
+    mouse language.
+  - Menu entries: caption, action, enabled / checked tests; the main
+    form adds them to the right-click menu before "About".
+  - Panel sections (M3b): an edition's rows at the bottom of the left
+    (filter) panel - drawn, hinted and clicked through TPanelSection.
+  - The image shown (M3b): name and size, kept current by TMView.
+  - Settings pages (M3b): an edition's own tab in the settings screen,
+    made when first opened.
+  - Burn-in (Day 26): a layer draws itself into "Apply filters to a
+    copy" (CanBurnIn / BurnIn, BurnInPoint for the geometry).
+  - NoteMenuOpen (Day 26): an edition's popup is open (the pointer
+    stays).
+  - NoteDerivedImage (Day 26): a crop, copy or resized image was made
+    from another (the edition carries the scale over).
+
+  Does NOT
+  --------
+  - Draw, read files or know any edition's units.
+
+  Threads
+  -------
+  Registration: in initialization sections (main thread, before any
+  other thread). Metadata readers: any thread. Layers and menu entries:
+  UI thread.
+
+  Uses (MView units)
+  ------------------
+  interface:      uCommands (the overlay mouse types)
+  Libraries:      Classes, SysUtils, Types, Controls, BGRABitmap
+
+  Used by
+  -------
+  uMView, uRenderer, uGLRenderer, uMainForm, uFilterPanel, uIniEditor; the
+  microscopy edition's units
+}
+
+{$mode ObjFPC}{$H+}
+
+interface
+
+uses
+  Classes,
+  SysUtils,
+  Types,
+  Controls,
+  BGRABitmap,
+  uCommands;
+
+{ ---- Metadata readers ---- }
+
+type
+  { What a file says about itself, as far as a reader understood it. }
+  TImageMetadata = record
+    Reader: string;              { which reader understood it; '' = none }
+    PixelSizeX: Double;          { µm per pixel; 0 = unknown }
+    PixelSizeY: Double;
+    { The image size the pixel size is for (M3a): an export can be
+      smaller than the scan it came from; the user scales by
+      ScaleWidth / the image's width. 0 = the image's own size. }
+    ScaleWidth: Integer;
+    ScaleHeight: Integer;
+    { Where the scale is from, when not the file itself:
+      'sample.lif › Series084' (shown next to measurements). }
+    ScaleSource: string;
+    { For choosing a calibration (M3a); '' / 0 = unknown. }
+    Microscope: string;          { 'TCS SP8' }
+    Objective: string;           { 'HC PL APO CS2 40x/1.30 OIL' }
+    Zoom: Double;
+    Lines: TStringArray;         { 'Objective: HC PL APO 40x/1.30 OIL', for a panel }
+  end;
+
+  { True if the reader understood AFileName (AMeta filled in). No UI,
+    no shared state: called on any thread. }
+  TMetadataReadFunc = function(const AFileName: string; var AMeta: TImageMetadata): Boolean;
+
+procedure RegisterMetadataReader(const AName: string; AReader: TMetadataReadFunc);
+function MetadataReaderCount: Integer;
+{ The first registered reader that understands the file; False (and an
+  empty AMeta) if none does or none is registered. A reader that raises
+  counts as "not understood". }
+function ReadImageMetadata(const AFileName: string; out AMeta: TImageMetadata): Boolean;
+procedure ClearMetadata(out AMeta: TImageMetadata);
+
+{ ---- Overlay layers ---- }
+
+type
+  { From the image's pixels (its full size) to a copy's: scaled to the
+    pixels the copy was made from (a quick view is smaller), mirrored,
+    then turned clockwise onto the copy's canvas (as RotatedBitmap). }
+  TBurnInMap = record
+    ScaleX, ScaleY: Double;     { copy source px per image px }
+    SourceWidth, SourceHeight: Integer;   { before the turn }
+    Mirror: Boolean;
+    Angle: Double;              { degrees, clockwise }
+    Width, Height: Integer;     { the copy }
+  end;
+
+{ AX, AY (image pixels, edges at whole numbers) in the copy. }
+procedure BurnInPoint(const AMap: TBurnInMap; AX, AY: Double; out ACopyX, ACopyY: Double);
+
+type
+  { A layer over the image (a scale bar, a measuring line). AView is the
+    renderer (TRenderer: ScreenToImage / ImageToScreen, View); a layer
+    unit may use uRenderer, the core's units don't use the layers. }
+  TOverlayLayer = class
+  public
+    { The picture, with alpha, and its place in the view (AWidth x
+      AHeight; ALeft, ATop: its top left corner there); nil = nothing to
+      draw now. Only as large as what it shows (M1: the GPU uploads it
+      again on every change; a whole 4K view each mouse move is too
+      much). Kept by the layer (not freed by the caller). Called in
+      every paint: keep it cheap (draw again only when something
+      changed). }
+    function Picture(AView: TObject; AWidth, AHeight: Integer; out ALeft, ATop: Integer): TBGRABitmap; virtual;
+    { Changes whenever the picture changes, including after a pan or zoom
+      (the GPU uploads it again; a new size is uploaded anyway). }
+    function Version: Cardinal; virtual;
+    { The mouse over the view (not over the open sort panel); True =
+      taken (the mouse language doesn't see it). The layer that takes a
+      press gets its release, wherever it is; a move it takes still
+      reaches the sort panel's edge. }
+    function HandleMouse(AView: TObject; AKind: TOverlayMouseKind; AButton: TOverlayButton;
+      AX, AY, AWheel: Integer): Boolean; virtual;
+    { "Apply filters to a copy" (Day 26, user: the measurement goes into
+      the copy too): True if the layer has something to draw into a copy
+      of AImageName (the name the image is shown under). }
+    function CanBurnIn(const AImageName: string): Boolean; virtual;
+    { Draws it into ABitmap, the copy (filtered, mirrored and turned
+      already); AMap takes the layer's image pixels to the copy's
+      (BurnInPoint). Returns a short part for the copy's name
+      ('56,32um'), or ''. }
+    function BurnIn(ABitmap: TBGRABitmap; const AImageName: string;
+      const AMap: TBurnInMap): string; virtual;
+  end;
+
+{ The registry owns ALayer from now on. }
+procedure RegisterOverlayLayer(ALayer: TOverlayLayer);
+function OverlayLayerCount: Integer;
+function OverlayLayer(AIndex: Integer): TOverlayLayer;
+{ A layer's picture changed: OnOverlayChanged (TMView: repaint). }
+procedure OverlayChanged(ALayer: TOverlayLayer);
+
+{ Any layer's CanBurnIn; BurnIn of each that can (its name parts joined
+  with '_'; '' = none). }
+function OverlayCanBurnIn(const AImageName: string): Boolean;
+function OverlayBurnIn(ABitmap: TBGRABitmap; const AImageName: string;
+  const AMap: TBurnInMap): string;
+
+{ An edition's popup menu (the left panel's scale list) is open: the
+  main form keeps the mouse pointer from hiding meanwhile (Day 26: it
+  vanished outside the menu). Call with True before PopUp, False after. }
+procedure NoteMenuOpen(AOpen: Boolean);
+
+type
+  TMenuOpenEvent = procedure(AOpen: Boolean) of object;
+
+var
+  OnOverlayChanged: TNotifyEvent = nil;
+  OnMenuOpen: TMenuOpenEvent = nil;   { set by the main form }
+
+{ ---- Menu entries ---- }
+
+type
+  { AViewer: the viewer (TMView). }
+  TExtensionAction = procedure(AViewer: TObject);
+  TExtensionTest = function(AViewer: TObject): Boolean;
+
+  TExtensionMenuEntry = record
+    Caption: string;
+    Action: TExtensionAction;
+    IsEnabled: TExtensionTest;   { nil = always }
+    IsChecked: TExtensionTest;   { nil = never }
+  end;
+
+procedure RegisterMenuEntry(const ACaption: string; AAction: TExtensionAction;
+  AIsEnabled: TExtensionTest = nil; AIsChecked: TExtensionTest = nil);
+function MenuEntryCount: Integer;
+function MenuEntry(AIndex: Integer): TExtensionMenuEntry;
+
+{ ---- Rows in the left (filter) panel (M3b) ---- }
+
+type
+  { A few rows of an edition at the bottom of the left panel, below
+    "Auto / Reset all" (the microscopy edition: the calibration selector
+    and "Confocal"). The panel draws the background and the hover; the
+    section its content. }
+  TPanelSection = class
+  public
+    function RowCount: Integer; virtual;
+    { ARect: the row in the panel's picture; AHover: the mouse is on it. }
+    procedure DrawRow(ARow: Integer; ABitmap: TBGRABitmap; const ARect: TRect;
+      AHover: Boolean; AScale: Double); virtual;
+    { The panel's bottom line while the mouse is on the row. }
+    function Hint(ARow: Integer): string; virtual;
+    { A click (on release, where it was pressed); AScreen: the mouse on
+      the screen (for a popup menu). }
+    procedure Click(ARow: Integer; AButton: TOverlayButton; const AScreen: TPoint); virtual;
+    { Changes whenever the rows would look different: the panel draws
+      them again. }
+    function Version: Cardinal; virtual;
+  end;
+
+{ The registry owns ASection from now on. }
+procedure RegisterPanelSection(ASection: TPanelSection);
+{ All sections' rows together; row 0 is the first section's first. }
+function PanelSectionRowCount: Integer;
+function PanelSectionAt(ARow: Integer; out ASection: TPanelSection; out ALocalRow: Integer): Boolean;
+{ Sum of the sections' versions: a change means "draw again". }
+function PanelSectionsVersion: Cardinal;
+
+{ ---- Pages in the settings screen (M3b) ---- }
+
+type
+  { An edition's own tab next to "Mouse & keys" (the microscopy
+    edition: "Calibrations"). Made when the tab is first opened
+    (Create: its content, parented to the tab); Refresh each time the tab
+    is shown or the settings screen comes back. It keeps its own file. }
+  TSettingsPageCreate = function(AOwner: TComponent; AParent: TWinControl): TWinControl;
+  TSettingsPageRefresh = procedure(APage: TWinControl);
+
+  TSettingsPageEntry = record
+    Caption: string;
+    Hint: string;               { the settings screen's help line on it }
+    Create: TSettingsPageCreate;
+    Refresh: TSettingsPageRefresh;   { nil = nothing to refresh }
+  end;
+
+procedure RegisterSettingsPage(const ACaption, AHint: string; ACreate: TSettingsPageCreate;
+  ARefresh: TSettingsPageRefresh = nil);
+function SettingsPageCount: Integer;
+function SettingsPage(AIndex: Integer): TSettingsPageEntry;
+
+{ ---- Derived images (Day 26) ---- }
+
+type
+  { A new image made from another (a crop, a filtered / turned copy, a
+    resized one): ANewName its name (the key's), AParentName the image
+    it was made from, AOperation 'crop' / 'copy' / 'resized'.
+    AParentWidth x AParentHeight: the parent's size (its original
+    pixels); AFactorX / AFactorY: parent pixels per new pixel along the
+    parent's axes (1 for a crop); ATurn: degrees the new pixels are
+    turned by (quarter turns swap x and y). The microscopy edition: the
+    scale travels with the image. }
+  TDerivedImageProc = procedure(const ANewName, AParentName, AOperation: string;
+    AParentWidth, AParentHeight: Integer; AFactorX, AFactorY, ATurn: Double);
+
+procedure RegisterDerivedImageHandler(AHandler: TDerivedImageProc);
+
+type
+  { The scale an image has (µm per pixel of its original, AWidth x
+    AHeight), as the edition knows it; False = none (Day 26: saved into
+    the file). UI thread. }
+  TImageScaleQuery = function(const AName: string; AWidth, AHeight: Integer;
+    out AUmX, AUmY: Double): Boolean;
+
+procedure RegisterImageScaleQuery(AQuery: TImageScaleQuery);
+function QueryImageScale(const AName: string; AWidth, AHeight: Integer;
+  out AUmX, AUmY: Double): Boolean;
+procedure NoteDerivedImage(const ANewName, AParentName, AOperation: string;
+  AParentWidth, AParentHeight: Integer; AFactorX, AFactorY, ATurn: Double);
+
+{ ---- The image shown (M3b) ---- }
+
+{ Kept current by TMView (after every step), for the edition's panels
+  and menu tests; '' / 0 = none. }
+procedure SetShownImage(const AName: string; AWidth, AHeight: Integer);
+function ShownImageName: string;
+function ShownImageWidth: Integer;
+function ShownImageHeight: Integer;
+
+implementation
+
+type
+  TReaderEntry = record
+    Name: string;
+    Read: TMetadataReadFunc;
+  end;
+
+var
+  DerivedHandler: TDerivedImageProc = nil;
+  ScaleQuery: TImageScaleQuery = nil;
+  Readers: array of TReaderEntry;
+  Layers: array of TOverlayLayer;
+  MenuEntries: array of TExtensionMenuEntry;
+  Sections: array of TPanelSection;
+  SettingsPages: array of TSettingsPageEntry;
+  ShownName: string = '';
+  ShownWidth: Integer = 0;
+  ShownHeight: Integer = 0;
+
+function Max0(AValue: Integer): Integer;
+begin
+  if AValue < 0 then
+    Result := 0
+  else
+    Result := AValue;
+end;
+
+procedure ClearMetadata(out AMeta: TImageMetadata);
+begin
+  AMeta.Reader := '';
+  AMeta.PixelSizeX := 0;
+  AMeta.PixelSizeY := 0;
+  AMeta.ScaleWidth := 0;
+  AMeta.ScaleHeight := 0;
+  AMeta.ScaleSource := '';
+  AMeta.Microscope := '';
+  AMeta.Objective := '';
+  AMeta.Zoom := 0;
+  AMeta.Lines := nil;
+end;
+
+procedure RegisterMetadataReader(const AName: string; AReader: TMetadataReadFunc);
+begin
+  if not Assigned(AReader) then
+    Exit;
+  SetLength(Readers, Length(Readers) + 1);
+  Readers[High(Readers)].Name := AName;
+  Readers[High(Readers)].Read := AReader;
+end;
+
+function MetadataReaderCount: Integer;
+begin
+  Result := Length(Readers);
+end;
+
+function ReadImageMetadata(const AFileName: string; out AMeta: TImageMetadata): Boolean;
+var
+  I: Integer;
+  Ok: Boolean;
+begin
+  ClearMetadata(AMeta);
+  Result := False;
+  for I := 0 to High(Readers) do
+  begin
+    try
+      Ok := Readers[I].Read(AFileName, AMeta);
+    except
+      Ok := False;
+    end;
+    if Ok then
+    begin
+      if AMeta.Reader = '' then
+        AMeta.Reader := Readers[I].Name;
+      Exit(True);
+    end;
+    ClearMetadata(AMeta);   { a reader that gave up leaves nothing behind }
+  end;
+end;
+
+{ TOverlayLayer: the defaults draw nothing and take no mouse. }
+
+function TOverlayLayer.Picture(AView: TObject; AWidth, AHeight: Integer;
+  out ALeft, ATop: Integer): TBGRABitmap;
+begin
+  ALeft := 0;
+  ATop := 0;
+  Result := nil;
+end;
+
+function TOverlayLayer.Version: Cardinal;
+begin
+  Result := 0;
+end;
+
+function TOverlayLayer.HandleMouse(AView: TObject; AKind: TOverlayMouseKind;
+  AButton: TOverlayButton; AX, AY, AWheel: Integer): Boolean;
+begin
+  Result := False;
+end;
+
+function TOverlayLayer.CanBurnIn(const AImageName: string): Boolean;
+begin
+  Result := False;
+end;
+
+function TOverlayLayer.BurnIn(ABitmap: TBGRABitmap; const AImageName: string;
+  const AMap: TBurnInMap): string;
+begin
+  Result := '';
+end;
+
+procedure BurnInPoint(const AMap: TBurnInMap; AX, AY: Double; out ACopyX, ACopyY: Double);
+var
+  X, Y, Rad, C, S, DX, DY: Double;
+begin
+  X := AX * AMap.ScaleX;
+  Y := AY * AMap.ScaleY;
+  if AMap.Mirror then
+    X := AMap.SourceWidth - X;
+  { Turned about the centres (RotatedBitmap: the source's centre lands
+    on the canvas's; quarter turns the same). }
+  Rad := AMap.Angle * Pi / 180;
+  C := Cos(Rad);
+  S := Sin(Rad);
+  DX := X - AMap.SourceWidth / 2;
+  DY := Y - AMap.SourceHeight / 2;
+  ACopyX := AMap.Width / 2 + DX * C - DY * S;
+  ACopyY := AMap.Height / 2 + DX * S + DY * C;
+end;
+
+function OverlayCanBurnIn(const AImageName: string): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 0 to High(Layers) do
+    if Layers[I].CanBurnIn(AImageName) then
+      Exit(True);
+end;
+
+function OverlayBurnIn(ABitmap: TBGRABitmap; const AImageName: string;
+  const AMap: TBurnInMap): string;
+var
+  I: Integer;
+  Part: string;
+begin
+  Result := '';
+  for I := 0 to High(Layers) do
+    if Layers[I].CanBurnIn(AImageName) then
+    begin
+      Part := Layers[I].BurnIn(ABitmap, AImageName, AMap);
+      if Part <> '' then
+      begin
+        if Result <> '' then
+          Result := Result + '_';
+        Result := Result + Part;
+      end;
+    end;
+end;
+
+procedure RegisterDerivedImageHandler(AHandler: TDerivedImageProc);
+begin
+  DerivedHandler := AHandler;
+end;
+
+procedure RegisterImageScaleQuery(AQuery: TImageScaleQuery);
+begin
+  ScaleQuery := AQuery;
+end;
+
+function QueryImageScale(const AName: string; AWidth, AHeight: Integer;
+  out AUmX, AUmY: Double): Boolean;
+begin
+  AUmX := 0;
+  AUmY := 0;
+  Result := False;
+  if not Assigned(ScaleQuery) then
+    Exit;
+  try
+    Result := ScaleQuery(AName, AWidth, AHeight, AUmX, AUmY) and (AUmX > 0) and (AUmY > 0);
+  except
+    Result := False;
+  end;
+  if not Result then
+  begin
+    AUmX := 0;
+    AUmY := 0;
+  end;
+end;
+
+procedure NoteDerivedImage(const ANewName, AParentName, AOperation: string;
+  AParentWidth, AParentHeight: Integer; AFactorX, AFactorY, ATurn: Double);
+begin
+  if not Assigned(DerivedHandler) then
+    Exit;
+  try
+    DerivedHandler(ANewName, AParentName, AOperation, AParentWidth, AParentHeight,
+      AFactorX, AFactorY, ATurn);
+  except
+    { An edition's fault never reaches the viewer. }
+  end;
+end;
+
+procedure NoteMenuOpen(AOpen: Boolean);
+begin
+  if Assigned(OnMenuOpen) then
+    OnMenuOpen(AOpen);
+end;
+
+procedure RegisterOverlayLayer(ALayer: TOverlayLayer);
+begin
+  if ALayer = nil then
+    Exit;
+  SetLength(Layers, Length(Layers) + 1);
+  Layers[High(Layers)] := ALayer;
+end;
+
+function OverlayLayerCount: Integer;
+begin
+  Result := Length(Layers);
+end;
+
+function OverlayLayer(AIndex: Integer): TOverlayLayer;
+begin
+  if (AIndex < 0) or (AIndex > High(Layers)) then
+    Exit(nil);
+  Result := Layers[AIndex];
+end;
+
+procedure OverlayChanged(ALayer: TOverlayLayer);
+begin
+  if Assigned(OnOverlayChanged) then
+    OnOverlayChanged(ALayer);
+end;
+
+procedure RegisterMenuEntry(const ACaption: string; AAction: TExtensionAction;
+  AIsEnabled: TExtensionTest; AIsChecked: TExtensionTest);
+begin
+  if not Assigned(AAction) then
+    Exit;
+  SetLength(MenuEntries, Length(MenuEntries) + 1);
+  MenuEntries[High(MenuEntries)].Caption := ACaption;
+  MenuEntries[High(MenuEntries)].Action := AAction;
+  MenuEntries[High(MenuEntries)].IsEnabled := AIsEnabled;
+  MenuEntries[High(MenuEntries)].IsChecked := AIsChecked;
+end;
+
+function MenuEntryCount: Integer;
+begin
+  Result := Length(MenuEntries);
+end;
+
+function MenuEntry(AIndex: Integer): TExtensionMenuEntry;
+begin
+  if (AIndex < 0) or (AIndex > High(MenuEntries)) then
+  begin
+    Result.Caption := '';
+    Result.Action := nil;
+    Result.IsEnabled := nil;
+    Result.IsChecked := nil;
+    Exit;
+  end;
+  Result := MenuEntries[AIndex];
+end;
+
+{ TPanelSection: the defaults show nothing. }
+
+function TPanelSection.RowCount: Integer;
+begin
+  Result := 0;
+end;
+
+procedure TPanelSection.DrawRow(ARow: Integer; ABitmap: TBGRABitmap; const ARect: TRect;
+  AHover: Boolean; AScale: Double);
+begin
+end;
+
+function TPanelSection.Hint(ARow: Integer): string;
+begin
+  Result := '';
+end;
+
+procedure TPanelSection.Click(ARow: Integer; AButton: TOverlayButton; const AScreen: TPoint);
+begin
+end;
+
+function TPanelSection.Version: Cardinal;
+begin
+  Result := 0;
+end;
+
+procedure RegisterPanelSection(ASection: TPanelSection);
+begin
+  if ASection = nil then
+    Exit;
+  SetLength(Sections, Length(Sections) + 1);
+  Sections[High(Sections)] := ASection;
+end;
+
+function PanelSectionRowCount: Integer;
+var
+  I: Integer;
+begin
+  Result := 0;
+  for I := 0 to High(Sections) do
+    Inc(Result, Max0(Sections[I].RowCount));
+end;
+
+function PanelSectionAt(ARow: Integer; out ASection: TPanelSection; out ALocalRow: Integer): Boolean;
+var
+  I, N: Integer;
+begin
+  ASection := nil;
+  ALocalRow := -1;
+  Result := False;
+  if ARow < 0 then
+    Exit;
+  for I := 0 to High(Sections) do
+  begin
+    N := Max0(Sections[I].RowCount);
+    if ARow < N then
+    begin
+      ASection := Sections[I];
+      ALocalRow := ARow;
+      Exit(True);
+    end;
+    Dec(ARow, N);
+  end;
+end;
+
+function PanelSectionsVersion: Cardinal;
+var
+  I: Integer;
+begin
+  Result := 0;
+  for I := 0 to High(Sections) do
+    Result := Result + Sections[I].Version;
+end;
+
+procedure RegisterSettingsPage(const ACaption, AHint: string; ACreate: TSettingsPageCreate;
+  ARefresh: TSettingsPageRefresh);
+begin
+  if not Assigned(ACreate) then
+    Exit;
+  SetLength(SettingsPages, Length(SettingsPages) + 1);
+  SettingsPages[High(SettingsPages)].Caption := ACaption;
+  SettingsPages[High(SettingsPages)].Hint := AHint;
+  SettingsPages[High(SettingsPages)].Create := ACreate;
+  SettingsPages[High(SettingsPages)].Refresh := ARefresh;
+end;
+
+function SettingsPageCount: Integer;
+begin
+  Result := Length(SettingsPages);
+end;
+
+function SettingsPage(AIndex: Integer): TSettingsPageEntry;
+begin
+  if (AIndex < 0) or (AIndex > High(SettingsPages)) then
+  begin
+    Result.Caption := '';
+    Result.Hint := '';
+    Result.Create := nil;
+    Result.Refresh := nil;
+    Exit;
+  end;
+  Result := SettingsPages[AIndex];
+end;
+
+procedure SetShownImage(const AName: string; AWidth, AHeight: Integer);
+begin
+  ShownName := AName;
+  ShownWidth := AWidth;
+  ShownHeight := AHeight;
+end;
+
+function ShownImageName: string;
+begin
+  Result := ShownName;
+end;
+
+function ShownImageWidth: Integer;
+begin
+  Result := ShownWidth;
+end;
+
+function ShownImageHeight: Integer;
+begin
+  Result := ShownHeight;
+end;
+
+procedure FreeLayers;
+var
+  I: Integer;
+begin
+  for I := 0 to High(Layers) do
+    FreeAndNil(Layers[I]);
+  Layers := nil;
+  for I := 0 to High(Sections) do
+    FreeAndNil(Sections[I]);
+  Sections := nil;
+end;
+
+finalization
+  OnOverlayChanged := nil;
+  OnMenuOpen := nil;
+  FreeLayers;
+end.

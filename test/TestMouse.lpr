@@ -85,8 +85,14 @@ begin
     Check('top left: wheel up = turn right',
       SameActions(P.ActionsFor(mzTopLeft, meWheelUp), [maTurnRight]));
     Check('keys: Space = next image; Esc is fixed, not in the profile',
-      (Length(P.ActionsFor(mzTopLeft, meKeyEsc)) = 0)
-      and SameActions(P.ActionsFor(mzBottomRight, meKeySpace), [maNextImage]));
+      (Length(P.KeyActionsFor(VKEY_ESCAPE)) = 0)
+      and SameActions(P.KeyActionsFor(VKEY_SPACE), [maNextImage]));
+    Check('keys: a digit without an entry = Rapid selection',
+      SameActions(P.KeyActionsFor(VKEY_0 + 7), [maRapidKey])
+      and SameActions(P.KeyActionsFor(VKEY_NUMPAD0), [maRapidKey]));
+    Check('keys: names', (KeyCodeName($74) = 'F5') and (KeyCodeName($65) = 'Num5')
+      and (KeyCodeName($BA) = 'Oem1') and (KeyCodeName(VKEY_ESCAPE) = '')
+      and (KeyCodeName(VKEY_LEFT) = ''));
     Check('zone names and orders',
       (P.ZoneTitle(mzBottomLeft) = 'Browse by date') and (P.ZoneOrder(mzBottomLeft) = zoDate)
       and (P.ZoneTitle(mzTopRight) = 'Browse by name') and (P.ZoneOrder(mzTopRight) = zoName)
@@ -122,7 +128,7 @@ begin
     Check('"X2 =" with nothing: off', Length(P.ActionsFor(mzBottomRight, meX2)) = 0);
     Check('zone name read', P.ZoneTitle(mzBottomRight) = 'Look');
     Check('an old "Esc = Back" line: accepted, ignored (Esc is fixed)',
-      Length(P.ActionsFor(mzTopLeft, meKeyEsc)) = 0);
+      Length(P.KeyActionsFor(VKEY_ESCAPE)) = 0);
     { Errors: 4 commands (line 5), Jump (6), Blink (7), Space outside
       [Keys] (8), Order (11), [Zone Middle] (14), WheelUp in [Keys] (18). }
     Check('7 problems reported', P.Errors.Count = 7, P.Errors.Text);
@@ -254,6 +260,7 @@ var
   P: TMouseProfile;
   T: QWord;
   I, Idx: Integer;
+  Lines: TStringList;
 begin
   WriteLn;
   WriteLn('-- Engine --');
@@ -490,6 +497,7 @@ begin
     Check('arrow left: previous folder', R.Has(cmdPreviousDirectory), R.Text);
     R.Clear;
     Check('Ctrl+V: paste', E.KeyDown(VKEY_V, True, T) and R.Has(cmdPaste), R.Text);
+    Check('Ctrl+C: copy the image', E.KeyDown(VKEY_C, True, T) and R.Has(cmdCopyImage), R.Text);
     R.Clear;
     E.KeyDown(VKEY_SPACE, False, T);
     E.KeyDown(VKEY_RETURN, False, T);
@@ -497,6 +505,11 @@ begin
     Check('Space, Enter, D from [Keys]',
       R.Has(cmdNextImage) and R.Has(cmdToggleFullscreen) and R.Has(cmdToggleDiagnostics), R.Text);
     Check('other keys are not used', not E.KeyDown(Ord('Q'), False, T));
+    { The digits, top row and number pad: Rapid Selection (Day 27). }
+    R.Clear;
+    E.KeyDown(VKEY_0 + 3, False, T);
+    E.KeyDown(VKEY_NUMPAD0, False, T);
+    Check('digits: Rapid Selection keys', R.Count(cmdRapidKey) = 2, R.Text);
 
     { Focus lost: a waiting click is dropped. }
     T := T + 5000;
@@ -507,6 +520,74 @@ begin
     for I := 1 to 3 do
       E.Tick(T + 1000 * QWord(I));
     Check('focus lost: the waiting click is dropped', not R.Has(cmdNextImage), R.Text);
+
+    { Single keys (Day 27): [Keys] F5 = Rescan, a digit set to None,
+      a punctuation key; written back and read again. }
+    P.LoadDefaults;
+    P.LoadFromText(DefaultProfileText + 'F5 = Rescan' + LineEnding + '3 = None' + LineEnding
+      + 'Oem1 = Info, Diagnostics' + LineEnding);
+    Check('keys: read without problems', P.Errors.Count = 0, P.Errors.Text);
+    E.SetProfile(P);
+    R.Clear;
+    Check('F5: runs Rescan', E.KeyDown($74, False, T) and R.Has(cmdRescan), R.Text);
+    R.Clear;
+    Check('a digit set to None: nothing', not E.KeyDown(VKEY_0 + 3, False, T)
+      and not R.Has(cmdRapidKey), R.Text);
+    R.Clear;
+    E.KeyDown($BA, False, T);
+    Check('Oem1: two commands', R.Has(cmdToggleInfo) and R.Has(cmdToggleDiagnostics), R.Text);
+    Lines := TStringList.Create;
+    try
+      P.SaveToStrings(Lines);
+      P.LoadFromStrings(Lines);
+      Check('keys: written and read back', SameActions(P.KeyActionsFor($74), [maRescan])
+        and SameActions(P.KeyActionsFor($BA), [maInfo, maDiagnostics])
+        and (Length(P.KeyActionsFor(VKEY_0 + 3)) = 0)
+        and SameActions(P.KeyActionsFor(VKEY_SPACE), [maNextImage]), Lines.Text);
+    finally
+      Lines.Free;
+    end;
+
+    { Edges (Day 27): the bottom edge with the zones off switches zoom
+      mode after BottomEdgeMs; the top edge asks for the preview strip. }
+    E.SetProfile(P);
+    E.EdgeWidth := 12;
+    E.BottomEdgeMs := 1000;
+    E.TopEdgeMs := 500;
+    T := T + 10000;
+    R.Clear;
+    E.MouseMove(500, H - 5, False, False, T);
+    E.Tick(T + 1500);
+    Check('bottom edge, zones on: nothing', not R.Has(cmdInputMode), R.Text);
+    E.ZonesEnabled := False;
+    E.MouseMove(500, 400, False, False, T + 1600);
+    E.MouseMove(500, H - 5, False, False, T + 1700);
+    E.Tick(T + 2500);
+    Check('bottom edge: not before 1 s', not R.Has(cmdInputMode), R.Text);
+    E.Tick(T + 2800);
+    Check('bottom edge, 1 s, zones off: zoom mode on', R.Has(cmdInputMode)
+      and (E.Mode = imZoom), R.Text);
+    R.Clear;
+    E.Tick(T + 5000);
+    Check('  once per stay', not R.Has(cmdInputMode), R.Text);
+    E.MouseMove(500, 400, False, False, T + 5100);
+    E.MouseMove(500, H - 2, False, False, T + 5200);
+    E.Tick(T + 6300);
+    Check('  again: zoom mode off', R.Has(cmdInputMode) and (E.Mode = imBrowse), R.Text);
+    R.Clear;
+    E.MouseMove(500, 3, False, False, T + 7000);
+    E.Tick(T + 7300);
+    Check('top edge: not before 0.5 s', not R.Has(cmdPreviewStrip), R.Text);
+    E.Tick(T + 7600);
+    Check('top edge, 0.5 s: the preview strip', R.Has(cmdPreviewStrip)
+      and (Round(R.Args[R.IndexOf(cmdPreviewStrip)].Value) = 1), R.Text);
+    R.Clear;
+    E.MouseMove(500, 400, False, False, T + 8000);
+    E.MouseMove(500, 3, True, False, T + 8100);
+    E.Tick(T + 9000);
+    Check('top edge with a button held: nothing', not R.Has(cmdPreviewStrip), R.Text);
+    E.MouseUp(ebLeft, 500, 3, T + 9100);
+    E.ZonesEnabled := True;
   finally
     P.Free;
     E.Free;
@@ -567,8 +648,8 @@ begin
       and SameActions(P.ActionsFor(mzTopLeft, meLeftDouble), [maEditOff]));
     Check('wheel click and Enter = fullscreen, Space = next image',
       SameActions(P.ActionsFor(mzTopLeft, meWheelClick), [maFullscreen])
-      and SameActions(P.ActionsFor(mzTopLeft, meKeyEnter), [maFullscreen])
-      and SameActions(P.ActionsFor(mzTopLeft, meKeySpace), [maNextImage]));
+      and SameActions(P.KeyActionsFor(VKEY_RETURN), [maFullscreen])
+      and SameActions(P.KeyActionsFor(VKEY_SPACE), [maNextImage]));
 
     { The engine with this profile. }
     E.OnCommand := @R.Handle;
@@ -609,7 +690,7 @@ end;
 begin
   PassCount := 0;
   FailCount := 0;
-  WriteLn('MView mouse language test');
+  WriteLn('VersariteViewer mouse language test');
   WriteLn('=========================');
   TestProfile;
   TestZones;

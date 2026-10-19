@@ -72,9 +72,11 @@ unit uMousePage;
   "Anywhere" (what every zone uses unless it sets it itself) and
   "Keys". A click selects one of them.
   Right: for the selection, its name and browsing order (zones only)
-  and one row per event (mouse events, or the three
-  programmable keys; Esc is fixed and has no row) with up to
-  three commands in a row.
+  and one row per mouse event with up to three commands in a row.
+  Keys (Day 27, testers): one row per key that is set (its name as the
+  installed keyboard layout labels it), a remove button, and "Add a
+  key" (a list of the keys still free; pressing a key over it picks
+  it). A digit not listed is a Rapid Selection key.
   Bottom: "Try it here", a small area with the same four zones. Mouse
   buttons, the wheel, tilt, side buttons and the keys pressed over it
   go through a real TMouseEngine with the profile being edited, and
@@ -133,6 +135,23 @@ type
     Combos: array[0..MaxActionsPerEvent - 1] of TComboBox;
   end;
 
+  { A key that is set (Day 27). }
+  TKeyRow = record
+    Key: Word;
+    Caption: TLabel;
+    Combos: array[0..MaxActionsPerEvent - 1] of TComboBox;
+    Remove: TButton;
+  end;
+
+  { The "Add a key" list: a key pressed while it has the focus is
+    picked in it. }
+  TKeyPickCombo = class(TComboBox)
+  protected
+    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+  public
+    Keys: TWordArray;            { the keys of the items, in order }
+  end;
+
   { TMouseProfilePage }
 
   TMouseProfilePage = class(TPanel)
@@ -156,7 +175,21 @@ type
     FTitleEdit: TEdit;
     FOrderGroup: TRadioGroup;
     FRows: array[TMouseEvent] of TEventRow;
+    { Day 25 (Esc to the settings took seconds): a box holds only its
+      chosen entry until it is opened or entered (then all commands);
+      FLazy = the entry's index in the full list, -1 = filled. Every box
+      with ~70 entries, pushed into Windows at each showing, cost ~10 s. }
+    FLazy: array[TMouseEvent, 0..MaxActionsPerEvent - 1] of Integer;
+    FRowsBuilt: Boolean;         { BuildRows done (the page was shown) }
     FActions: array of TMouseAction;   { the choosable commands, list order }
+
+    { Keys (Day 27). }
+    FKeyRows: array of TKeyRow;
+    FAddKeyLabel: TLabel;
+    FAddKeyCombo: TKeyPickCombo;
+    FAddKeyBounds: TRect;        { its place, set again once it is shown }
+    FAddKeyButton: TButton;
+    FDigitNote: TLabel;
 
     FTryPanel: TPanel;
     FTryHeader: TLabel;
@@ -175,6 +208,14 @@ type
     procedure SelectCell(ASelection: Integer);
     procedure ShowSelection;
     procedure FillCombo(ACombo: TComboBox; AFirst: Boolean; AEvent: TMouseEvent);
+    procedure BuildItems(AList: TStrings; AFirst: Boolean; AEvent: TMouseEvent);
+    procedure SetLazy(ACombo: TComboBox; AFirst: Boolean; AEvent: TMouseEvent; AIndex: Integer);
+    procedure EnsureFilled(ACombo: TComboBox);
+    procedure BuildRows;
+    procedure HandleComboOpen(Sender: TObject);
+    procedure HandleFitDropDown(Sender: TObject);
+    { The box's index in the full list (also while it is lazy). }
+    function ComboIndex(AEvent: TMouseEvent; K: Integer): Integer;
     function FirstBase: Integer;
     procedure ShowRow(AEvent: TMouseEvent);
     procedure WriteRow(AEvent: TMouseEvent);
@@ -183,6 +224,13 @@ type
     procedure HandleOrderClick(Sender: TObject);
     procedure HandleFired(Sender: TObject; AZone: TMouseZone; AEvent: TMouseEvent;
       const AActions: TActionList);
+    procedure HandleKeyFired(Sender: TObject; AKey: Word; const AActions: TActionList);
+    procedure ClearKeyRows;
+    procedure BuildKeyRows;
+    procedure RebuildKeyRowsLater(AData: PtrInt);
+    procedure HandleKeyComboChange(Sender: TObject);
+    procedure HandleKeyRemoveClick(Sender: TObject);
+    procedure HandleAddKeyClick(Sender: TObject);
     procedure HandleTryCommand(Sender: TObject; ACommand: TCommand; const AArgs: TCommandArgs);
     procedure HandleTimer(Sender: TObject);
     procedure HandleDefaultsClick(Sender: TObject);
@@ -196,6 +244,8 @@ type
 
     { Reads the profile (the built-in one if the file isn't there). }
     procedure LoadFile(const AFileName: string);
+    { The page's tab was opened: its rows are made the first time. }
+    procedure PageShown;
     { False and a note on the page if it couldn't be written. }
     function SaveFile: Boolean;
 
@@ -211,7 +261,82 @@ type
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   end;
 
+{ The key's name as the installed keyboard layout labels it ("Ü",
+  "Leertaste", "Num 5"); the file's name where Windows has none. }
+function KeyLabel(AKey: Word): string;
+
 implementation
+
+uses
+  uEdition,
+  uSafeFile;
+
+{$IFDEF WINDOWS}
+function MViewMapVirtualKeyW(uCode, uMapType: LongWord): LongWord; stdcall;
+  external 'user32.dll' name 'MapVirtualKeyW';
+function MViewGetKeyNameTextW(lParam: LongInt; lpString: PWideChar; cchSize: Integer): Integer;
+  stdcall; external 'user32.dll' name 'GetKeyNameTextW';
+{$ENDIF}
+
+function KeyLabel(AKey: Word): string;
+{$IFDEF WINDOWS}
+const
+  MAPVK_VK_TO_VSC = 0;
+var
+  Scan: LongWord;
+  Param: LongInt;
+  Buf: array[0..63] of WideChar;
+  N: Integer;
+{$ENDIF}
+begin
+  Result := KeyCodeName(AKey);
+  {$IFDEF WINDOWS}
+  Scan := MViewMapVirtualKeyW(AKey, MAPVK_VK_TO_VSC);
+  if Scan = 0 then
+    Exit;
+  Param := LongInt(Scan shl 16);
+  { Keys of the extended block (not the number pad's twins). }
+  case AKey of
+    $21, $22, $23, $24, $2D, $2E, $5D, $6F:
+      Param := Param or (1 shl 24);
+  end;
+  FillChar(Buf, SizeOf(Buf), 0);
+  N := MViewGetKeyNameTextW(Param, @Buf[0], Length(Buf));
+  if N > 0 then
+    Result := string(UTF8Encode(UnicodeString(PWideChar(@Buf[0]))));
+  { Same as the file's name but in capitals ("F5", "A"): keep that. }
+  {$ENDIF}
+  if Result = '' then
+    Result := KeyCodeName(AKey);
+end;
+
+{ The label, and the file's name where they differ ("Ü  (Oem1)"). }
+function KeyCaption(AKey: Word): string;
+begin
+  Result := KeyLabel(AKey);
+  if not SameText(Result, KeyCodeName(AKey)) then
+    Result := Result + '   (' + KeyCodeName(AKey) + ')';
+end;
+
+{ TKeyPickCombo }
+
+procedure TKeyPickCombo.KeyDown(var Key: Word; Shift: TShiftState);
+var
+  I: Integer;
+begin
+  { A key that can be set: picked. Others (arrows, Tab, Esc): as usual. }
+  if (Shift = []) and IsAssignableKey(Key) and (Key <> $09) and (Key <> $0D) then
+  begin
+    for I := 0 to High(Keys) do
+      if Keys[I] = Key then
+      begin
+        ItemIndex := I;
+        Key := 0;
+        Exit;
+      end;
+  end;
+  inherited KeyDown(Key, Shift);
+end;
 
 const
   SelAnywhere = 4;
@@ -235,7 +360,7 @@ begin
   inherited Create(AOwner);
   TabStop := True;
   Color := $00303030;
-  FText := 'Point here and press buttons, turn or tilt the wheel, press Space / Esc / Enter / D.';
+  FText := 'Point here and press buttons, turn or tilt the wheel, press keys.';
 end;
 
 function TTryArea.CursorPos: TPoint;
@@ -444,6 +569,7 @@ begin
 
   FEngine := TMouseEngine.Create(Self);
   FEngine.OnFired := @HandleFired;
+  FEngine.OnKeyFired := @HandleKeyFired;
   FEngine.OnCommand := @HandleTryCommand;
   FEngine.SetProfile(FProfile);
   FTry.Engine := FEngine;
@@ -476,7 +602,7 @@ begin
   FZonesButton.Font.Style := [fsBold];
   FZonesButton.Cursor := crHandPoint;
   FZonesButton.OnClick := @HandleZonesClick;
-  FZonesButton.Hint := 'Click to switch the zones on or off ([Mouse] ZonesEnabled in MView.ini).';
+  FZonesButton.Hint := EditionText('Click to switch the zones on or off ([Mouse] ZonesEnabled in VersariteViewer.ini).');
   FZonesButton.ShowHint := True;
   FZoneBox := TPaintBox.Create(Self);
   FZoneBox.Parent := FLeft;
@@ -493,7 +619,7 @@ begin
   FDefaultsButton.BorderSpacing.Left := 8;
   FDefaultsButton.BorderSpacing.Right := 8;
   FDefaultsButton.Caption := 'Use the built-in profile';
-  FDefaultsButton.Hint := 'All zones, Anywhere and Keys as MView comes (Save to keep it).';
+  FDefaultsButton.Hint := EditionText('All zones, Anywhere and Keys as VersariteViewer comes (Save to keep it).');
   FDefaultsButton.ShowHint := True;
   FDefaultsButton.OnClick := @HandleDefaultsClick;
   FInfo := TLabel.Create(Self);
@@ -552,39 +678,97 @@ begin
   FOrderGroup.Items.Add('by name');
   FOrderGroup.OnClick := @HandleOrderClick;
 
-  { One row per event; the keys use the rows' places too (only one set
-    is visible at a time). }
-  for E := Low(TMouseEvent) to High(TMouseEvent) do
-  begin
-    { Keys: Space, Enter, D one below the other (Esc is fixed, no row
-      shown). }
-    if E in KeyEvents then
-    begin
-      Y := FirstRowTop + (Ord(E) - Ord(meKeySpace)) * RowHeight;
-      if E > meKeyEsc then
-        Dec(Y, RowHeight);
-    end
-    else
-      Y := FirstRowTop + Ord(E) * RowHeight;
-    FRows[E].Caption := TLabel.Create(Self);
-    FRows[E].Caption.Parent := FRight;
-    FRows[E].Caption.SetBounds(8, Y + 4, LabelWidth - 12, 22);
-    FRows[E].Caption.Caption := MouseEventCaption(E);
-    for K := 0 to MaxActionsPerEvent - 1 do
-    begin
-      FRows[E].Combos[K] := TComboBox.Create(Self);
-      FRows[E].Combos[K].Parent := FRight;
-      FRows[E].Combos[K].Style := csDropDownList;
-      FRows[E].Combos[K].DropDownCount := 24;
-      FRows[E].Combos[K].SetBounds(LabelWidth + K * (ComboWidth + ComboGap), Y,
-        ComboWidth, 26);
-      FRows[E].Combos[K].Tag := Ord(E) * 10 + K;
-      FRows[E].Combos[K].OnChange := @HandleComboChange;
-    end;
-  end;
+  { Keys (Day 27): "Add a key", below the key rows (placed by
+    BuildKeyRows). }
+  FAddKeyLabel := TLabel.Create(Self);
+  FAddKeyLabel.Parent := FRight;
+  FAddKeyLabel.Caption := 'Add a key (pick it, or press it here):';
+  FAddKeyLabel.Visible := False;
+  FAddKeyCombo := TKeyPickCombo.Create(Self);
+  FAddKeyCombo.Parent := FRight;
+  FAddKeyCombo.Style := csDropDownList;
+  FAddKeyCombo.DropDownCount := 24;
+  FAddKeyCombo.OnDropDown := @HandleFitDropDown;
+  { Anchored under its label (1.1, a tester: placed by SetBounds only,
+    the box ended up at the top of the page). }
+  FAddKeyCombo.AnchorSideLeft.Control := FAddKeyLabel;
+  FAddKeyCombo.AnchorSideLeft.Side := asrLeft;
+  FAddKeyCombo.AnchorSideTop.Control := FAddKeyLabel;
+  FAddKeyCombo.AnchorSideTop.Side := asrBottom;
+  FAddKeyCombo.BorderSpacing.Top := 4;
+  FAddKeyCombo.Anchors := [akLeft, akTop];
+  FAddKeyCombo.Visible := False;
+  FAddKeyButton := TButton.Create(Self);
+  FAddKeyButton.Parent := FRight;
+  FAddKeyButton.Caption := 'Add';
+  FAddKeyButton.OnClick := @HandleAddKeyClick;
+  FAddKeyButton.AnchorSideTop.Control := FAddKeyCombo;
+  FAddKeyButton.AnchorSideTop.Side := asrTop;
+  FAddKeyButton.Anchors := [akLeft, akTop];
+  FAddKeyButton.Visible := False;
+  FDigitNote := TLabel.Create(Self);
+  FDigitNote.Parent := FRight;
+  FDigitNote.AutoSize := False;
+  FDigitNote.WordWrap := True;
+  FDigitNote.Caption := 'The digit keys 1 .. 9, 0 (top row and number pad) not listed above are '
+    + 'Rapid sorting keys: they move the image into the Selection folder of that digit '
+    + '(right-click menu: Rapid sorting). Add a digit to give it another command, or '
+    + '"(nothing)" to switch it off.';
+  FDigitNote.Visible := False;
 
+  { The rows (one per button / key, three boxes each) are made when the
+    page is first shown (BuildRows): ~80 controls cost the settings
+    screen about a second on every first Esc (Day 25). }
   ShowSelection;
   SetZonesEnabled(True);
+end;
+
+{ One row per event; the keys use the rows' places too (only one set
+  is visible at a time). Made once, when the page is first shown. }
+procedure TMouseProfilePage.BuildRows;
+var
+  E: TMouseEvent;
+  K, Y: Integer;
+begin
+  if FRowsBuilt then
+    Exit;
+  FRowsBuilt := True;
+  FRight.DisableAutoSizing;
+  try
+    for E := Low(TMouseEvent) to High(TMouseEvent) do
+    begin
+      Y := FirstRowTop + Ord(E) * RowHeight;
+      FRows[E].Caption := TLabel.Create(Self);
+      FRows[E].Caption.Parent := FRight;
+      FRows[E].Caption.SetBounds(8, Y + 4, LabelWidth - 12, 22);
+      FRows[E].Caption.Caption := MouseEventCaption(E);
+      for K := 0 to MaxActionsPerEvent - 1 do
+      begin
+        FRows[E].Combos[K] := TComboBox.Create(Self);
+        FRows[E].Combos[K].Parent := FRight;
+        FRows[E].Combos[K].Style := csDropDownList;
+        FRows[E].Combos[K].DropDownCount := 24;
+        FRows[E].Combos[K].SetBounds(LabelWidth + K * (ComboWidth + ComboGap), Y,
+          ComboWidth, 26);
+        FRows[E].Combos[K].Tag := Ord(E) * 10 + K;
+        FRows[E].Combos[K].OnChange := @HandleComboChange;
+        FRows[E].Combos[K].OnDropDown := @HandleComboOpen;
+        FRows[E].Combos[K].OnEnter := @HandleComboOpen;
+        FLazy[E, K] := -1;
+      end;
+    end;
+
+  finally
+    FRight.EnableAutoSizing;
+  end;
+end;
+
+procedure TMouseProfilePage.PageShown;
+begin
+  if FRowsBuilt then
+    Exit;
+  BuildRows;
+  ShowSelection;
 end;
 
 destructor TMouseProfilePage.Destroy;
@@ -619,10 +803,15 @@ begin
 end;
 
 function TMouseProfilePage.SaveFile: Boolean;
+var
+  Lines: TStringList;
 begin
   Result := False;
+  Lines := TStringList.Create;
   try
-    FProfile.SaveToFile(FFileName);
+    { Never half written (uSafeFile, 1.1). }
+    FProfile.SaveToStrings(Lines);
+    WriteTextFileSafe(FFileName, Lines.Text);
     FModified := False;
     FProfile.Errors.Clear;
     Result := True;
@@ -630,6 +819,7 @@ begin
     on E: Exception do
       FProfile.Errors.Add('could not save: ' + E.Message);
   end;
+  Lines.Free;
   ShowInfo;
 end;
 
@@ -648,8 +838,8 @@ begin
   S := S + LineEnding + LineEnding
     + 'Fixed, not in the profile: left button + drag = pan; right button + drag = '
     + 'gesture; arrow keys = next / previous image (down / up) and folder '
-    + '(right / left); Ctrl+V = paste; Esc = a mode or edit mode off, else back to the '
-    + 'settings (here: ends MView).';
+    + '(right / left); Ctrl+V = paste; Ctrl+C = copy the image; Esc = a mode or edit mode off, else back to the '
+    + 'settings (here: ends ' + EditionTitle + ').';
   FInfo.Caption := S;
 end;
 
@@ -831,31 +1021,127 @@ begin
     Result := 1;    { (nothing) }
 end;
 
-procedure TMouseProfilePage.FillCombo(ACombo: TComboBox; AFirst: Boolean; AEvent: TMouseEvent);
+{ The full list of a box: its first entries, then every command. }
+procedure TMouseProfilePage.BuildItems(AList: TStrings; AFirst: Boolean; AEvent: TMouseEvent);
 var
   I: Integer;
+begin
+  if AFirst then
+  begin
+    if IsZoneSelected then
+    begin
+      AList.Add('(as in Anywhere: '
+        + ActionListCaption(FProfile.AnywhereBinding(AEvent)) + ')');
+      AList.Add('(nothing here)');
+    end
+    else
+      AList.Add('(nothing)');
+  end
+  else
+    AList.Add('-');
+  for I := 0 to High(FActions) do
+    AList.Add(MouseActionCaption(FActions[I]));
+end;
+
+procedure TMouseProfilePage.FillCombo(ACombo: TComboBox; AFirst: Boolean; AEvent: TMouseEvent);
 begin
   ACombo.Items.BeginUpdate;
   try
     ACombo.Items.Clear;
-    if AFirst then
-    begin
-      if IsZoneSelected then
-      begin
-        ACombo.Items.Add('(as in Anywhere: '
-          + ActionListCaption(FProfile.AnywhereBinding(AEvent)) + ')');
-        ACombo.Items.Add('(nothing here)');
-      end
-      else
-        ACombo.Items.Add('(nothing)');
-    end
-    else
-      ACombo.Items.Add('-');
-    for I := 0 to High(FActions) do
-      ACombo.Items.Add(MouseActionCaption(FActions[I]));
+    BuildItems(ACombo.Items, AFirst, AEvent);
   finally
     ACombo.Items.EndUpdate;
   end;
+end;
+
+{ Only the chosen entry (its text from the full list, built in memory). }
+procedure TMouseProfilePage.SetLazy(ACombo: TComboBox; AFirst: Boolean; AEvent: TMouseEvent;
+  AIndex: Integer);
+var
+  List: TStringList;
+begin
+  List := TStringList.Create;
+  try
+    BuildItems(List, AFirst, AEvent);
+    if (AIndex < 0) or (AIndex >= List.Count) then
+      AIndex := 0;
+    ACombo.Items.BeginUpdate;
+    try
+      ACombo.Items.Clear;
+      ACombo.Items.Add(List[AIndex]);
+    finally
+      ACombo.Items.EndUpdate;
+    end;
+    ACombo.ItemIndex := 0;
+  finally
+    List.Free;
+  end;
+  FLazy[AEvent, ACombo.Tag mod 10] := AIndex;
+end;
+
+{ Opened or entered: all commands, the chosen one selected. }
+procedure TMouseProfilePage.EnsureFilled(ACombo: TComboBox);
+var
+  E: TMouseEvent;
+  K, Idx: Integer;
+  WasUpdating: Boolean;
+begin
+  E := TMouseEvent(ACombo.Tag div 10);
+  K := ACombo.Tag mod 10;
+  Idx := FLazy[E, K];
+  if Idx < 0 then
+    Exit;
+  FLazy[E, K] := -1;
+  WasUpdating := FUpdating;
+  FUpdating := True;              { no OnChange write for this }
+  try
+    FillCombo(ACombo, K = 0, E);
+    ACombo.ItemIndex := Idx;
+  finally
+    FUpdating := WasUpdating;
+  end;
+end;
+
+{ A list that opens as long as fits beside its box on the screen (1.1,
+  a tester: the "Add a key" list, near the bottom of the page, was taller
+  than the room above and below it, so Windows put it at the top of the
+  screen, away from its box). }
+procedure FitDropDown(ACombo: TComboBox);
+var
+  P: TPoint;
+  Area: TRect;
+  ItemH, Room, Rows: Integer;
+begin
+  if (ACombo = nil) or not ACombo.HandleAllocated then
+    Exit;
+  P := ACombo.ClientToScreen(Point(0, 0));
+  Area := Screen.MonitorFromPoint(P).WorkareaRect;
+  ItemH := ACombo.ItemHeight;
+  if ItemH <= 0 then
+    ItemH := Max(14, ACombo.Height - 6);
+  Room := Max(Area.Bottom - (P.Y + ACombo.Height), P.Y - Area.Top) - 2 * ItemH;
+  Rows := EnsureRange(Room div ItemH, 4, 24);
+  if ACombo.DropDownCount <> Rows then
+    ACombo.DropDownCount := Rows;
+end;
+
+procedure TMouseProfilePage.HandleComboOpen(Sender: TObject);
+begin
+  EnsureFilled(TComboBox(Sender));
+  FitDropDown(TComboBox(Sender));
+end;
+
+procedure TMouseProfilePage.HandleFitDropDown(Sender: TObject);
+begin
+  FitDropDown(TComboBox(Sender));
+end;
+
+function TMouseProfilePage.ComboIndex(AEvent: TMouseEvent; K: Integer): Integer;
+begin
+  if FLazy[AEvent, K] >= 0 then
+    Result := FLazy[AEvent, K]
+  else
+    Result := FRows[AEvent].Combos[K].ItemIndex;
 end;
 
 function IndexOfAction(const AActions: array of TMouseAction; AAction: TMouseAction): Integer;
@@ -872,9 +1158,8 @@ procedure TMouseProfilePage.ShowRow(AEvent: TMouseEvent);
 var
   List: TActionList;
   K, Idx, Base: Integer;
+  Wanted: array[0..MaxActionsPerEvent - 1] of Integer;
 begin
-  for K := 0 to MaxActionsPerEvent - 1 do
-    FillCombo(FRows[AEvent].Combos[K], K = 0, AEvent);
   Base := FirstBase;
 
   if IsZoneSelected then
@@ -884,21 +1169,21 @@ begin
 
   { First box. }
   if Length(List) = 0 then
-    FRows[AEvent].Combos[0].ItemIndex := 0             { as in Anywhere / nothing }
+    Wanted[0] := 0                                   { as in Anywhere / nothing }
   else if (Length(List) = 1) and (List[0] = maNone) then
   begin
     if IsZoneSelected then
-      FRows[AEvent].Combos[0].ItemIndex := 1           { nothing here }
+      Wanted[0] := 1                                 { nothing here }
     else
-      FRows[AEvent].Combos[0].ItemIndex := 0;
+      Wanted[0] := 0;
   end
   else
   begin
     Idx := IndexOfAction(FActions, List[0]);
     if Idx >= 0 then
-      FRows[AEvent].Combos[0].ItemIndex := Base + Idx
+      Wanted[0] := Base + Idx
     else
-      FRows[AEvent].Combos[0].ItemIndex := 0;
+      Wanted[0] := 0;
   end;
 
   { The commands after it. }
@@ -908,11 +1193,16 @@ begin
     if (K < Length(List)) and (List[K] <> maNone) then
       Idx := IndexOfAction(FActions, List[K]);
     if Idx >= 0 then
-      FRows[AEvent].Combos[K].ItemIndex := 1 + Idx
+      Wanted[K] := 1 + Idx
     else
-      FRows[AEvent].Combos[K].ItemIndex := 0;
-    FRows[AEvent].Combos[K].Enabled := FRows[AEvent].Combos[0].ItemIndex >= Base;
+      Wanted[K] := 0;
   end;
+
+  { Only the chosen entries now; the full lists when a box is opened. }
+  for K := 0 to MaxActionsPerEvent - 1 do
+    SetLazy(FRows[AEvent].Combos[K], K = 0, AEvent, Wanted[K]);
+  for K := 1 to MaxActionsPerEvent - 1 do
+    FRows[AEvent].Combos[K].Enabled := Wanted[0] >= Base;
 end;
 
 { The row's boxes -> the profile. }
@@ -923,7 +1213,7 @@ var
 begin
   Base := FirstBase;
   List := nil;
-  Idx := FRows[AEvent].Combos[0].ItemIndex;
+  Idx := ComboIndex(AEvent, 0);
   if Idx >= Base then
   begin
     N := 1;
@@ -931,7 +1221,7 @@ begin
     List[0] := FActions[Idx - Base];
     for K := 1 to MaxActionsPerEvent - 1 do
     begin
-      Idx := FRows[AEvent].Combos[K].ItemIndex;
+      Idx := ComboIndex(AEvent, K);
       if Idx >= 1 then
       begin
         SetLength(List, N + 1);
@@ -953,7 +1243,7 @@ begin
     FProfile.SetAnywhereBinding(AEvent, List);
 
   for K := 1 to MaxActionsPerEvent - 1 do
-    FRows[AEvent].Combos[K].Enabled := FRows[AEvent].Combos[0].ItemIndex >= Base;
+    FRows[AEvent].Combos[K].Enabled := ComboIndex(AEvent, 0) >= Base;
 end;
 
 procedure TMouseProfilePage.ShowSelection;
@@ -972,9 +1262,10 @@ begin
         + 'its row from left to right.',
         [FProfile.ZoneTitle(SelectedZone), LowerCase(MouseZoneCaption(SelectedZone))])
     else if ShowKeys then
-      FIntro.Caption := 'Keys: the three keys that can be set. One press runs the commands of '
-        + 'its row from left to right. Fixed: Esc (a mode or edit mode off, else back to this '
-        + 'settings screen; here it ends MView), arrow keys (images and folders), Ctrl+V (paste).'
+      FIntro.Caption := 'Keys: single keys (no combinations), named as your keyboard shows them. '
+        + 'One press runs the commands of its row from left to right. Fixed: Esc (a mode or edit '
+        + 'mode off, else back to this settings screen; here it ends the program), arrow keys (images '
+        + 'and folders), Ctrl+V (paste), Ctrl+C (copy).'
     else
       FIntro.Caption := 'Anywhere: what each button does in every zone that doesn''t set it '
         + 'itself. One press runs the commands of its row from left to right.';
@@ -988,19 +1279,220 @@ begin
       FOrderGroup.ItemIndex := Ord(FProfile.ZoneOrder(SelectedZone));
     end;
 
+    if FRowsBuilt then
     for E := Low(TMouseEvent) to High(TMouseEvent) do
     begin
-      Vis := ((E in KeyEvents) = ShowKeys) and (E <> meKeyEsc);
+      Vis := not ShowKeys;
       FRows[E].Caption.Visible := Vis;
       for K := 0 to MaxActionsPerEvent - 1 do
         FRows[E].Combos[K].Visible := Vis;
       if Vis then
         ShowRow(E);
     end;
+    { The keys' own rows (Day 27). }
+    ClearKeyRows;
+    if ShowKeys and FRowsBuilt then
+      BuildKeyRows;
+    FAddKeyLabel.Visible := ShowKeys and FRowsBuilt;
+    FAddKeyCombo.Visible := ShowKeys and FRowsBuilt;
+    { 1.1, a tester: shown for the first time, the box went to the top of
+      the page (the combo box of Windows takes its place when its handle
+      is made): placed again now, next to "Add". }
+    if FAddKeyCombo.Visible then
+      FAddKeyCombo.Width := FAddKeyBounds.Right - FAddKeyBounds.Left;
+    FAddKeyButton.Visible := ShowKeys and FRowsBuilt;
+    FDigitNote.Visible := ShowKeys and FRowsBuilt;
   finally
     FUpdating := False;
   end;
   FZoneBox.Invalidate;
+end;
+
+procedure TMouseProfilePage.ClearKeyRows;
+var
+  I, K: Integer;
+begin
+  for I := 0 to High(FKeyRows) do
+  begin
+    FKeyRows[I].Caption.Free;
+    for K := 0 to MaxActionsPerEvent - 1 do
+      FKeyRows[I].Combos[K].Free;
+    FKeyRows[I].Remove.Free;
+  end;
+  FKeyRows := nil;
+end;
+
+{ One row per key that is set, then "Add a key" with the keys still free. }
+procedure TMouseProfilePage.BuildKeyRows;
+var
+  Keys, All: TWordArray;
+  List: TActionList;
+  I, K, J, Y, Idx: Integer;
+  WasUpdating: Boolean;
+  Bound: Boolean;
+begin
+  WasUpdating := FUpdating;
+  FUpdating := True;
+  FRight.DisableAutoSizing;
+  try
+    Keys := FProfile.BoundKeys;
+    SetLength(FKeyRows, Length(Keys));
+    for I := 0 to High(Keys) do
+    begin
+      Y := FirstRowTop + I * RowHeight;
+      FKeyRows[I].Key := Keys[I];
+      FKeyRows[I].Caption := TLabel.Create(Self);
+      FKeyRows[I].Caption.Parent := FRight;
+      FKeyRows[I].Caption.SetBounds(8, Y + 4, LabelWidth - 40, 22);
+      FKeyRows[I].Caption.Caption := KeyCaption(Keys[I]);
+      FKeyRows[I].Remove := TButton.Create(Self);
+      FKeyRows[I].Remove.Parent := FRight;
+      FKeyRows[I].Remove.SetBounds(LabelWidth - 32, Y, 26, 26);
+      FKeyRows[I].Remove.Caption := 'x';
+      FKeyRows[I].Remove.Hint := 'Remove this key (a digit then is a Rapid sorting key again)';
+      FKeyRows[I].Remove.ShowHint := True;
+      FKeyRows[I].Remove.Tag := I;
+      FKeyRows[I].Remove.OnClick := @HandleKeyRemoveClick;
+      List := FProfile.KeyBinding(Keys[I]);
+      for K := 0 to MaxActionsPerEvent - 1 do
+      begin
+        FKeyRows[I].Combos[K] := TComboBox.Create(Self);
+        FKeyRows[I].Combos[K].Parent := FRight;
+        FKeyRows[I].Combos[K].Style := csDropDownList;
+        FKeyRows[I].Combos[K].DropDownCount := 24;
+        FKeyRows[I].Combos[K].OnDropDown := @HandleFitDropDown;
+        FKeyRows[I].Combos[K].SetBounds(LabelWidth + K * (ComboWidth + ComboGap), Y,
+          ComboWidth, 26);
+        if K = 0 then
+          FKeyRows[I].Combos[K].Items.Add('(nothing)')
+        else
+          FKeyRows[I].Combos[K].Items.Add('-');
+        for J := 0 to High(FActions) do
+          FKeyRows[I].Combos[K].Items.Add(MouseActionCaption(FActions[J]));
+        Idx := 0;
+        if (K < Length(List)) and (List[K] <> maNone) then
+          Idx := 1 + IndexOfAction(FActions, List[K]);
+        FKeyRows[I].Combos[K].ItemIndex := Max(0, Idx);
+        FKeyRows[I].Combos[K].Tag := I * 10 + K;
+        FKeyRows[I].Combos[K].OnChange := @HandleKeyComboChange;
+        FKeyRows[I].Combos[K].Enabled := (K = 0) or (FKeyRows[I].Combos[0].ItemIndex > 0);
+      end;
+    end;
+    { "Add a key": the keys not set yet. }
+    Y := FirstRowTop + Length(Keys) * RowHeight + 12;
+    FAddKeyLabel.SetBounds(8, Y + 4, LabelWidth + ComboWidth, 22);
+    Inc(Y, 26);
+    FAddKeyBounds := Rect(8, Y, 8 + LabelWidth + ComboWidth - 8 - 80, Y + 26);
+    FAddKeyCombo.SetBounds(8, Y, LabelWidth + ComboWidth - 8 - 80, 26);
+    FAddKeyButton.SetBounds(LabelWidth + ComboWidth - 76, Y, 76, 26);
+    FDigitNote.SetBounds(8, Y + 40, LabelWidth + 2 * ComboWidth, 60);
+    All := AssignableKeys;
+    FAddKeyCombo.Items.BeginUpdate;
+    try
+      FAddKeyCombo.Items.Clear;
+      FAddKeyCombo.Keys := nil;
+      for I := 0 to High(All) do
+      begin
+        Bound := False;
+        for J := 0 to High(Keys) do
+          if Keys[J] = All[I] then
+            Bound := True;
+        if Bound then
+          Continue;
+        FAddKeyCombo.Items.Add(KeyCaption(All[I]));
+        SetLength(FAddKeyCombo.Keys, Length(FAddKeyCombo.Keys) + 1);
+        FAddKeyCombo.Keys[High(FAddKeyCombo.Keys)] := All[I];
+      end;
+    finally
+      FAddKeyCombo.Items.EndUpdate;
+    end;
+    if FAddKeyCombo.Items.Count > 0 then
+      FAddKeyCombo.ItemIndex := 0;
+  finally
+    FRight.EnableAutoSizing;
+    FUpdating := WasUpdating;
+  end;
+end;
+
+procedure TMouseProfilePage.RebuildKeyRowsLater(AData: PtrInt);
+begin
+  if FSelection = SelKeys then
+    ShowSelection;
+end;
+
+{ A key row's boxes -> the profile. "(nothing)" first = off ([None]). }
+procedure TMouseProfilePage.HandleKeyComboChange(Sender: TObject);
+var
+  Row, K, Idx, N: Integer;
+  List: TActionList;
+begin
+  if FUpdating then
+    Exit;
+  Row := TComboBox(Sender).Tag div 10;
+  if (Row < 0) or (Row > High(FKeyRows)) then
+    Exit;
+  List := nil;
+  Idx := FKeyRows[Row].Combos[0].ItemIndex;
+  if Idx <= 0 then
+  begin
+    SetLength(List, 1);
+    List[0] := maNone;
+  end
+  else
+  begin
+    SetLength(List, 1);
+    List[0] := FActions[Idx - 1];
+    N := 1;
+    for K := 1 to MaxActionsPerEvent - 1 do
+    begin
+      Idx := FKeyRows[Row].Combos[K].ItemIndex;
+      if Idx >= 1 then
+      begin
+        SetLength(List, N + 1);
+        List[N] := FActions[Idx - 1];
+        Inc(N);
+      end;
+    end;
+  end;
+  FProfile.SetKeyBinding(FKeyRows[Row].Key, List);
+  for K := 1 to MaxActionsPerEvent - 1 do
+    FKeyRows[Row].Combos[K].Enabled := FKeyRows[Row].Combos[0].ItemIndex > 0;
+  MarkChanged;
+end;
+
+{ The row goes after this click (its button can't free itself now). }
+procedure TMouseProfilePage.HandleKeyRemoveClick(Sender: TObject);
+var
+  Row: Integer;
+begin
+  Row := TButton(Sender).Tag;
+  if (Row < 0) or (Row > High(FKeyRows)) then
+    Exit;
+  FProfile.SetKeyBinding(FKeyRows[Row].Key, nil);
+  MarkChanged;
+  Application.QueueAsyncCall(@RebuildKeyRowsLater, 0);
+end;
+
+{ A new row, "(nothing)" until a command is picked; a digit gets
+  Rapid selection to start with (what it did before). }
+procedure TMouseProfilePage.HandleAddKeyClick(Sender: TObject);
+var
+  Idx: Integer;
+  Key: Word;
+  List: TActionList;
+begin
+  Idx := FAddKeyCombo.ItemIndex;
+  if (Idx < 0) or (Idx > High(FAddKeyCombo.Keys)) then
+    Exit;
+  Key := FAddKeyCombo.Keys[Idx];
+  SetLength(List, 1);
+  if KeyDigit(Key) >= 0 then
+    List[0] := maRapidKey
+  else
+    List[0] := maNone;
+  FProfile.SetKeyBinding(Key, List);
+  MarkChanged;
+  ShowSelection;
 end;
 
 procedure TMouseProfilePage.HandleComboChange(Sender: TObject);
@@ -1039,9 +1531,7 @@ procedure TMouseProfilePage.HandleFired(Sender: TObject; AZone: TMouseZone;
 var
   Where: string;
 begin
-  if AEvent in KeyEvents then
-    Where := 'Key'
-  else if not FZonesEnabled then
+  if not FZonesEnabled then
     Where := 'Anywhere (zones off)'
   else
     Where := FProfile.ZoneTitle(AZone) + ' (' + LowerCase(MouseZoneCaption(AZone)) + ')';
@@ -1066,6 +1556,12 @@ begin
     FTry.ShowText('Back: in the viewer edit mode off, else the settings screen (Esc is fixed to this)')
   else if ACommand = cmdShowZone then
     FTry.Invalidate;
+end;
+
+procedure TMouseProfilePage.HandleKeyFired(Sender: TObject; AKey: Word;
+  const AActions: TActionList);
+begin
+  FTry.ShowText(Format('Key   ·   %s   ->   %s', [KeyCaption(AKey), ActionListCaption(AActions)]));
 end;
 
 procedure TMouseProfilePage.SetZonesEnabled(AValue: Boolean);

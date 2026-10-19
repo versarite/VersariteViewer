@@ -94,6 +94,7 @@ type
 
     { Images }
     cmdPaste,            { the clipboard's image is shown, can be saved }
+    cmdCopyImage,        { the image, at its own resolution, to the clipboard (Day 25) }
     cmdSaveImage,        { the image as PNG into the save folder }
     cmdEditMode,         { edit mode on / off: left drag selects an area }
     cmdEditModeOn,
@@ -125,7 +126,16 @@ type
     cmdSaveDebug,        { the decoded image and a picture of the window }
 
     { Looking closer (Phase H): the magnifier on / off }
-    cmdMagnifier
+    cmdMagnifier,
+
+    { Rapid Selection (Day 27, testers): on / off; a digit key moves the
+      image into its folder (Value: the digit 0 .. 9). }
+    cmdRapidSelection,
+    cmdRapidKey,
+
+    { The preview strip (Day 27, testers): Value 0 = open / close (a
+      command), 1 = opened by the mouse resting at the top edge. }
+    cmdPreviewStrip
   );
 
   TCommandArgs = record

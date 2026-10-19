@@ -233,10 +233,15 @@ type
     FPanelUploaded: Cardinal;    { PanelVersion of the texture in FPanelBar }
     FFilterPanelBar: TGLTextBar; { the filter panel (Phase H) }
     FFilterPanelUploaded: Cardinal;
+    FStripBar: TGLTextBar;       { the preview strip (Day 27) }
+    FStripUploaded: Cardinal;
     FBadgeBar: TGLTextBar;       { the mode badge ("TC") }
     FBadgeUploaded: Cardinal;
     FNoticeBar: TGLTextBar;      { a notice in the middle (Day 24) }
     FNoticeUploaded: Cardinal;
+    { Plug-in layers (uExtensions, M0): one texture each. }
+    FLayerBars: array of TGLTextBar;
+    FLayerUploaded: array of Cardinal;
 
     { The display filters: one small fragment shader, made at the first
       paint that needs it. }
@@ -299,7 +304,8 @@ type
 implementation
 
 uses
-  Forms;   { Screen.PixelsPerInch: the info line's font size in points }
+  Forms,   { Screen.PixelsPerInch: the info line's font size in points }
+  uExtensions;
 
 const
   { Not in FPC's GL 1.1 unit. }
@@ -770,6 +776,8 @@ procedure TGLRenderer.ContextLost;
     ABar.Height := 0;
   end;
 
+var
+  I: Integer;
 begin
   { No GL calls: the textures die with the context. }
   FDeleteQueue := nil;
@@ -778,11 +786,17 @@ begin
   ForgetBar(FPanelBar);
   FPanelUploaded := 0;
   ForgetBar(FFilterPanelBar);
+  ForgetBar(FStripBar);
   ForgetBar(FBadgeBar);
   FBadgeUploaded := 0;
   ForgetBar(FNoticeBar);
   FNoticeUploaded := 0;
+  for I := 0 to High(FLayerBars) do
+    ForgetBar(FLayerBars[I]);
+  FLayerBars := nil;
+  FLayerUploaded := nil;
   FFilterPanelUploaded := 0;
+  FStripUploaded := 0;
   { The shader went with the context: made again when needed. }
   FShader := 0;
   FShaderTried := False;
@@ -1441,6 +1455,9 @@ var
   Bottom: Integer;
   Corners: array[0..3] of TPoint;
   Pass, I, SolidWidth: Integer;
+  LayerBmp: TBGRABitmap;
+  Layer: TOverlayLayer;
+  LayerLeft, LayerTop: Integer;
 begin
   StartMs := BeginPaint(AWidth, AHeight);
   if (AWidth <= 0) or (AHeight <= 0) then
@@ -1532,6 +1549,58 @@ begin
     end;
     glLineWidth(1);
     glColor4f(1, 1, 1, 1);
+  end;
+
+  { Plug-in layers (uExtensions, M0: the microscopy edition's scale bar
+    and measuring line), over the image, under the texts and panels; a
+    texture each, uploaded again when the layer's Version changes. }
+  if (OverlayLayerCount > 0) and (FImage <> nil) and not FImage.IsError then
+  begin
+    if Length(FLayerBars) <> OverlayLayerCount then
+    begin
+      for I := 0 to High(FLayerBars) do
+        if FLayerBars[I].Texture <> 0 then
+          glDeleteTextures(1, @FLayerBars[I].Texture);
+      SetLength(FLayerBars, OverlayLayerCount);
+      SetLength(FLayerUploaded, OverlayLayerCount);
+      for I := 0 to High(FLayerBars) do
+      begin
+        FLayerBars[I].Text := '';
+        FLayerBars[I].Texture := 0;
+        FLayerBars[I].Width := 0;
+        FLayerBars[I].Height := 0;
+        FLayerUploaded[I] := 0;
+      end;
+    end;
+    SetupScreenProjection(AWidth, AHeight);
+    for I := 0 to OverlayLayerCount - 1 do
+    begin
+      Layer := OverlayLayer(I);
+      { A layer's fault costs its picture, not the paint. }
+      try
+        LayerBmp := Layer.Picture(Self, AWidth, AHeight, LayerLeft, LayerTop);
+      except
+        LayerBmp := nil;
+      end;
+      if LayerBmp = nil then
+        Continue;
+      { A new size (the window changed) is uploaded even if the layer's
+        version stayed. }
+      if (FLayerBars[I].Texture <> 0) and ((FLayerBars[I].Width <> LayerBmp.Width)
+        or (Abs(FLayerBars[I].Height) <> LayerBmp.Height)) then
+      begin
+        glDeleteTextures(1, @FLayerBars[I].Texture);
+        FLayerBars[I].Texture := 0;
+      end;
+      UpdatePanel(LayerBmp, Layer.Version, FLayerBars[I], FLayerUploaded[I]);
+      if FLayerBars[I].Texture <> 0 then
+      begin
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        DrawBar(FLayerBars[I], LayerLeft, LayerTop);
+        glDisable(GL_BLEND);
+      end;
+    end;
   end;
 
   NewImagePainted := EndImagePart(StartMs);
@@ -1630,6 +1699,18 @@ begin
       glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
       DrawBar(FFilterPanelBar, FilterPanelX, FilterPanelY);
+      glDisable(GL_BLEND);
+    end;
+  end;
+  { The preview strip, along the top (Day 27). }
+  if Assigned(Strip) then
+  begin
+    UpdatePanel(Strip, StripVersion, FStripBar, FStripUploaded);
+    if FStripBar.Texture <> 0 then
+    begin
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      DrawBar(FStripBar, StripX, StripY);
       glDisable(GL_BLEND);
     end;
   end;

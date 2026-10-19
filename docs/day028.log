@@ -1,0 +1,62 @@
+Day 28 (2026-10-13)
+
+User: the swipe distance on the sort panel's buttons halved.
+- The user set SwipePx = 20 in uMView himself (was 40); taken over.
+
+User: the name: Versarite MoreViewer (MoreViewer.exe, MoreViewer.ini),
+with 1.1; the rename is done early next week, after the user's review
+and a close-circle peer review; then a walk through the changes on
+GitHub.
+
+User (tester report): 6 folder lists, about 100 folders; "Remove this
+button" -> MView hung, the process was ended; at the next start the ini
+was overwritten.
+- Not reproduced (Wine, 6 lists x 17 folders: removed and saved fine).
+  Remove only deletes the entry in memory, then SortFoldersChanged
+  saves (SaveSort) and redraws; no loop there.
+- The loss is clear from the code: TIniFile.UpdateFile empties the file
+  and writes it anew in place; stopped in that moment (or Windows stalls
+  on the write: a synced or network folder, a virus scanner) the ini is
+  empty or cut short; the next start read it as all defaults and the
+  next save wrote them. That it was cut short means the hang was most
+  likely inside the write (the redraw comes after it).
+- uSafeFile (new, utility): ReadTextFile; WriteTextFileSafely (a .tmp,
+  flushed, MoveFileExW REPLACE_EXISTING | WRITE_THROUGH; rename on
+  Linux).
+- uConfig: OpenIniFile (TMemIniFile from the file's text) and CommitIni
+  for every save (Save, SaveSort, SaveFilters, SaveDirectory,
+  SaveWindowBounds); IniEndLine written last; Load checks the ini
+  (IniTextComplete: [Startup] and [Sort], ends with a line end, the end
+  line when the backup has one), keeps MView.ini.bak of a complete one,
+  restores a damaged one from it (kept as MView.ini.damaged); TakeIniNote.
+- uIniEditor (the settings screen's save) and uMousePage (the mouse
+  profile) write through uSafeFile; uMView's first Default.mouse too.
+- uMView: the note as a red steady notice in the middle (FlashNotice
+  style 3, IniNoteMs 8 s), 1.5 s after the start (PumpDeliveries).
+- TestSort: TestSafeFile (7 checks): 118 pass.
+- Checked under Wine: normal start (backup made, end line written);
+  Remove with 102 folders (saved, no .tmp left); ini cut at a line end
+  inside [DirList1] -> restored (102 folders), notice shown, .damaged
+  kept; empty ini with backup -> restored; empty without -> defaults.
+- Spec 14 and the 1.1 release notes say so.
+
+User: the name, final: VersariteViewer (VersariteViewer.exe,
+VersariteViewer.ini; settings of an existing MView.ini and its backup
+carried over at the first start); the microscopy edition: Versarite
+Image Lab. (Replaces "Versarite MoreViewer" above.) The rename comes
+with 1.1, early next week.
+
+User, ideas for next week (after the rename), from his own testing:
+- Copy or move folder buttons between the side panel's lists (pages).
+- In the context menus (the folder menu and others), the entries used
+  most in bold and colour, as in the right-click menu.
+- News: the next microscope is a Nikon Ti2 with NIS-Elements (.nd2
+  files): a reader for the Image Lab edition is the natural next step.
+
+User, also for next week (with the rename):
+- Update the architecture pictures (docs/architecture: unit
+  dependencies, runtime interactions) to 1.1 and the new names.
+- Update the start screen (MView_welcome.png -> the VersariteViewer
+  welcome picture).
+- Place a new screenshot of the program in the tree (docs/, shown in
+  readme.md).

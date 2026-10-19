@@ -1,0 +1,43 @@
+Day 29 (2026-10-16) - feedback, for next week (with the rename)
+
+1. Settings screen, "Mouse & keys", the key rows: the box for picking a
+   letter opens at the top of the screen; it belongs just above the
+   "Add a key" button. (Its function is right.)
+2. Right-click menu, new entry "Total Commander dir preview":
+   - switches Follow Total Commander to "file under cursor" if it isn't;
+   - cursor on a file: shown as now;
+   - cursor on a folder: its first n images as a slide show; ini:
+     number of files (default 3, 0 = all) and delay (default 1 s);
+     0 with a delay over 1 s: full quality, otherwise the quick views
+     (speed first); browse TC's lists with the arrow keys without
+     entering every folder;
+   - the info line: the folder's image count and its subfolder count
+     (one level down).
+3. The side panels' transparency adjustable in the ini.
+4. Folder buttons to another page of the right side panel: a "Copy /
+   move entry" line with "Copy entry", "Cut entry", "Paste entry"
+   (pasted after the highlighted line).
+5. Reading .zip, .rar, .cbz (and like): the content listed in the right
+   side panel as the .lif entries in the Lab edition; for .cbz a
+   continuous scrolling view of the pages.
+6. DNG decoded by MView itself (the Windows codec shows them wrongly).
+Also from day 28: the rename (VersariteViewer, Versarite Image Lab),
+copy/move between lists, bold/coloured frequent menu entries, the
+architecture pictures, the start screen, a new screenshot, later .nd2.
+
+User's answers (same day):
+- 2: the slide show loops, in the main screen's order (name / date /
+  random).
+- 3: all panels the same transparency.
+- 4: yes (the follow-up of copy/move between lists).
+- 5: .rar only in the Lab edition; .cbr not at all.
+- 6: DNG left out (kept in mind; no urgent need).
+- All of it can still go into 1.1.
+- Asked: lossless JPEG operations (rotate / flip / crop without
+  re-encoding) - Lab, or a pro feature?
+- Agreed: lossless rotation belongs in the normal viewer: first the
+  EXIF orientation tag ("Rotate losslessly" > 90 right / 90 left / 180 /
+  flip in the right-click menu); "Crop losslessly" (true DCT transform,
+  crop on the 8/16 px grid) later. Order: rename + small fixes, TC dir
+  preview, archives, lossless rotation; archives and the CBZ scrolling
+  view may move to 1.2 if the week runs short.

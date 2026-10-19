@@ -68,8 +68,10 @@ unit uMouseProfile;
   on), an optional browsing order
   (Date / Name: navigation from that zone uses that order), and its own
   table "event -> commands". A table [Anywhere] holds what a zone
-  doesn't set itself. [Keys] holds the three programmable keys (Esc
-  is fixed).
+  doesn't set itself. [Keys] holds single keys (Day 27, testers: any
+  easily reached key, no combinations; Esc, the arrows, Ctrl+V and
+  Ctrl+C are fixed). A digit key not in [Keys] is a Rapid Selection key
+  (RapidKey).
 
     [Anywhere]
     RightClick   = Menu
@@ -83,6 +85,8 @@ unit uMouseProfile;
 
     [Keys]
     Space = NextImage
+    F5    = Rescan
+    Num5  = Fit
 
   One event can run up to three commands in a row, separated by
   commas ("WheelDown = SortByName, NextImage"). In a zone, "None"
@@ -100,14 +104,15 @@ uses
 
 type
 
+  TWordArray = array of Word;
+
   TMouseZone = (mzTopLeft, mzTopRight, mzBottomLeft, mzBottomRight);
 
   TMouseEvent = (
     meLeftClick, meLeftDouble, meRightClick, meRightDouble,
     meWheelUp, meWheelDown, meWheelClick, meTiltLeft, meTiltRight,
     meX1, meX2,
-    meGestureLeft, meGestureRight, meGestureUp, meGestureDown,
-    meKeySpace, meKeyEsc, meKeyEnter, meKeyD
+    meGestureLeft, meGestureRight, meGestureUp, meGestureDown
   );
 
   TMouseAction = (
@@ -122,6 +127,7 @@ type
     maSortPanel, maDeleteImage, maUndo, maSideBySide,
     maFilterPanel, maLockFilters, maResetFilters,
     maAutoLevels, maAutoLevelsMode, maApplyFilters, maResizeToShown, maMagnifier,
+    maRapidSelection, maRapidKey, maPreviewStrip,
     maBack, maExit
   );
 
@@ -145,6 +151,8 @@ type
   private
     FZones: array[TMouseZone] of TZoneSetup;
     FAnywhere: TBindingTable;
+    { [Keys] (Day 27): by Windows virtual key code; nil = not set. }
+    FKeys: array[Byte] of TActionList;
     FErrors: TStringList;
     procedure ParseLine(const ALine: string; ALineNo: Integer; var ASection: string);
   public
@@ -165,8 +173,7 @@ type
     procedure Assign(ASource: TMouseProfile);
 
     { What AEvent does in AZone: the zone's own entry, or the Anywhere
-      one. Keys: always the [Keys] entry. maNone is left out, so the
-      result may be empty. }
+      one. maNone is left out, so the result may be empty. }
     function ActionsFor(AZone: TMouseZone; AEvent: TMouseEvent): TActionList;
     { The Anywhere entry alone (zones switched off), without None. }
     function AnywhereActionsFor(AEvent: TMouseEvent): TActionList;
@@ -175,6 +182,15 @@ type
     procedure SetZoneBinding(AZone: TMouseZone; AEvent: TMouseEvent; const AActions: TActionList);
     function AnywhereBinding(AEvent: TMouseEvent): TActionList;
     procedure SetAnywhereBinding(AEvent: TMouseEvent; const AActions: TActionList);
+    { Keys (Day 27): what the key AKey (a Windows virtual key code) runs:
+      its [Keys] entry, a digit without one RapidKey; maNone left out. }
+    function KeyActionsFor(AKey: Word): TActionList;
+    { The [Keys] entry itself (nil = not set, [maNone] = off). }
+    function KeyBinding(AKey: Word): TActionList;
+    procedure SetKeyBinding(AKey: Word; const AActions: TActionList);
+    { The keys that have an entry, in AssignableKeys' order. }
+    function BoundKeys: TWordArray;
+
     function ZoneTitle(AZone: TMouseZone): string;
     procedure SetZoneTitle(AZone: TMouseZone; const ATitle: string);
     function ZoneOrder(AZone: TMouseZone): TZoneOrder;
@@ -186,9 +202,6 @@ type
 const
   MaxActionsPerEvent = 3;
 
-  KeyEvents = [meKeySpace, meKeyEsc, meKeyEnter, meKeyD];
-  { Esc is fixed in the engine (Back); an "Esc =" line is ignored. }
-  ProgrammableKeys = [meKeySpace, meKeyEnter, meKeyD];
   MouseEvents = [meLeftClick .. meGestureDown];
 
   { Width of the band along the middle lines in which the zone doesn't
@@ -196,7 +209,7 @@ const
   ZoneDeadBandPercent = 3;
 
   DefaultProfileText =
-    '; MView mouse profile (spec 9.2). Edit it here or on the "Mouse & keys"' + LineEnding +
+    '; Mouse profile (spec 9.2). Edit it here or on the "Mouse & keys"' + LineEnding +
     '; page of the settings editor. One event can run up to three commands,' + LineEnding +
     '; separated by commas. In a zone, None switches an event off there.' + LineEnding +
     '' + LineEnding +
@@ -270,6 +283,21 @@ function ZoneAt(AX, AY, AWidth, AHeight: Integer; APrevious: TMouseZone;
 function IsLeftZone(AZone: TMouseZone): Boolean;
 function IsTopZone(AZone: TMouseZone): Boolean;
 
+{ Keys (Day 27). The keys that can be set, in the order the settings
+  page lists them: letters, digits, F1 .. F12, the number pad, Space,
+  Enter, Tab, Backspace, Insert / Delete / Home / End / Page up / down,
+  Pause, the menu key, and the punctuation keys (OEM keys: their label
+  depends on the keyboard layout; the settings page asks Windows).
+  Not: Esc and the arrows (fixed), Shift / Ctrl / Alt / Windows. }
+function AssignableKeys: TWordArray;
+function IsAssignableKey(AKey: Word): Boolean;
+{ The key's name in the file ('A', '7', 'F5', 'Num3', 'Space', 'Oem1');
+  '' for a key that can't be set. }
+function KeyCodeName(AKey: Word): string;
+function ParseKeyName(const AText: string; out AKey: Word): Boolean;
+{ 0 .. 9 for a digit key (top row or number pad), else -1. }
+function KeyDigit(AKey: Word): Integer;
+
 implementation
 
 const
@@ -282,14 +310,12 @@ const
     'LeftClick', 'LeftDouble', 'RightClick', 'RightDouble',
     'WheelUp', 'WheelDown', 'WheelClick', 'TiltLeft', 'TiltRight',
     'X1', 'X2',
-    'GestureLeft', 'GestureRight', 'GestureUp', 'GestureDown',
-    'Space', 'Esc', 'Enter', 'D');
+    'GestureLeft', 'GestureRight', 'GestureUp', 'GestureDown');
   EventCaptions: array[TMouseEvent] of string = (
     'Left click', 'Left double-click', 'Right click', 'Right double-click',
     'Wheel up (away)', 'Wheel down (towards you)', 'Wheel click', 'Tilt left', 'Tilt right',
     'X1 (rear side button)', 'X2 (front side button)',
-    'Gesture left', 'Gesture right', 'Gesture up', 'Gesture down',
-    'Space', 'Esc', 'Enter', 'D');
+    'Gesture left', 'Gesture right', 'Gesture up', 'Gesture down');
 
   ActionNames: array[TMouseAction] of string = (
     'None',
@@ -303,6 +329,7 @@ const
     'SortPanel', 'DeleteImage', 'Undo', 'SideBySide',
     'FilterPanel', 'LockFilters', 'ResetFilters',
     'AutoLevels', 'AutoLevelsMode', 'ApplyFilters', 'ResizeToShown', 'Magnifier',
+    'RapidSelection', 'RapidKey', 'TogglePreview',
     'Back', 'Exit');
   ActionCaptions: array[TMouseAction] of string = (
     '(nothing)',
@@ -322,6 +349,8 @@ const
     'Filter panel open / closed', 'Lock filters on / off', 'Reset the filters',
     'Auto black / white point (once)', 'Auto black / white point for every image (on / off)',
     'Apply the filters to a copy', 'Resize to the size shown (a copy)', 'Magnifier on / off',
+    'Rapid sorting on / off', 'Rapid sorting: move into this digit''s folder',
+    'Toggle preview (the strip of the folder''s images)',
     'Back (leave a mode, else the settings screen)', 'Exit');
 
   OrderNames: array[TZoneOrder] of string = ('None', 'Date', 'Name');
@@ -479,6 +508,108 @@ begin
     Result := mzBottomRight;
 end;
 
+{ ---- Keys (Day 27) ---- }
+
+const
+  OemKeys: array[0..12] of Word = ($BA, $BB, $BC, $BD, $BE, $BF, $C0, $DB, $DC, $DD, $DE, $DF, $E2);
+  OemNames: array[0..12] of string = ('Oem1', 'OemPlus', 'OemComma', 'OemMinus', 'OemPeriod',
+    'Oem2', 'Oem3', 'Oem4', 'Oem5', 'Oem6', 'Oem7', 'Oem8', 'Oem102');
+  OtherKeys: array[0..15] of Word = ($20, $0D, $09, $08, $2D, $2E, $24, $23, $21, $22, $13, $5D,
+    $6A, $6B, $6D, $6E);
+  OtherNames: array[0..15] of string = ('Space', 'Enter', 'Tab', 'Backspace', 'Insert', 'Delete',
+    'Home', 'End', 'PageUp', 'PageDown', 'Pause', 'Apps',
+    'NumMultiply', 'NumPlus', 'NumMinus', 'NumDecimal');
+  KeyNumDivide = $6F;
+
+function KeyCodeName(AKey: Word): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  case AKey of
+    $41 .. $5A: Result := Chr(AKey);                       { A .. Z }
+    $30 .. $39: Result := Chr(AKey);                       { 0 .. 9 }
+    $70 .. $7B: Result := 'F' + IntToStr(AKey - $70 + 1); { F1 .. F12 }
+    $60 .. $69: Result := 'Num' + IntToStr(AKey - $60);   { Num0 .. Num9 }
+    KeyNumDivide: Result := 'NumDivide';
+  else
+    for I := 0 to High(OtherKeys) do
+      if OtherKeys[I] = AKey then
+        Exit(OtherNames[I]);
+    for I := 0 to High(OemKeys) do
+      if OemKeys[I] = AKey then
+        Exit(OemNames[I]);
+  end;
+end;
+
+function IsAssignableKey(AKey: Word): Boolean;
+begin
+  Result := KeyCodeName(AKey) <> '';
+end;
+
+function AssignableKeys: TWordArray;
+var
+  N: Integer;
+
+  procedure Add(AKey: Word);
+  begin
+    SetLength(Result, N + 1);
+    Result[N] := AKey;
+    Inc(N);
+  end;
+
+var
+  K: Word;
+  I: Integer;
+begin
+  Result := nil;
+  N := 0;
+  for K := $41 to $5A do
+    Add(K);
+  for K := $31 to $39 do
+    Add(K);
+  Add($30);
+  for K := $70 to $7B do
+    Add(K);
+  for K := $61 to $69 do
+    Add(K);
+  Add($60);
+  for I := 0 to High(OtherKeys) do
+    Add(OtherKeys[I]);
+  Add(KeyNumDivide);
+  for I := 0 to High(OemKeys) do
+    Add(OemKeys[I]);
+end;
+
+function ParseKeyName(const AText: string; out AKey: Word): Boolean;
+var
+  K: Word;
+  T: string;
+begin
+  T := Trim(AText);
+  { "Return" for Enter, as some write it. }
+  if SameText(T, 'Return') then
+    T := 'Enter';
+  for K := 1 to 255 do
+    if (KeyCodeName(K) <> '') and SameText(KeyCodeName(K), T) then
+    begin
+      AKey := K;
+      Exit(True);
+    end;
+  AKey := 0;
+  Result := False;
+end;
+
+function KeyDigit(AKey: Word): Integer;
+begin
+  case AKey of
+    $30 .. $39: Result := AKey - $30;
+    $60 .. $69: Result := AKey - $60;
+  else
+    Result := -1;
+  end;
+end;
+
 { TMouseProfile }
 
 constructor TMouseProfile.Create;
@@ -498,6 +629,7 @@ procedure TMouseProfile.Clear;
 var
   Z: TMouseZone;
   E: TMouseEvent;
+  I: Integer;
 begin
   for Z := Low(TMouseZone) to High(TMouseZone) do
   begin
@@ -508,6 +640,8 @@ begin
   end;
   for E := Low(TMouseEvent) to High(TMouseEvent) do
     FAnywhere[E] := nil;
+  for I := 0 to 255 do
+    FKeys[I] := nil;
   FErrors.Clear;
 end;
 
@@ -565,6 +699,8 @@ var
   Action: TMouseAction;
   Order: TZoneOrder;
   Actions: TActionList;
+  KeyCode: Word;
+  IsKey: Boolean;
 
   procedure Error(const AMessage: string);
   begin
@@ -644,20 +780,30 @@ begin
     Exit;
   end;
 
-  if not ParseMouseEvent(Key, Event) then
+  { [Keys]: a key; elsewhere a mouse event. }
+  IsKey := SameText(ASection, 'Keys');
+  KeyCode := 0;
+  Event := meLeftClick;
+  if IsKey then
   begin
-    Error('unknown event ''' + Key + '''');
-    Exit;
-  end;
-  { Esc is fixed (Back): older files have it, not an error. }
-  if Event = meKeyEsc then
-    Exit;
-  if SameText(ASection, 'Keys') <> (Event in KeyEvents) then
+    { Esc is fixed (Back): older files have it, not an error. }
+    if SameText(Key, 'Esc') then
+      Exit;
+    if not ParseKeyName(Key, KeyCode) then
+    begin
+      if ParseMouseEvent(Key, Event) then
+        Error(Key + ' is a mouse event: not in [Keys]')
+      else
+        Error('unknown key ''' + Key + '''');
+      Exit;
+    end;
+  end
+  else if not ParseMouseEvent(Key, Event) then
   begin
-    if Event in KeyEvents then
+    if SameText(Key, 'Esc') or ParseKeyName(Key, KeyCode) then
       Error('the key ' + Key + ' belongs in [Keys]')
     else
-      Error(Key + ' is a mouse event: not in [Keys]');
+      Error('unknown event ''' + Key + '''');
     Exit;
   end;
 
@@ -701,7 +847,9 @@ begin
     Actions[0] := maNone;
   end;
 
-  if IsZone then
+  if IsKey then
+    FKeys[KeyCode] := Actions
+  else if IsZone then
     FZones[Zone].Bindings[Event] := Actions
   else
     FAnywhere[Event] := Actions;
@@ -725,9 +873,11 @@ procedure TMouseProfile.SaveToStrings(ALines: TStrings);
 var
   Z: TMouseZone;
   E: TMouseEvent;
+  Keys: TWordArray;
+  I: Integer;
 begin
   ALines.Clear;
-  ALines.Add('; MView mouse profile (spec 9.2), written by the settings editor.');
+  ALines.Add('; Mouse profile (spec 9.2), written by the settings editor.');
   ALines.Add('; One event can run up to three commands, separated by commas.');
   ALines.Add('; In a zone, None switches an event off there.');
   ALines.Add('');
@@ -747,9 +897,10 @@ begin
   end;
   ALines.Add('');
   ALines.Add('[Keys]');
-  for E := Low(TMouseEvent) to High(TMouseEvent) do
-    if (E in ProgrammableKeys) and (Length(FAnywhere[E]) > 0) then
-      ALines.Add(EventNames[E] + ' = ' + ListText(FAnywhere[E]));
+  ALines.Add('; Single keys (no combinations). A digit not listed: Rapid sorting.');
+  Keys := BoundKeys;
+  for I := 0 to High(Keys) do
+    ALines.Add(KeyCodeName(Keys[I]) + ' = ' + ListText(FKeys[Keys[I]]));
 end;
 
 procedure TMouseProfile.SaveToFile(const AFileName: string);
@@ -769,6 +920,7 @@ procedure TMouseProfile.Assign(ASource: TMouseProfile);
 var
   Z: TMouseZone;
   E: TMouseEvent;
+  I: Integer;
 begin
   for Z := Low(TMouseZone) to High(TMouseZone) do
   begin
@@ -779,6 +931,8 @@ begin
   end;
   for E := Low(TMouseEvent) to High(TMouseEvent) do
     FAnywhere[E] := Copy(ASource.FAnywhere[E], 0, Length(ASource.FAnywhere[E]));
+  for I := 0 to 255 do
+    FKeys[I] := Copy(ASource.FKeys[I], 0, Length(ASource.FKeys[I]));
   FErrors.Assign(ASource.FErrors);
 end;
 
@@ -787,7 +941,7 @@ var
   Source: TActionList;
   I, N: Integer;
 begin
-  if (AEvent in MouseEvents) and (Length(FZones[AZone].Bindings[AEvent]) > 0) then
+  if Length(FZones[AZone].Bindings[AEvent]) > 0 then
     Source := FZones[AZone].Bindings[AEvent]
   else
     Source := FAnywhere[AEvent];
@@ -836,6 +990,59 @@ end;
 procedure TMouseProfile.SetAnywhereBinding(AEvent: TMouseEvent; const AActions: TActionList);
 begin
   FAnywhere[AEvent] := Copy(AActions, 0, Length(AActions));
+end;
+
+function TMouseProfile.KeyActionsFor(AKey: Word): TActionList;
+var
+  I, N: Integer;
+begin
+  Result := nil;
+  if AKey > 255 then
+    Exit;
+  if (Length(FKeys[AKey]) = 0) and (KeyDigit(AKey) >= 0) then
+  begin
+    SetLength(Result, 1);
+    Result[0] := maRapidKey;
+    Exit;
+  end;
+  N := 0;
+  for I := 0 to High(FKeys[AKey]) do
+    if FKeys[AKey][I] <> maNone then
+    begin
+      SetLength(Result, N + 1);
+      Result[N] := FKeys[AKey][I];
+      Inc(N);
+    end;
+end;
+
+function TMouseProfile.KeyBinding(AKey: Word): TActionList;
+begin
+  Result := nil;
+  if AKey <= 255 then
+    Result := Copy(FKeys[AKey], 0, Length(FKeys[AKey]));
+end;
+
+procedure TMouseProfile.SetKeyBinding(AKey: Word; const AActions: TActionList);
+begin
+  if (AKey <= 255) and IsAssignableKey(AKey) then
+    FKeys[AKey] := Copy(AActions, 0, Length(AActions));
+end;
+
+function TMouseProfile.BoundKeys: TWordArray;
+var
+  All: TWordArray;
+  I, N: Integer;
+begin
+  Result := nil;
+  All := AssignableKeys;
+  N := 0;
+  for I := 0 to High(All) do
+    if Length(FKeys[All[I]]) > 0 then
+    begin
+      SetLength(Result, N + 1);
+      Result[N] := All[I];
+      Inc(N);
+    end;
 end;
 
 function TMouseProfile.ZoneTitle(AZone: TMouseZone): string;

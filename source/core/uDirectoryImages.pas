@@ -76,16 +76,23 @@ type
     FEntries: array of TImageEntry;
     FCount: Integer;
     FSortMode: TSortMode;
+    FSortedSeed: LongWord;       { RandomSortSeed of the last Sort (Day 27) }
     FVideoCount: Integer;        { videos in the folder (not listed; Day 24) }
+    FContainers: array of string; { container files (.lif) in the folder (M2c) }
 
     procedure SetSortMode(AMode: TSortMode);
     function CompareEntries(const A, B: TImageEntry): Integer;
     procedure QuickSort(ALo, AHi: Integer);
     procedure Sort;
+    function RandomKey(const AFileName: string): LongWord;
+    procedure SortContainers;
+    function SortIsStale: Boolean;
   public
     constructor Create;
 
     procedure Scan(const ADirectory: string);
+    { Sorted again (the shuffled order changed, Day 27). }
+    procedure Resort;
     procedure Clear;
 
     { Filling from outside (the tree scan collects the images of every
@@ -96,6 +103,18 @@ type
     procedure EndFill;
     { A video was found while filling (counted, not listed). }
     procedure AddVideo;
+    { A container file (.lif, an edition's reader; M2c) in the folder:
+      not an image, listed apart for the side panel. Kept in natural
+      name order. }
+    procedure AddContainer(const AFileName: string);
+    { A container's images, listed with the folder's own (user, Day 25:
+      a .lif is a one-time folder, not a folder of the tree). }
+    procedure AddContainerEntries(const AFile: string);
+    { The first of container AFile's images in the list's order; -1 if
+      none is listed. }
+    function FirstOfContainer(const AFile: string): Integer;
+    function ContainerCount: Integer;
+    function Container(AIndex: Integer): string;
 
     { A copy of ASource (directory and entries), sorted in this list's
       own sort mode. }
@@ -120,7 +139,18 @@ type
     property SortMode: TSortMode read FSortMode write SetSortMode;
   end;
 
+var
+  { The shuffled order's seed (smRandom); new at each start and with
+    NewRandomSortOrder. Read by any thread, written on the UI thread. }
+  RandomSortSeed: LongWord = 0;
+
+{ A new shuffled order (choosing "Random" again). }
+procedure NewRandomSortOrder;
+
 implementation
+
+uses
+  uContainers;
 
 { TDirectoryImages }
 
@@ -137,6 +167,69 @@ begin
   FEntries := nil;
   FCount := 0;
   FVideoCount := 0;
+  FContainers := nil;
+end;
+
+procedure TDirectoryImages.AddContainer(const AFileName: string);
+begin
+  SetLength(FContainers, Length(FContainers) + 1);
+  FContainers[High(FContainers)] := AFileName;
+end;
+
+{ A container's images (virtual names) as images of this folder, with
+  the container file's size and time (an entry's key changes with the
+  file). Reads the file's description (the scanner thread, or a test). }
+procedure TDirectoryImages.AddContainerEntries(const AFile: string);
+var
+  Names: TStringArray;
+  Size: Int64;
+  Time: TDateTime;
+  I: Integer;
+begin
+  if ListContainer(AFile, Names, Size, Time) then
+    for I := 0 to High(Names) do
+      AddEntry(Names[I], Size, Time);
+end;
+
+function TDirectoryImages.FirstOfContainer(const AFile: string): Integer;
+var
+  Prefix: string;
+  I: Integer;
+begin
+  Prefix := AFile + ContainerSeparator;
+  for I := 0 to FCount - 1 do
+    if SameText(Copy(FEntries[I].FileName, 1, Length(Prefix)), Prefix) then
+      Exit(I);
+  Result := -1;
+end;
+
+function TDirectoryImages.ContainerCount: Integer;
+begin
+  Result := Length(FContainers);
+end;
+
+function TDirectoryImages.Container(AIndex: Integer): string;
+begin
+  Result := FContainers[AIndex];
+end;
+
+{ Natural order (Day2 before Day10), case ignored; a few entries. }
+procedure TDirectoryImages.SortContainers;
+var
+  I, J: Integer;
+  Item: string;
+begin
+  for I := 1 to High(FContainers) do
+  begin
+    Item := FContainers[I];
+    J := I - 1;
+    while (J >= 0) and (NaturalCompareText(FContainers[J], Item) > 0) do
+    begin
+      FContainers[J + 1] := FContainers[J];
+      Dec(J);
+    end;
+    FContainers[J + 1] := Item;
+  end;
 end;
 
 procedure TDirectoryImages.Scan(const ADirectory: string);
@@ -167,7 +260,15 @@ begin
           Inc(FCount);
         end
         else if ((SearchRec.Attr and faDirectory) = 0) and IsVideoFile(SearchRec.Name) then
-          Inc(FVideoCount);
+          Inc(FVideoCount)
+        else if ((SearchRec.Attr and faDirectory) = 0) and IsContainerName(SearchRec.Name) then
+        begin
+          { A container (never in MView: no reader; user, Day 25): a
+            one-time folder - its images with the folder's own, at its
+            place; and in the container list (the side panel). }
+          AddContainer(Prefix + SearchRec.Name);
+          AddContainerEntries(Prefix + SearchRec.Name);
+        end;
       until FindNext(SearchRec) <> 0;
     finally
       FindClose(SearchRec);
@@ -175,6 +276,7 @@ begin
   end;
 
   Sort;
+  SortContainers;
 end;
 
 procedure TDirectoryImages.BeginFill(const ADirectory: string);
@@ -197,6 +299,7 @@ end;
 procedure TDirectoryImages.EndFill;
 begin
   Sort;
+  SortContainers;
 end;
 
 procedure TDirectoryImages.AddVideo;
@@ -217,21 +320,62 @@ begin
     FEntries[I] := ASource.FEntries[I];
   FCount := ASource.FCount;
   FVideoCount := ASource.FVideoCount;
-  if ASource.FSortMode <> FSortMode then
+  FContainers := Copy(ASource.FContainers, 0, Length(ASource.FContainers));
+  FSortedSeed := ASource.FSortedSeed;
+  if (ASource.FSortMode <> FSortMode) or SortIsStale then
     Sort;
+end;
+
+{ A shuffled list whose shuffle is older than the current seed. }
+function TDirectoryImages.SortIsStale: Boolean;
+begin
+  Result := (FSortMode = smRandom) and (FSortedSeed <> RandomSortSeed);
 end;
 
 procedure TDirectoryImages.SetSortMode(AMode: TSortMode);
 begin
-  if AMode = FSortMode then
+  if (AMode = FSortMode) and not SortIsStale then
     Exit;
   FSortMode := AMode;
   Sort;
 end;
 
+procedure NewRandomSortOrder;
+begin
+  RandomSortSeed := LongWord(Random($7FFFFFFF)) xor LongWord(GetTickCount64);
+end;
+
+{$PUSH}{$Q-}{$R-}
+{ A shuffled order (smRandom, Day 27): each name's hash with the seed
+  (FNV-1a); the same order for every list until the seed changes. }
+function TDirectoryImages.RandomKey(const AFileName: string): LongWord;
+var
+  I: Integer;
+  Name: string;
+begin
+  Name := LowerCase(AFileName);
+  Result := 2166136261 xor RandomSortSeed;
+  for I := 1 to Length(Name) do
+    Result := (Result xor Ord(Name[I])) * 16777619;
+end;
+{$POP}
+
 function TDirectoryImages.CompareEntries(const A, B: TImageEntry): Integer;
+var
+  KA, KB: LongWord;
 begin
   case FSortMode of
+    smRandom:
+      begin
+        KA := RandomKey(A.FileName);
+        KB := RandomKey(B.FileName);
+        if KA < KB then
+          Result := -1
+        else if KA > KB then
+          Result := 1
+        else
+          Result := NaturalCompareText(A.FileName, B.FileName);
+      end;
     smFileNameAscending:
       Result := NaturalCompareText(A.FileName, B.FileName);
     smFileNameDescending:
@@ -284,8 +428,14 @@ begin
     QuickSort(I, AHi);
 end;
 
+procedure TDirectoryImages.Resort;
+begin
+  Sort;
+end;
+
 procedure TDirectoryImages.Sort;
 begin
+  FSortedSeed := RandomSortSeed;
   if FCount > 1 then
     QuickSort(0, FCount - 1);
 end;
@@ -341,4 +491,7 @@ begin
   Sort;
 end;
 
+initialization
+  Randomize;
+  NewRandomSortOrder;
 end.

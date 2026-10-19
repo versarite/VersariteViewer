@@ -82,11 +82,19 @@ unit uMouseEngine;
     Arrow keys           next / previous image (down / up),
                          next / previous folder (right / left)
     Ctrl+V               paste an image from the clipboard
+    Ctrl+C               copy the image to the clipboard (Day 25)
     Esc                  a zoom / rotate mode off; else Back (TMView:
                          edit mode off, else the settings editor)
   Programmable (profile): left / right click and double-click, wheel
   up / down / click, tilt left / right, X1, X2, the four gestures, and
-  the keys Space, Enter, D.
+  single keys ([Keys], Day 27: letters, digits, F-keys, the number pad,
+  punctuation ...; a digit without an entry is a Rapid Selection key).
+
+  Edges (Day 27, testers): the mouse resting BottomEdgeMs at the bottom
+  edge (EdgeWidth px) with the zones off switches zoom mode (the wheel
+  zooms at the mouse) on / off; resting TopEdgeMs at the top edge asks
+  for the preview strip (cmdPreviewStrip, Value 1). Once per stay; not
+  while a button is held.
 
   Rules
   -----
@@ -131,6 +139,8 @@ type
     (possibly nothing). For the settings editor's "Try it here" box. }
   TMouseFiredEvent = procedure(Sender: TObject; AZone: TMouseZone; AEvent: TMouseEvent;
     const AActions: TActionList) of object;
+  { A key was pressed: what it runs (possibly nothing). }
+  TKeyFiredEvent = procedure(Sender: TObject; AKey: Word; const AActions: TActionList) of object;
 
   TClickButton = (cbLeft, cbRight);
 
@@ -180,6 +190,16 @@ type
 
     FClicks: array[TClickButton] of TClickState;
 
+    { Edges (Day 27). FEdge: 0 none, 1 top, 2 bottom; since FEdgeSinceMs;
+      FEdgeDone: fired for this stay. }
+    FEdgeWidth: Integer;
+    FTopEdgeMs, FBottomEdgeMs: Integer;
+    FEdge: Integer;
+    FEdgeSinceMs: QWord;
+    FEdgeDone: Boolean;
+    FKeyDigit: Integer;        { the digit of the key being run (RapidKey) }
+    FOnKeyFired: TKeyFiredEvent;
+
     procedure Emit(ACommand: TCommand; AX: Double = 0; AY: Double = 0; AValue: Double = 0);
     procedure Activity(ANowMs: QWord);
     procedure UpdateZone(AX, AY: Integer);
@@ -213,10 +233,13 @@ type
     procedure WheelHorz(AWheelDelta: Integer; AX, AY: Integer; ANowMs: QWord);
     { Windows virtual key codes. True if the key was used. }
     function KeyDown(AKey: Word; ACtrl: Boolean; ANowMs: QWord): Boolean;
-    { Runs single clicks whose double-click time is over. Call often
-      (every 50 ms is enough). }
+    { Runs single clicks whose double-click time is over, and an edge the
+      mouse has rested at long enough. Call often (every 50 ms is
+      enough). }
     procedure Tick(ANowMs: QWord);
     procedure FocusLost;
+    { The mouse left the view (no edge any more). }
+    procedure MouseLeft;
 
     property Profile: TMouseProfile read FProfile;
     property Zone: TMouseZone read FZone;
@@ -231,6 +254,12 @@ type
     property LastActivityMs: QWord read FLastActivityMs;
     property OnCommand: TCommandEvent read FOnCommand write FOnCommand;
     property OnFired: TMouseFiredEvent read FOnFired write FOnFired;
+    property OnKeyFired: TKeyFiredEvent read FOnKeyFired write FOnKeyFired;
+    { [Mouse] EdgeWidth (px, already scaled), BottomEdgeMs, TopEdgeMs;
+      0 ms = that edge off. }
+    property EdgeWidth: Integer read FEdgeWidth write FEdgeWidth;
+    property TopEdgeMs: Integer read FTopEdgeMs write FTopEdgeMs;
+    property BottomEdgeMs: Integer read FBottomEdgeMs write FBottomEdgeMs;
   end;
 
 const
@@ -256,8 +285,11 @@ const
   VKEY_DOWN = $28;
   VKEY_D = $44;
   VKEY_V = $56;
+  VKEY_C = $43;
   VKEY_BROWSER_BACK = $A6;
   VKEY_BROWSER_FORWARD = $A7;
+  VKEY_0 = $30;          { .. VKEY_0 + 9: the digit row }
+  VKEY_NUMPAD0 = $60;    { .. VKEY_NUMPAD0 + 9: the number pad }
 
 { The system's double-click time (500 ms if unknown). }
 function SystemDoubleClickMs: Integer;
@@ -292,6 +324,10 @@ begin
   FZone := mzBottomLeft;
   FHaveZone := False;
   FZonesEnabled := True;
+  FEdgeWidth := 12;
+  FTopEdgeMs := 500;
+  FBottomEdgeMs := 1000;
+  FKeyDigit := -1;
 end;
 
 destructor TMouseEngine.Destroy;
@@ -465,6 +501,12 @@ begin
     maApplyFilters:  Emit(cmdApplyFilters);
     maResizeToShown: Emit(cmdResizeToShown);
     maMagnifier:     Emit(cmdMagnifier);
+    maRapidSelection: Emit(cmdRapidSelection);
+    { Only from a digit key (the folder of that digit). }
+    maRapidKey:
+      if FKeyDigit >= 0 then
+        Emit(cmdRapidKey, 0, 0, FKeyDigit);
+    maPreviewStrip:  Emit(cmdPreviewStrip);
     { A zoom / rotate mode is the engine's own; everything else (edit
       mode, exit) TMView decides. }
     maBack:
@@ -577,11 +619,33 @@ begin
   end;
 end;
 
+procedure TMouseEngine.MouseLeft;
+begin
+  FEdge := 0;
+end;
+
 procedure TMouseEngine.Tick(ANowMs: QWord);
 var
   B: TClickButton;
   Event: TMouseEvent;
 begin
+  { An edge the mouse has rested at (Day 27). }
+  if (FEdge <> 0) and not FEdgeDone and not FLeftDown and not FRightDown
+    and (ANowMs >= FEdgeSinceMs) then
+  begin
+    if (FEdge = 1) and (FTopEdgeMs > 0) and (ANowMs - FEdgeSinceMs >= QWord(FTopEdgeMs)) then
+    begin
+      FEdgeDone := True;
+      Emit(cmdPreviewStrip, 0, 0, 1);
+    end
+    else if (FEdge = 2) and (FBottomEdgeMs > 0) and not FZonesEnabled
+      and (ANowMs - FEdgeSinceMs >= QWord(FBottomEdgeMs)) then
+    begin
+      FEdgeDone := True;
+      Perform(maZoomMode, FZone, FMouseX, FMouseY, 1);
+    end;
+  end;
+
   for B := Low(TClickButton) to High(TClickButton) do
     if FClicks[B].Pending and (ANowMs >= FClicks[B].DueMs) then
     begin
@@ -674,6 +738,7 @@ procedure TMouseEngine.MouseMove(AX, AY: Integer; ALeftDown, ARightDown: Boolean
   ANowMs: QWord);
 var
   Event: TMouseEvent;
+  Edge: Integer;
 begin
   Activity(ANowMs);
 
@@ -691,6 +756,24 @@ begin
   end;
 
   UpdateZone(AX, AY);
+
+  { The edges (Day 27): a new stay starts the clock. }
+  if (FEdgeWidth > 0) and (FHeight > 2 * FEdgeWidth) and (AY >= 0) and (AY < FEdgeWidth) then
+    Edge := 1
+  else if (FEdgeWidth > 0) and (FHeight > 2 * FEdgeWidth) and (AY >= FHeight - FEdgeWidth)
+    and (AY < FHeight) then
+    Edge := 2
+  else
+    Edge := 0;
+  if Edge <> FEdge then
+  begin
+    FEdge := Edge;
+    FEdgeSinceMs := ANowMs;
+    FEdgeDone := False;
+  end;
+  { A button held: no edge for this stay. }
+  if ALeftDown or ARightDown then
+    FEdgeDone := True;
 
   if FRightDown then
   begin
@@ -850,6 +933,9 @@ begin
 end;
 
 function TMouseEngine.KeyDown(AKey: Word; ACtrl: Boolean; ANowMs: QWord): Boolean;
+var
+  Actions: TActionList;
+  I: Integer;
 begin
   Activity(ANowMs);
   Result := True;
@@ -857,6 +943,8 @@ begin
   begin
     if AKey = VKEY_V then
       Emit(cmdPaste)
+    else if AKey = VKEY_C then
+      Emit(cmdCopyImage)
     else
       Result := False;
     Exit;
@@ -868,12 +956,9 @@ begin
     VKEY_UP:    Emit(cmdPreviousImage);
     VKEY_RIGHT: Emit(cmdNextDirectory);
     VKEY_LEFT:  Emit(cmdPreviousDirectory);
-    VKEY_SPACE:  Fire(FZone, meKeySpace, FMouseX, FMouseY);
     { Esc is fixed (user): a zoom / rotate mode ends; otherwise Back
       (TMView: edit mode off, else the settings editor). }
     VKEY_ESCAPE: Perform(maBack, FZone, FMouseX, FMouseY, 1);
-    VKEY_RETURN: Fire(FZone, meKeyEnter, FMouseX, FMouseY);
-    VKEY_D:      Fire(FZone, meKeyD, FMouseX, FMouseY);
     { Side buttons some mouse drivers send as keys; right after a real
       side button they are its echo. }
     VKEY_BROWSER_BACK:
@@ -883,7 +968,22 @@ begin
       if (ANowMs < FLastSideButtonMs) or (ANowMs - FLastSideButtonMs > SideKeyEchoMs) then
         Fire(FZone, meX2, FMouseX, FMouseY);
   else
-    Result := False;
+    { [Keys] (Day 27): any single key the profile sets; a digit without
+      an entry is a Rapid Selection key. }
+    if not IsAssignableKey(AKey) then
+      Exit(False);
+    Actions := FProfile.KeyActionsFor(AKey);
+    if Assigned(FOnKeyFired) then
+      FOnKeyFired(FOwner, AKey, Actions);
+    if Length(Actions) = 0 then
+      Exit(False);
+    FKeyDigit := KeyDigit(AKey);
+    try
+      for I := 0 to High(Actions) do
+        Perform(Actions[I], FZone, FMouseX, FMouseY, 1);
+    finally
+      FKeyDigit := -1;
+    end;
   end;
 end;
 

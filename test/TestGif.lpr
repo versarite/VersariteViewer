@@ -671,7 +671,7 @@ end;
 begin
   PassCount := 0;
   FailCount := 0;
-  WriteLn('MView GIF test');
+  WriteLn('VersariteViewer GIF test');
   WriteLn('==============');
   TestSuite;
   TestExpectedFiles;

@@ -171,6 +171,9 @@ function MakeImageKey(const AFileName: string): TImageKey;
 
 implementation
 
+uses
+  uContainers;
+
 function MakeImageKey(const AFileName: string): TImageKey;
 var
   SearchRec: TSearchRec;
@@ -178,7 +181,9 @@ begin
   Result.FileName := AFileName;
   Result.FileSize := 0;
   Result.FileTime := 0;
-  if FindFirst(AFileName, faAnyFile, SearchRec) = 0 then
+  { An image inside a container (M2b): the container file's size and
+    time, as the folder listing gives them. }
+  if FindFirst(ContainerFileOf(AFileName), faAnyFile, SearchRec) = 0 then
   begin
     Result.FileSize := SearchRec.Size;
     Result.FileTime := FileDateToDateTime(SearchRec.Time);

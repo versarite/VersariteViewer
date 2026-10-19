@@ -1,0 +1,567 @@
+MView Day 25 (2026-10-06)
+=========================
+
+Microscopy edition, step M0: the plug-in points in the core (user)
+-----------------------------------------------------------------
+"ok go with m0. a new dev/specs document in its own subfolder is needed"
+The microscopy edition is a second program from the same source tree
+(Day 24). M0 prepares the shared core for it, so that the edition's
+units can plug themselves in and MView never notices: in MView every
+new list is empty and every name is what it was in 1.0.1.
+
+- uEdition (new): EditionId ('MView'), EditionTitle ('Versarite
+  MView'), EditionVersion (MViewVersion = '1.0.1'); SetEdition, called
+  first in an edition's .lpr; EditionIniFileName = <exe folder>\
+  <EditionId>.ini.
+  Used by: uConfig (the settings file; the CONFIG_FILE constant is
+  gone), uSingleInstance (mutex 'Local\Versarite<EditionId>.Instance',
+  mapping 'Local\Versarite<EditionId>.Window': for MView the same names
+  as before), uIniEditor (captions), uMainForm (About box and its menu
+  entry, captions, the welcome picture <EditionId>_welcome.png). The
+  About box keeps the dedication.
+- uExtensions (new), three registries, filled by the edition's units in
+  their initialization sections:
+  - metadata readers: TImageMetadata (reader, pixel size in um, lines
+    for a panel); ReadImageMetadata asks them in order, the first that
+    understands the file wins, one that gives up or raises leaves
+    nothing behind. Pure functions, any thread. No caller yet (M2).
+  - overlay layers (TOverlayLayer: Picture, Version, HandleMouse; the
+    registry owns them): drawn by both renderers over the image, lens
+    and selection, under the info line, badge, notice and panels. The
+    GPU keeps a texture per layer, uploaded again when Version or the
+    size changes. Mouse: after the badge, filter panel and magnifier,
+    before the sort panel and the mouse language; not over the open
+    sort panel; the layer that takes a press gets its release wherever
+    it is; a move or leave a layer takes still reaches the sort panel
+    (its edge). A layer's exception costs its picture or its mouse
+    event, never the paint or the mouse language. OverlayChanged ->
+    TMView repaints.
+  - menu entries (caption, action, enabled / checked tests): the main
+    form adds them before "About" as a group of their own; Enabled and
+    Checked asked each time the menu opens.
+- Test: TestExtensions.lpr / .lpi (needs BGRABitmap, so built by
+  lazbuild like TestGif); build_test.bat builds and runs it.
+- Review (independent, as no compiler is at hand here): no compile
+  errors found. Fixed from it: a layer's press now captures its release
+  (else a release over the sort panel was lost, or a layer could
+  swallow the panel's release after a swipe); a leave a layer takes
+  still reaches the panel; GPU re-uploads a layer's picture on a new
+  size; Picture wrapped in try/except in both renderers; MenuEntry
+  range check; the dedication comment back above HandleAboutMenuClick;
+  the menu item list cleared when the viewer ends.
+
+New specification
+-----------------
+specs\microscopy\Microscopy_Edition_Specification_v0.1.md (+ .docx):
+one tree, two programs; uEdition and uExtensions as built; the refined
+roadmap M0 (built) .. M7; the .lif structure as parsed on Day 24 and the
+open pixel-size question (N or N-1); calibration, measuring line (click
+- follow - click) and scale bar as decided with the user; provenance;
+16-bit, movies and editing in outline; open questions (name, same
+repository, ...). Pointers added to the main spec (Sec. 17, the
+microscopy edition row) and to Strategy_Phase_G.md.
+
+Units to reload in Lazarus
+--------------------------
+New: uEdition, uExtensions (source\utility).
+Changed: uConfig, uSingleInstance, uIniEditor, umainform, uMView,
+uRenderer, uGLRenderer.
+Test: TestExtensions.lpr / .lpi (new), build_test.bat.
+
+Open
+----
+- The edition's name (proposal: Versarite MView Lab, id MViewLab) and
+  whether it lives in the same repository (proposal: yes).
+- Next: M1, the skeleton program, once M0 compiles and MView behaves as
+  1.0.1.
+
+- Day 25, later: TestExtensions did not link (WSRegister... undefined):
+  BGRABitmap links the LCL, so the program must name its widget set
+  (Interfaces), as TestGif does. Added.
+
+M0 compiled and tested (user)
+-----------------------------
+build_test.bat: 611 passed, 0 failed (TestExtensions: 50). MView builds
+and looks as 1.0.1.
+
+How to switch between the editions (user asked)
+-----------------------------------------------
+Not an ini switch: the edition decides which ini is read, and MView must
+not carry the microscopy code. Each edition is its own project: open
+MView.lpi or MViewLab.lpi in Lazarus and build; both exes can sit in
+build\ and run at the same time.
+
+M1: the skeleton program, Versarite MView Lab
+---------------------------------------------
+Name and repository as proposed (Versarite MView Lab, id MViewLab; same
+repository), the user not objecting.
+- MViewLab.lpr: MView.lpr plus SetEdition('MViewLab', 'Versarite MView
+  Lab', '0.1.0') first thing, and uEdition, uExtensions and the
+  edition's units in the uses list.
+- MViewLab.lpi: MView.lpi (with the user's Debug / Release modes) with
+  target build\MViewLab, source\microscopy on the search path, its own
+  unit folder build\units-lab\.
+- MViewLab.ico: MView's lens and torii with a teal "fluorescence" sky,
+  to tell the two apart on the taskbar.
+- source\microscopy\uPixelProbe.pas, the first edition unit: menu entry
+  "Show pixel position" (checked while on): a small label next to the
+  mouse with the image pixel under it. Watches the mouse, never takes
+  it; draws its label only when the text changes. It exercises every
+  plug-in point the measuring line and scale bar will use.
+- Core change found on the way: TOverlayLayer.Picture now also returns
+  the picture's place (out ALeft, ATop) and the picture is only as
+  large as what it shows; a whole-view picture would mean a 4K texture
+  upload on every mouse move. Both renderers and TestExtensions updated
+  (a quarter-view box in the middle: size and place checked).
+- Review (independent): no compile errors found; three nits taken (the
+  image size falls back to the bitmap's when the full size is unknown;
+  a needless FillTransparent; an unused unit).
+Spec: specs\microscopy\..._v0.1 updated (status, switching, what the
+two programs share in one folder, the Picture contract, Sec. 4.5 the
+pixel probe, roadmap M1 built, decision 9).
+
+To build: open MViewLab.lpi in Lazarus, build. Reload uExtensions,
+uRenderer, uGLRenderer in MView too (the Picture change), and rerun
+build_test.bat (TestExtensions changed).
+
+- MViewLab.ico, first build: "bitmap with unknown compression". The
+  icon had PNG entries at every size; Lazarus reads the small ones as
+  BMP. Now one 256 px PNG entry, like MView.ico.
+- The fixed icon was written back over by Lazarus: it keeps the
+  project's icon in memory and writes it to MViewLab.ico when it saves
+  the project. Fixed from inside Lazarus (Project Options, Application,
+  Load Icon: MViewLab_256.ico). Rule from now on: .ico / .lpi / .res of
+  a project open in Lazarus are changed only with the project closed.
+- MViewLab builds and runs (user).
+
+M2: design of containers (user)
+-------------------------------
+- A .lif (and a stack) behaves like a folder. Stacks show the maximum
+  projection first (user: no preference).
+- "stacks should also go into the right side panel ... a folder-entry
+  but with a little star (where the numbers used to be) stars should
+  have different colors for stacks, lifs and potentially others. double
+  click would open the stack/lif and list the images (with
+  icon/thumbnail - that would explode like the folder icons to the left
+  of the panel)". Into the panel: both automatically (the current
+  folder's) and pinned by dropping (user: "Both").
+- Written into the spec, Sec. 6.5; M2 split into M2a reader, M2b the
+  container plug-in point and browsing, M2c the side panel, M2d the
+  metadata panel.
+
+M2a: the .lif reader
+--------------------
+- source\microscopy\uLifFile.pas (no LCL): header, UTF-16 XML (fcl-xml
+  DOM), block index; images with path, size, z / t, pixel size
+  (Length / (N - 1), as readlif; the check against a burned-in bar stays
+  open), z step, channels and LUT colours, objective, zoom, pinhole,
+  scan, active detectors, time taken; one channel's plane; all channels
+  in colour, one plane or the maximum projection.
+- A Python reference reader (container only) gave the expected values
+  for sample.lif: 24 images; e.g. Image003 1024 px 0.28409 um/px;
+  Series009 12 z-planes (its z Length is 0 in the file: no step).
+- test\TestLif.lpr (plain fpc, in build_test.bat): a small .lif made by
+  the test, damaged files, and sample.lif when it is there (it stays
+  private).
+- Review (independent): no compile errors; all expected values
+  recomputed and right. Taken: the XML goes to the parser as raw UTF-8
+  bytes (outside the LCL a string could be converted to the ANSI code
+  page and a name with a non-ASCII letter would not parse); a cut-off
+  block's size is clamped to what is in the file.
+
+M2a compiled and tested (user)
+------------------------------
+build_test.bat: all pass; TestLif 61 checks, sample.lif as the Python
+reference (Series009: 0.1173 um/px, zoom 2.422, 12 z-planes, no z step
+in the file). ("Aum" in the console is only its code page.)
+
+Total Commander forum (user)
+----------------------------
+A short friendly introduction of MView as "a symbiotic creature for
+Total Commander" written for the forum's plugins and addons section;
+posted by the user.
+
+M2b: containers like folders
+----------------------------
+Planned with an independent read of the core (folder listing ->
+navigator -> key -> loader -> info line), then built:
+- source\utility\uContainers.pas (new, no LCL): readers' registry;
+  virtual names 'C:\data\sample.lif|Series009' ('|' can't be in a
+  Windows path: always virtual, and missed code fails safe); helpers
+  ItemDirectory, ItemExists, RealFolderOf, DisplayItemName
+  ('sample.lif › Series009'), ItemBaseName ('sample_Series009').
+- Hooks, all no-ops without a reader (MView): uDirectoryTree (a
+  container listed with the folders, its entries its images; a
+  container root), uDirectoryImages.Scan, uDirectoryScanner.Resolve and
+  its rebuild, uNavigator (ItemDirectory; OpenPath), MakeImageKey (the
+  container's size and time), uMediaLoader (virtual names decoded by
+  the reader, memory guard, I/O gate), uMView (info line, sorting
+  refused for an entry, FolderOnDisk, saved names, TC follow and its
+  cursor on a .lif), uMainForm (TC side by side and the sort menu:
+  FolderOnDisk), uRenderer (error text), uImageSaver (names).
+- source\microscopy\uLifContainer.pas (new): registers .lif; unique,
+  safe ids; stacks as their maximum projection.
+- MViewLab.lpr: uContainers, uLifFile, uLifContainer.
+- TestNavigation: TestContainers (a fake '.fak' reader, one entry per
+  line): nothing changes before it is registered; after it, the tree,
+  the listing, next / previous folder into and out of the container,
+  opening the container, an entry, resuming on an entry, ListedKey.
+- Review (independent): one compile error (an edit had put a function
+  body into the interface of uContainers), fixed; MView without a
+  reader traced unchanged on every path. Taken: the up gesture inside a
+  container works as in any folder (no special case: the old one would
+  have jumped back to the folder's first image); a real folder named
+  *.lif is not a container (FileExists checks); the memory guard before
+  the bitmap; unique ids for images of the same name; TC's cursor on a
+  .lif; the error text shows the entry's name.
+- Open: containers in non-recursive opens (M2c side panel); a cached
+  index per .lif (each listing and decode parses its description).
+
+M2b tested (user)
+-----------------
+"it works like a charm": a .lif dropped on the view opens like a folder;
+the side panel does not take it yet (M2c).
+
+M2c: containers in the side panel
+---------------------------------
+Planned with an independent read of uSortPanel / uSortFolders / TMView;
+built in two parts:
+- Model and listing: TDirectoryImages keeps the folder's container files
+  apart (AddContainer, ContainerCount, Container; a container's own
+  listing: its neighbours); the tree fills them; TNavigator.
+  FolderContainers. TPinnedContainers ([Containers] Pinned1..N) in
+  uSortFolders, owned by TConfig, written only when an edition reads
+  containers (never into MView.ini).
+- The panel: the container group below "+", a grey folder with a star
+  (amber .lif, cyan stack, violet other) where the numbers used to be
+  (the dead DrawBadge became DrawStar); pinned ones have "..." = unpin.
+  Contents mode: "< back", then the images with thumbnails; hover = the
+  large one in the box left of the panel; click = show it in the view.
+  Double-click a container = its images; swipe / wheel click = open it
+  in the view. A .lif dropped on the panel is pinned.
+- uContainerThumbs (new, source\imaging): the list and the thumbnails on
+  a thread of their own (the hovered one first, the I/O gate, the newest
+  request replaces the older).
+- Tests: TestNavigation (container lists of folders, of a container,
+  the tree, Assign, FolderContainers; none without a reader), TestSort
+  (TPinnedContainers round trip, removed keys go).
+- Review (independent): no compile errors; MView unchanged. Fixed from
+  it: the thumbnail thread redid its work every second (the wait's
+  timeout); the container list could stay empty when the background tree
+  filled it in later (the list is now part of the refresh key); the
+  footer's own notes were hidden in contents mode; a delivery that
+  raises doesn't lose the rest; back only with the left button.
+
+Copy image, window titles (user, from a feedback report)
+---------------------------------------------------------
+"Copy image to clipboard" as a right click context menu entry ... copy
+the original resolution, not the screen. add (Ctrl+C) as in paste
+image". "the form caption should be Versarite-MView and Versarite-MView
+Image Lab."
+- cmdCopyImage (uCommands); Ctrl+C in the mouse engine (fixed, like
+  Ctrl+V; TestMouse); menu entry "Copy image (Ctrl+C)" above "Paste
+  image"; the mouse page's help names it.
+- TMView.CopyToClipboard: the best image in memory (as Save image); a
+  JPEG shown at screen size is read in full first (AllowFull) and copied
+  when it arrives, if it is still the image shown. A pasted, cropped or
+  filtered copy as it is. Copied as a plain 24-bit bitmap, the decoded
+  image untouched. Not applied: display filters and rotation of the
+  view (use "Apply filters to a copy", then copy).
+- uEdition: EditionCaption ('Versarite-MView'); SetEdition takes it as a
+  fourth, optional argument. The window title (viewer and settings
+  screen) uses it. MViewLab: title 'Versarite MView Image Lab', caption
+  'Versarite-MView Image Lab'. TestExtensions checks both.
+
+Question: .lif sequences as GIF (user)
+--------------------------------------
+Answered: yes, possible (see the reply); not built.
+User: "animated png sounds better, and tiff stacks are a must." GIF on
+the back burner. Spec Sec. 9a and decision 11.
+
+Copy image, second round (user): "the copy to clipboard executes, but the
+file is not recognized by other programs"
+- The LCL's Clipboard.Assign hands the picture out on request in its own
+  wrapping. Now uClipboardImage (new, source\utility): a standard
+  CF_DIB (24 bit, bottom-up, transparent pixels on white) set with the
+  Windows clipboard functions; Windows makes CF_BITMAP from it.
+
+The .lif as a one-time folder (user)
+------------------------------------
+Tried: "the trapped directory recursion occurs regardless ... it changes
+into this [sub] folder but then BACK INTO THE LIF. i think the lif
+should be treated not as a regular, but as a one-time folder. left
+gesture does not go into its own folder, but a level up, as if it was
+just a file. same for right gesture ... it needs to be opened, by
+scrolling onto it, opening it from the side panel or from an external
+source". And: the window disappeared at the right click only when Image
+Lab started with a .lif as the last image (it had saved the .lif as
+LastDirectory; side by side then sent Total Commander there).
+- A container is no node of the tree any more. Its images (virtual
+  names) are listed among its folder's own images, at its place (by
+  name or date: the container's path and time sort them together):
+  the wheel walks into it and out; folder gestures pass it.
+- ItemDirectory of an image inside a container = the folder it lies in.
+- Opening a container (drop, TC, the panel, the command line): its
+  folder, on its first image (or on the image named to resume on).
+- Removed: container nodes (ScanContainer, IsContainer), a container's
+  own listing (ListContainersOf, AssignContainers). New:
+  AddContainerEntries, FirstOfContainer.
+- LastDirectory is now always a real folder (the navigator's root).
+- TestNavigation's container part rewritten (the tree has no container
+  node, the folder lists 4 images, the wheel walks in, next folder
+  passes it, opening the container lands on its first image, the root
+  is the folder's parent as for a file).
+- Review (independent): no compile errors, MView unchanged, all checks
+  traced as passing. Taken: resume on the named image when an older ini
+  names the container as the folder; stale comments.
+- Cost noted: the start listing now reads the description of every .lif
+  in the folder (a few ms each).
+
+The .lif transient in the side panel (user)
+-------------------------------------------
+"scrolling onto the lif should also temporarily place it on top of the
+right panel and open it there. one can click any image, but once the
+mouse wheel leaves the lif folder, the lif disappears from the side
+folder. lif files should always be transient in the right menu, also
+never be entered into the ini list."
+- TMView.RefreshPanelContainers (after every step): the container of the
+  current image, alone, on top of the panel, entered (its images with
+  thumbnails); when the wheel leaves it: removed, list and thumbnails
+  dropped. Acts only when the container changes ("< back" stays back).
+- TSortPanel: the container group on top, above the sort buttons (row ->
+  slot index shifted by the containers; separator line below the group).
+- No pinning: TPinnedContainers, PinContainer, UnpinContainer, the
+  [Containers] writing and its TestSort test removed; TConfig erases an
+  old [Containers] section. A .lif dropped on the panel opens in the view.
+- The automatic folder group (all .lif files of the folder) is gone.
+- The image shown is yellow in the panel's list (user: "change the color
+  of the active (currently shown) file name in the lif-list ... maybe to
+  yellow or red"): TSortPanel.SetCurrentEntry, set after every step;
+  its row is scrolled into sight (also when the list arrives).
+
+Fullscreen flicker on the Intel GPU (user)
+------------------------------------------
+Image Lab in fullscreen: every right click flickered and the window went
+behind the others (the taskbar brought it back); UseGPU=0 cured it, and
+on the Dell XPS 15 it is the Intel GPU only (NVIDIA fine). Known problem
+(Khronos forum "TrackPopupMenu breaks full-screen OpenGL window": one
+pixel less fixed it; Qt gives such windows a border): a GPU window that
+covers its screen exactly gets the driver's full-screen path, a popup
+forces it out.
+- TMainForm.SetFullscreen (both programs): no more wsFullScreen; a
+  borderless window one pixel taller than its monitor (Monitor.BoundsRect,
+  bottom + 1). Back: wsNormal, sizeable, the place before.
+
+Stacks in the .lif, a look (user; postponed)
+--------------------------------------------
+sample.lif: only Series009 is a stack - 12 planes x 2 channels filed as z,
+but z step 0 (Begin = End) and time stamps 2.6 s apart: a time series at
+one plane; the last plane cut off (rows 0-447). User: postpone (more .lif
+files to check), follow the suggestions; the view shows the projection;
+an animation icon instead of an average; side panel row: left
+double-click = the planes, right double-click = play in the view. Spec
+Sec. 6.5 and decision 12.
+
+M3a: where the µm come from (user)
+----------------------------------
+Measuring and scale bar: user wants a calibration record and selector -
+a list linking microscope / objective combinations to a reference
+measurement of µm vs. pixels; its own file (calibrations.ini); a
+"Confocal" check box in the left side panel (checked: width and zoom
+kept and scaled; unchecked: pixels per µm); filled from the main screen
+when a reference measurement is made; the selector at the bottom of the
+left side panel; a settings tab. Exports borrow a matching .lif's scale
+by name; a scale bar's length goes into the saved file's name.
+Checked first: the exported TIFFs (sample_Series084_t242_ch01.tif,
+sample_Image089_ch00.tif) carry no scale (8-bit RGB, 72 dpi).
+- uCalibrations (new, no LCL): the record, calibrations.ini, µm/px with
+  the confocal scaling. TestCalibrations (new, plain fpc).
+- uLifFile: LifExportGuesses / LifImageForExport (an export's name ->
+  .lif and image; t / z / ch suffixes dropped). TestLif: TestExportNames.
+- uLifContainer: LifIndexOfId exported.
+- uExtensions: TImageMetadata + ScaleWidth/Height, ScaleSource,
+  Microscope, Objective, Zoom.
+- uImageScale (new): metadata reader "Leica LIF" (inside a .lif; a
+  matching .lif in the same folder or the one above), one .lif kept
+  under a lock; ScaleFor: file > matching .lif > chosen calibration >
+  none, cached; the calibration list and the chosen name.
+- uPixelProbe: µm next to x / y; a second line "scale: <source>" when
+  borrowed.
+- Review (independent): no compile errors; all new checks traced as
+  passing. Taken: the drive-root case (C:\x.tif looked in "C:"), µm by
+  the pixel (not the sub-pixel: the label redrew on every mouse move),
+  a read during shutdown.
+
+M3b step 1: the measuring line and the reference measurement
+-------------------------------------------------------------
+- uMeasureLine (new): an overlay layer; "Measurement" (enabled when the
+  image has a scale) and "Reference measurement (calibrate)" (any image)
+  in the right-click menu. Click - follow - click; Shift = horizontal /
+  vertical; label µm and px, the source when borrowed; right click
+  leaves (no menu then); the line in image pixels (zoom, pan, turning
+  keep it), gone with the next image.
+- uCalibrationDialog (new): after the second click of a reference
+  measurement: known length, name, microscope, objective, Confocal,
+  zoom, note; the file's own length for the line shown and filled in.
+  Saved to calibrations.ini and chosen (uImageScale.ChooseCalibration).
+- uImageScale: ConfocalMode (the dialog's default for now).
+- Review (independent): no compile errors; the right press taken by the
+  layer never reaches the mouse language (no menu). Taken: a full list
+  (200) said so, the label clear of steep lines, the dialog's text
+  wrapped, the release kept by the layer after leaving.
+
+M3b step 2: the calibration selector and "Confocal" in the left panel
+--------------------------------------------------------------------
+- uExtensions: TPanelSection (an edition's rows in the left panel:
+  RowCount, DrawRow, Hint, Click, Version), RegisterPanelSection,
+  PanelSectionRowCount / At / sVersion; SetShownImage / ShownImage*.
+- uFilterPanel: fpExtra; the rows below Auto / Reset all, a line above,
+  hover, hint; redrawn when the sections' version changes. MView: no
+  sections, the panel exactly as before.
+- uMView: the image shown after every step (UpdateInfo); a press on an
+  edition's row acted on at the release (Section.Click with the screen
+  point); the panel redrawn when the rows changed.
+- uCalibrationPanel (new): "Scale <source>" (a click: the list - none,
+  the calibrations, reference measurement) and "[x] Confocal".
+- uImageScale: the choice and Confocal in the edition's ini
+  ([Calibration] Chosen / Confocal), read at first use.
+- Review (independent): no defects; two small points taken (the list's
+  reference entry needs an image; the rows' version noted before a
+  degenerate size exit).
+
+Esc to the settings: at once, the viewer closes in the background (user)
+-----------------------------------------------------------------------
+"when leaving the window with esc, the loading time for the ini window is
+several seconds" - the viewer's destructor waited for its threads (a
+decode under way is finished, not interrupted: the 12-19 MB TIFFs; the
+scanner; the .lif thumbnails up to 1 s; a copy; a save) before the
+settings appeared. User: "put everything into the background ... the
+save ini button has to be buffered, maybe with a little moving timer
+icon".
+- TJobScheduler.BeginShutdown / WorkersStopped, TDirectoryScanner.
+  BeginShutdown, TFileMover.DropWaiting / Working, TContainerThumbs.
+  BeginShutdown / Stopped: stop without waiting, ask later.
+- TMView.BeginClose (settings saved once - the destructor doesn't again -,
+  everything told to stop, no more deliveries) / CloseFinished (polled;
+  the read gate released once the workers are back).
+- TMainForm.ReturnToEditor: BeginClose, the settings at once, the viewer
+  kept as FClosingViewer; FCloseTimer (50 ms) frees it when finished
+  (at most 15 s, except a copy under way); a new viewer, Exit, the form's
+  end finish it first.
+- TIniEditor.Busy: a turning ring at the right of the button bar; Save
+  (Ctrl+S) and View images (F5) kept and done when the viewer is gone.
+- Review (independent): no compile errors. Taken: the exit deadline
+  knows a copy in the closing viewer (no cut-off copy); the kept save is
+  done before the viewer is freed (a stuck read can't lose it); a
+  finished scanner is waited for, not abandoned (it leaked); the window
+  place stored again after a kept save; text changed after a kept save
+  makes Exit ask again.
+- Tried (user): "the window shows instantly, but it is an empty frame and
+  it takes several seconds to fill". The real cost: FPC's TIniFile
+  rewrites the whole file on EVERY Write unless CacheUpdates is on;
+  TConfig.Save writes ~60 keys = ~60 rewrites of MView.ini (each also
+  looked at by the virus scanner), and Esc did it twice (the viewer's
+  settings, then the settings screen completing the file). Now every
+  TConfig writer (Save, SaveSort, SaveFilters, the save folder,
+  SaveWindowBounds) and uImageScale's choice: CacheUpdates, one
+  UpdateFile at the end.
+- Tried (user): "it feels like it got worse ... settings should be written
+  when changes occur, except for the last file/last directory".
+  TConfig.Save now works in memory (TMemIniFile: one read) and writes the
+  file only if its text differs (usually just LastFile / LastDirectory).
+  And the Esc path is timed: ms after the key for each step (window,
+  views, viewer saved+stopping, menus, ini read / completed, editor
+  shown, ini text, mouse page, settings screen, drawn = first idle tick,
+  threads back, viewer freed) in the settings' help line - to see where
+  the seconds really go.
+- Measured (user's screenshot): window 176, views 224, viewer saved +
+  stopping 224, ini read / completed 224, editor shown 5856, ini text
+  5856, mouse page 10640, settings screen 10912, drawn 10960, threads
+  back 10960, viewer freed 10992. Neither the threads nor the ini: the
+  "Mouse & keys" page - every button / key row has 3 drop-down boxes of
+  ~70 commands; showing the screen pushed them all into Windows (5.6 s,
+  the form's window is made again when leaving fullscreen), loading the
+  profile filled them all again (4.8 s).
+- uMousePage: a box holds only its chosen entry (FLazy = its index in
+  the full list) until it is opened or entered (OnDropDown / OnEnter:
+  EnsureFilled); ShowRow / WriteRow work with ComboIndex. The timing
+  line stays until the user has checked it.
+- Measured again (user): window 160, ini completed 208, editor shown
+  1392, mouse page 1520, settings screen 1856, drawn 1904. "better, but
+  still a delay". The rest: leaving fullscreen set BorderStyle, and LCL
+  makes the form's window again for that - every control of the hidden
+  settings screen (and AcceptDropsOn's HandleNeeded on each) is made
+  anew. Windows: the frame (WS_CAPTION, WS_THICKFRAME) switched with
+  SetWindowLongPtr + SetWindowPos(FRAMECHANGED), no new window; other
+  systems keep BorderStyle.
+- Measured again (user): window 64 (the frame fix works), editor shown
+  1104 (from 144), settings screen 1488. Started in the viewer (Mode=1),
+  so the first Esc builds the settings screen: the "Mouse & keys" page's
+  ~80 controls, a layout per control. Now: the page's rows are made when
+  its tab is first shown (TMouseProfilePage.BuildRows / PageShown), and
+  ShowEditor lays the screen out once (DisableAutoSizing).
+- Bug (user): with the left (filter) panel open, Esc switches "Lock
+  filters" on and the panel stays open (pinned); the second Esc leaves.
+  No path from Esc to the lock found in the code (Esc = Back: closes the
+  open panel). For now the status line says who locked:
+  SetFiltersLocked(AValue, ASource) - 'panel click at x, y', 'menu',
+  'mouse profile' (shown 6 s).
+- User: "the behavior is now very good. it escapes fast enough to not be
+  annoying; the mouse panel needs time to load, but no problem". The
+  lock was a false alarm (an image of the MView screen showed the lock).
+  Removed: the Esc timing line, the "(by ...)" note on the lock message
+  (SetFiltersLocked keeps its ASource for debugging, not shown).
+
+Formats (user; discussion recorded, for the implementation plan)
+----------------------------------------------------------------
+The user's comparison (specs\Versarite_MView_Viewer_Comparison.docx):
+formats are MView's weak point. Xelitan's Pascal libraries looked at
+(XelImageFormats, AVIF/HEIC pure Pascal LGPL-2.1, JPEG XL via libjxl,
+JPEG 2000, WebP): a reference, not a dependency (young, licences).
+Decided (user): modern formats (HEIC, AVIF, WebP, JPEG XL) through
+Windows' own codecs (WIC) in MView and Image Lab; no large licence
+overhead ("this is a fun project"); microscope makers' files one at a
+time as containers (Leica first, then .czi / .nd2 / .oir / .vsi when
+files come); the TIFF options and the symbiosis with Fiji (ImageJ / OME
+scale, 16-bit, stacks). Spec "Microscopy edition" Sec. 9b, decision 14.
+Next: the user tests the calibration; then M3b step 3 (settings tab).
+
+Comparison document (user)
+--------------------------
+specs\Versarite_MView_Viewer_Comparison_v2.docx: the user's comparison
+polished - stars and repeated summaries out; date and versions; what
+MView does well (TC, magnifier, filters, sort panel with icons and undo,
+crop / resize / clipboard, the Hamana mouse language); formats today and
+planned; Image Lab vs Fiji / ImageJ, LAS X, vipsdisp; Image Lab rows in
+"Which to use". The original stays as it is.
+For the next GitHub update (user: "lets add it to the next git push"):
+copy specs\Versarite_MView_Viewer_Comparison_v2.docx into the GIT folder
+(the v2 only, not the original).
+
+Gesture up (user)
+-----------------
+"the mouse gesture up is supposed to change dir. it does the recursion
+(status bar), but the change does not happen ... some sort of influence on
+the left / right gestures" - as specified in v1.3: Parent folder widened
+the tree by a level and kept the image (so the folder steps then walked
+the old folder's siblings). User: "unintuitive, maybe mis-specified";
+option 1: up into the parent folder, on its own first image (siblings
+skipped); without images of its own a message. TMView.ParentFolder +
+FolderHasImages (an image or a container directly in the folder): "up
+to ..." / "no images in ... (browsing from there; the image stays)".
+Spec v1.3 Sec. (navigation) amended.
+
+M3b step 3: the "Calibrations" tab (user: "continue where we stopped")
+----------------------------------------------------------------------
+- uExtensions: settings pages (RegisterSettingsPage: caption, hint,
+  Create, Refresh); uIniEditor: a tab per page, made when first opened,
+  refreshed when shown and when the settings screen comes back. MView:
+  none, unchanged.
+- uCalibrationPage (new): the calibrations listed (in use, name,
+  microscope, objective, confocal, value, date, note); Use this one
+  (double-click too), Use none, Rename, Delete, Reload; saved to
+  calibrations.ini at once.
+- uImageScale: ReloadCalibrations, SaveCalibrations.
+- Review (independent): no compile errors; taken: the selection kept by
+  name after Reload; the buttons laid out as the settings screen's.
+M3b complete. Next (user): the stacks (decision 12).

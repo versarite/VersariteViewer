@@ -59,6 +59,7 @@ unit uIniEditor;
   Uses (MView units)
   ------------------
   interface:      uConfig, uMousePage
+  implementation: uEdition, uExtensions (an edition's own tabs)
   Libraries:      Classes, SysUtils, Controls, Forms, Graphics,
                   StdCtrls, ExtCtrls, ComCtrls, LCLType, SynEdit,
                   SynEditTypes, SynHighlighterIni
@@ -101,6 +102,10 @@ type
     FPages: TPageControl;
     FIniPage: TTabSheet;
     FMouseTab: TTabSheet;
+    { An edition's own tabs (uExtensions' settings pages, M3b; none in
+      MView): the tab, and its content once it was first opened. }
+    FExtraTabs: array of TTabSheet;
+    FExtraPages: array of TWinControl;
     FMouse: TMouseProfilePage;
     FEdit: TSynEdit;
     FHighlighter: TSynIniSyn;
@@ -112,6 +117,17 @@ type
     FOnViewImages: TNotifyEvent;
     FOnExitRequest: TNotifyEvent;
     FOnSideBySide: TNotifyEvent;
+    { Day 25: the viewer is still closing in the background (Esc shows
+      the settings at once). Save and "View images" wait for it
+      (buffered), a small spinner turns meanwhile. }
+    FBusy: Boolean;
+    FSavePending: Boolean;
+    FEditCount: Integer;         { changes of the text (HandleEditChange) }
+    FPendingStamp: Integer;      { FEditCount when the save was kept }
+    FViewPending: Boolean;
+    FSpinner: TPaintBox;
+    FSpinTimer: TTimer;
+    FSpinStep: Integer;
 
     function MakeButton(const ACaption: string; AHandler: TNotifyEvent): TButton;
     procedure HandleViewClick(Sender: TObject);
@@ -133,6 +149,10 @@ type
     procedure SetIniValue(const ASection, AKey, AValue: string);
     procedure HandlePageChange(Sender: TObject);
     function AnyModified: Boolean;
+    procedure HandleEditChange(Sender: TObject);
+    procedure HandleSpinPaint(Sender: TObject);
+    procedure HandleSpinTimer(Sender: TObject);
+    procedure SetBusy(AValue: Boolean);
   public
     constructor Create(AOwner: TComponent); override;
 
@@ -148,6 +168,14 @@ type
     procedure RequestExit;
     { A note in the help line (also the main form's, e.g. side by side). }
     procedure ShowNote(const AText: string);
+    { The viewer is still closing (Day 25): Save and "View images" are
+      kept until Busy goes False, then done. }
+    property Busy: Boolean read FBusy write SetBusy;
+    { A kept "View images" is dropped (the viewer starts another way). }
+    procedure CancelPendingView;
+    { A kept Save done now (still busy: the main form knows the viewer
+      writes no settings any more). True if something was saved. }
+    function FlushPendingSave: Boolean;
 
     { "View images" / F5, after saving. }
     property OnViewImages: TNotifyEvent read FOnViewImages write FOnViewImages;
@@ -160,7 +188,14 @@ type
 
 implementation
 
+uses
+  uEdition,
+  uExtensions,
+  uSafeFile;
+
 constructor TIniEditor.Create(AOwner: TComponent);
+var
+  I: Integer;
 begin
   inherited Create(AOwner);
   BevelOuter := bvNone;
@@ -173,7 +208,7 @@ begin
   FHeader.Align := alTop;
   FHeader.BorderSpacing.Around := 8;
   FHeader.Font.Style := [fsBold];
-  FHeader.Caption := 'MView settings';
+  FHeader.Caption := EditionId + ' settings';
 
   FBar := TPanel.Create(Self);
   FBar.Parent := Self;
@@ -188,6 +223,21 @@ begin
   MakeButton('Undo changes', @HandleUndoClick);
   MakeButton('Total Commander side by side', @HandleSideBySideClick);
   MakeButton('Exit', @HandleExitClick);
+
+  { The spinner (Day 25): at the right end of the bar while the viewer
+    is still closing. }
+  FSpinner := TPaintBox.Create(Self);
+  FSpinner.Parent := FBar;
+  FSpinner.Align := alRight;
+  FSpinner.Width := 36;
+  FSpinner.Visible := False;
+  FSpinner.ShowHint := True;
+  FSpinner.Hint := 'The viewer is closing';
+  FSpinner.OnPaint := @HandleSpinPaint;
+  FSpinTimer := TTimer.Create(Self);
+  FSpinTimer.Enabled := False;
+  FSpinTimer.Interval := 80;
+  FSpinTimer.OnTimer := @HandleSpinTimer;
 
   FHelp := TLabel.Create(Self);
   FHelp.Parent := FBar;
@@ -204,7 +254,7 @@ begin
   FPages.Align := alClient;
 
   FIniPage := FPages.AddTabSheet;
-  FIniPage.Caption := 'MView.ini';
+  FIniPage.Caption := ExtractFileName(EditionIniFileName);
 
   FMouseTab := FPages.AddTabSheet;
   FMouseTab.Caption := 'Mouse & keys';
@@ -213,6 +263,15 @@ begin
   FMouse.Align := alClient;
   FMouse.OnChange := @HandleMouseChange;
   FMouse.OnZonesToggle := @HandleZonesToggle;
+  { The edition's tabs (empty until first opened). }
+  SetLength(FExtraTabs, SettingsPageCount);
+  SetLength(FExtraPages, SettingsPageCount);
+  for I := 0 to SettingsPageCount - 1 do
+  begin
+    FExtraTabs[I] := FPages.AddTabSheet;
+    FExtraTabs[I].Caption := SettingsPage(I).Caption;
+    FExtraPages[I] := nil;
+  end;
   FPages.OnChange := @HandlePageChange;
   FPages.ActivePage := FIniPage;
 
@@ -225,6 +284,7 @@ begin
   FEdit.Font.Name := 'Consolas';
   FEdit.Font.Size := 11;
   FEdit.OnStatusChange := @HandleEditStatus;
+  FEdit.OnChange := @HandleEditChange;
   FEdit.OnKeyDown := @HandleEditKeyDown;
   FEdit.OnMouseMove := @HandleEditMouseMove;
   FEdit.ShowHint := True;
@@ -248,10 +308,12 @@ begin
 end;
 
 procedure TIniEditor.LoadFile(const AFileName: string);
+var
+  I: Integer;
 begin
   FFileName := AFileName;
-  FHeader.Caption := 'MView settings:   ' + AFileName
-    + '      (start MView with an image or a folder to view it directly)';
+  FHeader.Caption := EditionId + ' settings:   ' + AFileName
+    + EditionText('      (start VersariteViewer with an image or a folder to view it directly)');
   try
     if FileExists(AFileName) then
       FEdit.Lines.LoadFromFile(AFileName)
@@ -264,6 +326,11 @@ begin
     { As TIniFile.ReadBool reads it: only 1 is on. }
     FMouse.ZonesEnabled := GetIniValue('Mouse', 'ZonesEnabled', '1') = '1';
     UpdateHelp;
+    { The edition's pages already made: up to date again (the viewer may
+      have changed their files). }
+    for I := 0 to High(FExtraPages) do
+      if (FExtraPages[I] <> nil) and Assigned(SettingsPage(I).Refresh) then
+        SettingsPage(I).Refresh(FExtraPages[I]);
   except
     on E: Exception do
       ShowNote('Could not read the settings: ' + E.Message);
@@ -282,9 +349,18 @@ end;
 
 function TIniEditor.SaveFile: Boolean;
 begin
+  { The viewer is still closing: kept, done when it has (SetBusy). }
+  if FBusy then
+  begin
+    FSavePending := True;
+    FPendingStamp := FEditCount;
+    ShowNote('The viewer is still closing: saving in a moment ...');
+    Exit(True);
+  end;
   Result := False;
   try
-    FEdit.Lines.SaveToFile(FFileName);
+    { Never half written (uSafeFile, 1.1). }
+    WriteTextFileSafe(FFileName, IniTextWithEndLine(FEdit.Lines.Text));
     FEdit.Modified := False;
     FEdit.MarkTextAsSaved;
   except
@@ -317,7 +393,7 @@ begin
   else
     SetIniValue('Mouse', 'ZonesEnabled', '0');
   FExitArmed := False;
-  ShowNote('[Mouse] ZonesEnabled changed in MView.ini, not saved yet (Save).');
+  ShowNote(EditionText('[Mouse] ZonesEnabled changed in VersariteViewer.ini, not saved yet (Save).'));
 end;
 
 function TIniEditor.GetIniValue(const ASection, AKey, ADefault: string): string;
@@ -387,9 +463,32 @@ begin
 end;
 
 procedure TIniEditor.HandlePageChange(Sender: TObject);
+var
+  I: Integer;
 begin
+  { An edition's tab: made the first time, then brought up to date. }
+  for I := 0 to High(FExtraTabs) do
+    if FPages.ActivePage = FExtraTabs[I] then
+    begin
+      if FExtraPages[I] = nil then
+        try
+          FExtraPages[I] := SettingsPage(I).Create(Self, FExtraTabs[I]);
+        except
+          on E: Exception do
+          begin
+            ShowNote('This page could not be made: ' + E.Message);
+            Exit;
+          end;
+        end;
+      if Assigned(SettingsPage(I).Refresh) and (FExtraPages[I] <> nil) then
+        SettingsPage(I).Refresh(FExtraPages[I]);
+      ShowNote(SettingsPage(I).Hint);
+      Exit;
+    end;
   if FPages.ActivePage = FMouseTab then
   begin
+    { Its rows are made the first time it is shown (Day 25). }
+    FMouse.PageShown;
     { The switch follows the text (it may have been edited by hand). }
     FMouse.ZonesEnabled := GetIniValue('Mouse', 'ZonesEnabled', '1') = '1';
     ShowNote('Click a zone, Anywhere or Keys on the left, then choose what each button does. '
@@ -412,6 +511,15 @@ end;
 
 procedure TIniEditor.HandleViewClick(Sender: TObject);
 begin
+  if FBusy then
+  begin
+    { Kept until the viewer has closed (SetBusy). }
+    FViewPending := True;
+    if AnyModified then
+      FSavePending := True;
+    ShowNote('The viewer is still closing: the images open in a moment ...');
+    Exit;
+  end;
   if AnyModified and not SaveFile then
     Exit;
   if Assigned(FOnViewImages) then
@@ -441,7 +549,10 @@ end;
 
 procedure TIniEditor.HandleExitClick(Sender: TObject);
 begin
-  if AnyModified and not FExitArmed then
+  { A save kept for later (busy) is done on the way out - unless the
+    text was changed again after it: then ask as usual. }
+  if AnyModified and not (FSavePending and (FEditCount = FPendingStamp))
+    and not FExitArmed then
   begin
     FExitArmed := True;
     ShowNote('There are unsaved changes. Press Exit (or Esc) again to leave without them, or Save first.');
@@ -509,7 +620,7 @@ begin
   Section := SectionOfLine(ALine);
   Result := ConfigKeyHelp(Section, Key);
   if Result = '' then
-    Result := Key + ': not a key MView knows (in [' + Section + ']). It is kept, but not used.'
+    Result := Key + ': not a key ' + EditionTitle + ' knows (in [' + Section + ']). It is kept, but not used.'
   else
     Result := Key + ':   ' + Result;
 end;
@@ -548,6 +659,78 @@ end;
 procedure TIniEditor.ShowNote(const AText: string);
 begin
   FHelp.Caption := AText;
+end;
+
+procedure TIniEditor.SetBusy(AValue: Boolean);
+begin
+  if FBusy = AValue then
+    Exit;
+  FBusy := AValue;
+  FSpinner.Visible := AValue;
+  FSpinTimer.Enabled := AValue;
+  if AValue then
+    Exit;
+  { The viewer has closed: what was kept. }
+  FlushPendingSave;
+  if FViewPending then
+  begin
+    FViewPending := False;
+    HandleViewClick(Self);
+  end;
+end;
+
+procedure TIniEditor.HandleEditChange(Sender: TObject);
+begin
+  Inc(FEditCount);
+end;
+
+procedure TIniEditor.CancelPendingView;
+begin
+  FViewPending := False;
+end;
+
+function TIniEditor.FlushPendingSave: Boolean;
+var
+  WasBusy: Boolean;
+begin
+  Result := False;
+  if not FSavePending then
+    Exit;
+  FSavePending := False;
+  WasBusy := FBusy;
+  FBusy := False;              { SaveFile writes now }
+  try
+    Result := SaveFile;
+    if Result then
+      ShowNote('Saved.');
+  finally
+    FBusy := WasBusy;
+  end;
+end;
+
+procedure TIniEditor.HandleSpinTimer(Sender: TObject);
+begin
+  Inc(FSpinStep);
+  FSpinner.Invalidate;
+end;
+
+{ A quarter-open ring that turns. }
+procedure TIniEditor.HandleSpinPaint(Sender: TObject);
+var
+  S, X, Y: Integer;
+begin
+  with FSpinner.Canvas do
+  begin
+    Brush.Color := FBar.Color;
+    FillRect(FSpinner.ClientRect);
+    S := 16 * Screen.PixelsPerInch div 96;
+    X := (FSpinner.Width - S) div 2;
+    Y := (FSpinner.Height - S) div 2;
+    Pen.Color := clHighlight;
+    Pen.Width := 3 * Screen.PixelsPerInch div 96;
+    { Angles in 1/16 degree, counter-clockwise: turn clockwise. }
+    Arc(X, Y, X + S, Y + S, -(FSpinStep mod 12) * 30 * 16, 270 * 16);
+  end;
 end;
 
 end.

@@ -20,7 +20,8 @@ unit uAnimation;
   Owns
   ----
   - Nothing concrete: TAnimation and TAnimationCursor are abstract
-    (uGifDecoder implements them). TFrameClock holds only counters
+    (uGifDecoder implements them; TBitmapListAnimation, Day 26: whole
+    pictures made beforehand - a microscope stack played - owns them). TFrameClock holds only counters
     and times.
 
   Knows
@@ -153,6 +154,27 @@ type
     property Skipped: Integer read FSkipped;
   end;
 
+  { Whole pictures made beforehand, each with its delay (Day 26: a
+    microscope stack played, MView Lab): takes ownership of the bitmaps
+    (all the same size). Plays forever. }
+  TBitmapListAnimation = class(TAnimation)
+  private
+    FFrames: array of TBGRABitmap;
+    FDelays: array of Integer;
+    FNote: string;
+  public
+    constructor Create(const AFrames: array of TBGRABitmap; const ADelays: array of Integer;
+      const ANote: string = '');
+    destructor Destroy; override;
+    function Width: Integer; override;
+    function Height: Integer; override;
+    function FrameCount: Integer; override;
+    function FrameDelayMs(AIndex: Integer): Integer; override;
+    function SizeInBytes: Int64; override;
+    function Note: string; override;
+    function CreateCursor: TAnimationCursor; override;
+  end;
+
 const
   FrameClockMaxLagMs = 1000;
   { A delay function that returns 0 must not make Advance loop forever. }
@@ -170,6 +192,102 @@ end;
 function TAnimation.PlayCount: Integer;
 begin
   Result := 0;
+end;
+
+{ TBitmapListAnimation }
+
+type
+  TBitmapListCursor = class(TAnimationCursor)
+  private
+    FOwner: TBitmapListAnimation;
+  public
+    function Frame(AIndex: Integer): TBGRABitmap; override;
+  end;
+
+function TBitmapListCursor.Frame(AIndex: Integer): TBGRABitmap;
+begin
+  if (AIndex < 0) or (AIndex > High(FOwner.FFrames)) then
+    AIndex := 0;
+  Result := FOwner.FFrames[AIndex].Duplicate as TBGRABitmap;
+end;
+
+constructor TBitmapListAnimation.Create(const AFrames: array of TBGRABitmap;
+  const ADelays: array of Integer; const ANote: string);
+var
+  I: Integer;
+begin
+  inherited Create;
+  SetLength(FFrames, Length(AFrames));
+  SetLength(FDelays, Length(AFrames));
+  for I := 0 to High(AFrames) do
+  begin
+    FFrames[I] := AFrames[I];
+    if I <= High(ADelays) then
+      FDelays[I] := ADelays[I]
+    else
+      FDelays[I] := 100;
+    if FDelays[I] < MinFrameDelayMs then
+      FDelays[I] := MinFrameDelayMs;
+  end;
+  FNote := ANote;
+end;
+
+destructor TBitmapListAnimation.Destroy;
+var
+  I: Integer;
+begin
+  for I := 0 to High(FFrames) do
+    FFrames[I].Free;
+  inherited Destroy;
+end;
+
+function TBitmapListAnimation.Width: Integer;
+begin
+  if Length(FFrames) = 0 then
+    Exit(0);
+  Result := FFrames[0].Width;
+end;
+
+function TBitmapListAnimation.Height: Integer;
+begin
+  if Length(FFrames) = 0 then
+    Exit(0);
+  Result := FFrames[0].Height;
+end;
+
+function TBitmapListAnimation.FrameCount: Integer;
+begin
+  Result := Length(FFrames);
+end;
+
+function TBitmapListAnimation.FrameDelayMs(AIndex: Integer): Integer;
+begin
+  if (AIndex < 0) or (AIndex > High(FDelays)) then
+    Exit(100);
+  Result := FDelays[AIndex];
+end;
+
+function TBitmapListAnimation.SizeInBytes: Int64;
+var
+  I: Integer;
+begin
+  Result := 0;
+  for I := 0 to High(FFrames) do
+    Inc(Result, Int64(FFrames[I].Width) * FFrames[I].Height * 4);
+end;
+
+function TBitmapListAnimation.Note: string;
+begin
+  Result := FNote;
+end;
+
+function TBitmapListAnimation.CreateCursor: TAnimationCursor;
+var
+  Cursor: TBitmapListCursor;
+begin
+  Cursor := TBitmapListCursor.Create;
+  Cursor.FOwner := Self;
+  Result := Cursor;
 end;
 
 { TFrameClock }

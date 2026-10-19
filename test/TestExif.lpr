@@ -18,6 +18,7 @@ program TestExif;
 uses
   SysUtils, Classes,
   uExifOrientation,
+  uExifRotate,
   uJpegHeader;
 
 var
@@ -346,15 +347,83 @@ begin
   Check('empty: no crash', (W = 0) and (H = 0));
 end;
 
+{ 1.1: lossless rotation by the orientation tag (uExifRotate). }
+procedure TestRotate;
+var
+  Data, Bare: TBytes;
+  B: TByteBuilder;
+  Why: string;
+  K, N: Integer;
+  AllBack, Ok: Boolean;
+  Op: TOrientOp;
+begin
+  WriteLn('uExifRotate');
+  Check('upright, turned right: 6', OrientationAfter(1, ooRotateRight) = 6);
+  Check('6, right again: upside down (3)', OrientationAfter(6, ooRotateRight) = 3);
+  Check('3, right: 8', OrientationAfter(3, ooRotateRight) = 8);
+  Check('8, right: upright', OrientationAfter(8, ooRotateRight) = 1);
+  Check('upright, left: 8', OrientationAfter(1, ooRotateLeft) = 8);
+  Check('upright, 180: 3', OrientationAfter(1, ooRotate180) = 3);
+  Check('upright, mirrored: 2', OrientationAfter(1, ooFlipHorizontal) = 2);
+  Check('upright, mirrored top-bottom: 4', OrientationAfter(1, ooFlipVertical) = 4);
+  AllBack := True;
+  for K := 1 to 8 do
+  begin
+    AllBack := AllBack and (OrientationAfter(OrientationAfter(K, ooRotateRight), ooRotateLeft) = K)
+      and (OrientationAfter(OrientationAfter(K, ooFlipHorizontal), ooFlipHorizontal) = K)
+      and (OrientationAfter(OrientationAfter(K, ooRotate180), ooRotate180) = K);
+    for Op := Low(TOrientOp) to High(TOrientOp) do
+      AllBack := AllBack and (OrientationAfter(K, Op) in [1 .. 8]);
+  end;
+  Check('every turn undone by its opposite, always 1 .. 8', AllBack);
+
+  { The tag there: changed in place, nothing else. }
+  Data := MakeJpeg(True, 1, False, True);
+  N := Length(Data);
+  Check('tag there: written', SetJpegOrientation(Data, 6, Why) and (Orient(Data) = 6), Why);
+  Check('tag there: the same size', Length(Data) = N);
+  Data := MakeJpeg(False, 3, True, False);
+  Check('Motorola order, tag second: written', SetJpegOrientation(Data, 8, Why) and (Orient(Data) = 8), Why);
+
+  { EXIF without the tag: IFD0 again with it. }
+  Data := MakeJpeg(True, 0, False, True);
+  Check('EXIF without the tag: upright to start with', Orient(Data) = 1);
+  Ok := SetJpegOrientation(Data, 6, Why);
+  Check('EXIF without the tag: written', Ok and (Orient(Data) = 6), Why);
+  Check('EXIF without the tag: written again (now in place)', SetJpegOrientation(Data, 3, Why)
+    and (Orient(Data) = 3), Why);
+  Data := MakeJpeg(False, 0, False, False);
+  Check('the same, Motorola order', SetJpegOrientation(Data, 5, Why) and (Orient(Data) = 5), Why);
+
+  { No EXIF: a block of its own after JFIF. }
+  B.Data := nil;
+  AddByte(B, $FF); AddByte(B, $D8);
+  AddByte(B, $FF); AddByte(B, $E0); AddBE16(B, 16); AddText(B, 'JFIF'#0);
+  AddByte(B, 1); AddByte(B, 1); AddByte(B, 0); AddBE16(B, 1); AddBE16(B, 1); AddByte(B, 0); AddByte(B, 0);
+  AddByte(B, $FF); AddByte(B, $DA); AddBE16(B, 2); AddByte(B, $12); AddByte(B, $34);
+  AddByte(B, $FF); AddByte(B, $D9);
+  Bare := Copy(B.Data, 0, Length(B.Data));
+  Data := Copy(Bare, 0, Length(Bare));
+  Check('no EXIF: upright, nothing written', SetJpegOrientation(Data, 1, Why) and (Length(Data) = Length(Bare)));
+  Check('no EXIF: a block of its own', SetJpegOrientation(Data, 8, Why) and (Orient(Data) = 8)
+    and (Length(Data) = Length(Bare) + 36), Why);
+  Check('no EXIF: after JFIF', (Data[2] = $FF) and (Data[3] = $E0) and (Data[20] = $FF) and (Data[21] = $E1));
+  Check('no EXIF: the image data untouched', (Data[High(Data)] = $D9) and (Data[High(Data) - 2] = $34));
+
+  Data := TBytes.Create(1, 2, 3, 4, 5);
+  Check('not a JPEG: refused, said why', not SetJpegOrientation(Data, 6, Why) and (Why <> ''), Why);
+end;
+
 begin
   PassCount := 0;
   FailCount := 0;
-  WriteLn('MView EXIF orientation test');
+  WriteLn('VersariteViewer EXIF orientation test');
 
   TestBuilt;
   TestFiles;
   TestThumbnails;
   TestAspectCrop;
+  TestRotate;
 
   WriteLn;
   WriteLn(Format('%d passed, %d failed', [PassCount, FailCount]));

@@ -72,7 +72,8 @@ uses
   uTypes,
   uImageFormats,
   uDirectoryImages,
-  uNaturalSort;
+  uNaturalSort,
+  uContainers;
 
 type
 
@@ -303,6 +304,21 @@ begin
               and (SearchRec.Name <> '.')
               and (SearchRec.Name <> '..') then
               Names.Add(SearchRec.Name);
+          end
+          { A container (.lif, only with an edition's reader; user, Day
+            25): no folder of the tree, a one-time folder: its images
+            are listed with the folder's own, at its place; and it is
+            in the folder's container list (the side panel). }
+          else if IsContainerName(SearchRec.Name) then
+          begin
+            if FCollectImages then
+            begin
+              ANode.FImages.AddContainer(Prefix + SearchRec.Name);
+              if Assigned(FCancel) and FCancel() then
+                FCancelled := True
+              else
+                ANode.FImages.AddContainerEntries(Prefix + SearchRec.Name);
+            end;
           end
           else if FCollectImages and IsSupportedImageFile(SearchRec.Name) then
             { The same fields TDirectoryImages.Scan takes, so a key

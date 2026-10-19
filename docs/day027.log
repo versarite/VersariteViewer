@@ -1,0 +1,294 @@
+MView Day 27 (2026-10-12)
+=========================
+
+Testers' requests (user: "i received feedback from testers")
+------------------------------------------------------------
+1. right-click menu: sort mode by date, by name asc/desc, random
+2. side panel: [add directory] to the top; an ini entry for the number
+   of lines (default as now; ~20 good; max by screen ~30; scrolling
+   beyond)
+3. [...] menu: "move to top"; move up / down repeating while held; the
+   menu left of the panel so the folders stay visible
+4. several side panel lists, arrows left / right in the header, own ini
+   sections [DirList1] [DirList2]; [make dir] [make subdir] (name_001
+   ...); wrap-around through a new empty list
+5. icon submenu: "Select from file" on top; .ico as an image format
+   (the largest size)
+6. "Rapid Selection" mode: right-click menu; panel opened and pinned; a
+   list of 9+1 folders Selection1..9, 0 in the default image folder
+   (new ini entry, the user's Pictures folder), created if missing;
+   keys 1..0 move the image there; not part of the arrow lists; off:
+   the previous list back
+7. zones off: mouse on the bottom edge > 1 s (ini time and width,
+   default 12) toggles pointer-centred zoom / next-previous
+8. disk full: a flashing red warning below 100 MB free
+9. [...] menu: "Rename" (the list's name, not the folder)
+10. the additional image formats; a new README.md
+11. a preview bar as Hamana's: "Toggle preview" command; at the top
+    edge after 500 ms (the ini width / time as for 7), as wide as the
+    status bar, closes 1 s after the mouse left
+12. keyboard keys on the key definition page (single keys, the
+    installed layout; the digits for Rapid Selection)
+Readings stated to the user and confirmed ("all your interpretations
+are correct"): 3b own window (a Windows menu closes on the click);
+4 relative to the folder whose "..." was clicked; 6 keys 1-9 -> Selection
+1-9, 0 -> Selection0, top row and number pad, moved with undo; 7 "single
+window mode" = ZonesEnabled=0; 7 / 11 one width, two times (1 s / 0.5
+s); 12 key names as the installed layout labels them; MView 1.1.
+Plan: A (1, 2, 3a, 5a, 8, 9), B (4, 3b, 6), C (12, 7, 11), D (10, 5b).
+
+Batch A
+-------
+- 1: uTypes smRandom ('Random'); uDirectoryImages: RandomKey (FNV-1a of
+  the lower-cased name xor RandomSortSeed, overflow checks off), Resort,
+  NewRandomSortOrder (initialization: Randomize + a seed); uNavigator
+  Resort; uMView SetSortOrder / SortOrder (public), SetSort: Random
+  again = new seed + Resort ("shuffled again"); the info line names all
+  five orders; uMainForm "Order of the images" submenu (radio, checked
+  at popup); uConfig help.
+- 2: uSortPanel: the "+ add folder" row first (HitTest, Redraw: slot =
+  row - containers - 1); Lines / MaxPanelLines: with PanelLines > 0 the
+  row height = available / min(lines, max), not above 3 x the old
+  maximum; uConfig [Sort] PanelLines (0..200, help); uMView passes it.
+- 3a: "Move to top" (MoveToTopTag) in the slot menu.
+- 5a: the icon submenu starts with "Choose icon file ..." and "Open the
+  icon folder".
+- 8: uMView.CheckDiskSpace from PumpDeliveries every 5 s: the drives of
+  the image, the slots, the deleted-files folder and Documents, local
+  only (GetDriveTypeW fixed / removable; GetDiskFreeSpaceExW); < 100 MB:
+  FlashNotice(..., 3) red (uRenderer notice style 3, white text) and
+  the status line, again every 20 s.
+- 9: "Rename ... (in this list)": InputQuery, TSortFolders.SetName,
+  SortFoldersChanged (saved).
+
+Batch A review (independent agent), fixed:
+- uSortPanel.Redraw: local Lines -> FooterLines (clashed with the new
+  property Lines); uMView.CheckDiskSpace: local Free -> FreeB (TObject.Free).
+- Random again reached only the current folder: TDirectoryImages keeps
+  FSortedSeed (set in Sort); SetSortMode / Assign re-sort a stale
+  shuffle (SortIsStale); TNavigator.TreeImages always goes through
+  SetSortMode.
+- LocalFreeBytes: SetErrorMode(SEM_FAILCRITICALERRORS or
+  SEM_NOOPENFILEERRORBOX) around GetDiskFreeSpaceExW (an empty card
+  reader shows no "no disk" box), restored afterwards.
+- A folder just added is scrolled into sight (TSortPanel.RevealSlot,
+  SortFoldersChanged(ARevealSlot)); stale comments about "+" below.
+Batch A committed.
+
+User: "please create an ini line to toggle the disk warning. on is default.
+go ahead to phase 2" (= batch B).
+- [View] DiskWarning (uConfig, help text): 0 = no disk check.
+
+Batch B (items 4, 3b, 6):
+- uSortFolders: FSlots = the list shown, FLists = all lists, FCurrent;
+  CycleList (occupied lists, then a new empty one, round again; empty
+  lists dropped when left; at most MaxSortLists = 99); [DirList<n>]
+  sections, [Sort] List; old [Sort] Slot keys read as list 1 and
+  deleted on write. Rapid: SetRapid(AOn, Base) = ten fixed slots
+  Selection1..9, Selection0 (Icon '-'), SlotLabel 1..9, 0; changes
+  refused while on; never written. TSlotColor + Pink, Brown.
+- uSortPanel: ppListPrev / ppListNext (arrows left of the pin, not in
+  contents mode or Rapid); title "Sort  n / m", "Sort  new list",
+  "Rapid selection (keys 1 .. 0)"; AddRows (no "+" in Rapid);
+  ScrollToTop; folder numbers from SlotLabel; footer hints.
+- uMView: CycleSortList; SetRapidSelection / RapidSelection (folders
+  made, panel shown and pinned, pin restored when off); RapidKey
+  (SortCurrent(slot, move)); StatusNote (public); cmdRapidSelection,
+  cmdRapidKey in Execute.
+- uCommands: cmdRapidSelection, cmdRapidKey. uMouseEngine: VKEY_0..9 and
+  VKEY_NUMPAD0..9 emit cmdRapidKey (Value = digit).
+- uConfig: [Sort] DefaultImageFolder (empty = Pictures, written back);
+  UserPicturesDirectory; help for it and for [Sort] List.
+- uSlotMenuWindow (new, source\main): the slot menu as an own window
+  showing FSortMenu's items; sub-menus open in place; Hint 'repeat' =
+  runs without closing, repeats while held; closes on Esc / focus lost.
+- umainform: the window instead of FSortMenu.PopUp (FMenuOpen until
+  OnClosed); Make folder / Make subfolder (<name>_001, inserted below);
+  move items stay open and follow the slot (FSortMenuSlot := Target);
+  Rapid menu: header, open, off; right-click "Rapid selection".
+- Tests: TestSort (lists, wrap, ini, old layout, Rapid), TestMouse
+  (digits).
+
+User, after batch B: "please suppress the yellow messages ... make an ini
+entry 'show directory hint', default off ... not flash, just show 3s";
+arrows red when the next position is a new empty list (none at first
+start, both with one filled list); "reduce the moving speed"; "proceed
+to the next phase".
+- uMView.DirectoryHint: only with [Sort] ShowDirectoryHint=1 (uConfig,
+  default 0); steady (FNoticeSteady), DirectoryHintMs = 3000.
+- uSortFolders.NextIsNew(ADir); uSortPanel draws that arrow red.
+- uSlotMenuWindow: RepeatFirstMs 500, RepeatEveryMs 280 (was 420 / 90).
+
+Batch C (items 12, 7, 11):
+- uMouseProfile: TMouseEvent without the key events; FKeys[0..255] by
+  virtual key; AssignableKeys, KeyCodeName, ParseKeyName, KeyDigit;
+  KeyActionsFor (a digit without entry = [maRapidKey]), KeyBinding,
+  SetKeyBinding, BoundKeys; [Keys] parsed / written by key name. New
+  actions maRapidSelection, maRapidKey, maPreviewStrip (RapidSelection,
+  RapidKey, TogglePreview).
+- uMouseEngine: KeyDown runs [Keys] for any assignable key (FKeyDigit
+  for RapidKey), OnKeyFired; edges: EdgeWidth / TopEdgeMs /
+  BottomEdgeMs, MouseMove notes the edge, Tick fires (top:
+  cmdPreviewStrip Value 1; bottom with zones off: zoom mode), MouseLeft.
+- uMousePage: Keys = rows of the set keys (KeyCaption from
+  GetKeyNameTextW), x to remove, "Add a key" (TKeyPickCombo: a key
+  pressed over it picks it), the digits' note; try area shows keys.
+- uCommands: cmdPreviewStrip. uConfig: [Mouse] EdgeWidth, BottomEdgeMs,
+  TopEdgeMs (help). uMediaView / uGLMediaView: MouseLeft on leave.
+  umainform: engine edges from the config; menu "Preview strip".
+- uPreviewStrip (new, rendering), uFolderThumbs (new, imaging, thread
+  with its own TMediaLoader; qlPreview first, then qlScreen 2 x size).
+- uMView: FStrip / FStripThumbs; SetPreviewStrip, SyncStrip (list made
+  again only when folder / count / order changed), UpdateStrip,
+  HandleStripThumb, HandleStripMouse (first in HandleOverlayMouse);
+  Tick in PumpDeliveries; UpdateInfo keeps it in step; Esc closes it
+  first. uNavigator.CurrentFiles. uRenderer / uGLRenderer: SetStrip.
+- Zoom mode hint: "X1 / Esc / bottom edge = back".
+- Checked: compiled (Linux, and cross-compiled for Windows: MView.exe,
+  MViewLab.exe); TestSort 105, TestMouse 97, TestNavigation 144 pass;
+  run on a virtual screen (Linux build): strip opens at the top edge,
+  centred, click opens, closes 1 s after leaving; bottom edge with
+  zones off switches zoom mode; Keys page add / try.
+
+User on the strip: "it should not show all images in a row ... but give
+an overview over the images in a folder ... a type of progress bar, just
+thicker and transparent ... putting the mouse over the bar shows a
+thumbnail ... if an image needs to load ... the text 754/1005"; "at the
+top, in the middle, about 50 % of the window width"; "the outline of the
+bar ... the same color as status bar and osd messages".
+- uPreviewStrip rewritten as the scan bar: BarRect (top, middle, half
+  the view), IndexAtX, preview under the bar at the mouse (PreviewRect,
+  220 px), black + "n / N" until made, wheel = one image, OutlineColor
+  from FRenderer.Overlay* (TMView.UpdateStrip).
+- uFolderThumbs.Request: no FDone filter (the bar drops thumbnails and
+  may want them again); the same list again is not resent.
+- TMView.UpdateStrip(ARequest): a delivered thumbnail redraws without a
+  new request (that restarted the neighbours' work).
+- Checked on the virtual screen: hover shows the image at that place,
+  wheel steps, preview stays when the mouse moves onto it, click opens.
+
+User (with a Hamana screenshot): thumbnails ~75 %, no black frame on top
+or sides, the text at the bottom on a solid background, the name
+scrolling (looping forward, in the status bar font) while the mouse
+rests.
+- uPreviewStrip: ThumbSize 165 (was 220); PreviewRect from the
+  thumbnail's own size (PreviewSize; 4:3 box until it is made); the name
+  line in the info line's font (SetTextFont from TRenderer.InfoFontName
+  / InfoFontSize) and colour on solid dark; marquee after 0.6 s at 45
+  px/s (Tick returns True to redraw; TMView.UpdateStrip(False)).
+- Checked on the virtual screen with long names.
+
+Batch D (items 10, 5b; README; 1.1):
+- uImageFormats: WicOnlyExtensions (27), IsWicOnlyFile, CodecHint;
+  IsSupportedImageFile includes them.
+- umedialoader.Load: WIC-only files -> LoadWicBands, else an error
+  naming the codec ("Windows can't read this file (HEIC / HEIF needs
+  ...)").
+- uWicDecoder: LargestFrame for .ico (DecodeFileWithWic).
+- uEdition: MViewVersion 1.1.0.
+- readme.md for 1.1 (What 1.1 brings; 1.0's section kept as "What 1.0
+  brought"); docs/release_notes_v1.1.0.md.
+- TestNavigation: the new formats (146 pass).
+- Checked under Wine 9 (cross-compiled console test through
+  TMediaLoader): multi.ico (16, 256, 48) -> 256 x 256; a JPEG named
+  .webp read by content; random .heic / .cr2 -> the codec notes.
+
+User: "update the about window v1.1"; the right-click menu "cleaned up and
+re-organized", in this order: Side by side with Total Commander (bold,
+deep green), Follow (bold) | copy, paste, delete current image (moves to
+del folder), save image, save image as; "hide the debug save - do not
+delete" | Rapid, sidepanel, preview strip on/off ("make this a toggle"),
+filters, lock filters, order the images | About, Exit.
+- umainform.CreateViewer: the menu in that order (AddMenuLine); entries
+  not in the list hidden (Visible := False), not removed; Sort panel and
+  Preview strip toggles (FSortPanelItem / FPreviewStripItem, ticked at
+  menu open; TMView.PreviewStripVisible); HandleStrongMenuDraw /
+  Measure (bold; StrongGreenTag -> $006400; ThemeServices background /
+  hover when themed, else clMenu / clHighlight).
+- uEdition: MViewVersion '1.1'; About: "Versarite MView 1.1", Image Lab
+  named.
+- Checked: MView.exe under Wine 9 on the virtual screen: menu order,
+  bold / green, alignment; About text.
+
+User: "remove Lock filters - has its own osd icon"; "several items from
+before are missing now: Apply filters, Resize to shown, make icon" (my
+mistake: I had hidden every entry not in the user's list).
+- umainform: Resize to the size shown and Make icon from this image after
+  Save image as; Apply filters to a copy after Filters; Lock filters
+  hidden. Still hidden: Crop selection, Undo, Magnifier, the debug save.
+- Checked under Wine (menu screenshot).
+
+User: '"Rapid sorting" (not selection) should be in bold and red font'.
+- The feature's name on screen is "Rapid sorting" (menu, panel title,
+  "Rapid sorting off", hints, the mouse-profile captions, the key page's
+  note, the ini help, readme, release notes, spec 9.10). Code names and
+  the profile command RapidSelection stay (saved profiles keep working).
+- umainform: FRapidItem bold red (StrongRedTag, $0000C8) through
+  HandleStrongMenuDraw. Checked under Wine.
+
+User: '"Crop selection" should be there once a selection was made,
+"Filters" is not needed, it has its mouse action'.
+- umainform: Crop selection in the image group (after Save image as),
+  Visible := CanCrop at menu open; Filters hidden. Checked under Wine
+  with a selection drawn.
+
+User: "move the left side panel slightly down, such that the osd text is
+readable"; then "do not shrink the rows, move the entire panel".
+- uFilterPanel: FTop = 28 px (scaled; at most a quarter of the view),
+  Top returns it; the rows keep their size (FHeight only limited to the
+  view). Checked under Wine with edit mode on.
+
+User: "it is a true v1.1"; "the left side panel has now no frame on the
+top. it looks incomplete".
+- uFilterPanel.Redraw: a line along the top (as right and bottom) while
+  FTop > 0. Checked under Wine.
+
+User: "update all documentation and transfer the necessary files to
+C:\projects\GIT\Versarite MView\, and update the readme.md for push to git".
+- docs/architecture/MView_Architecture.md / .docx: 1.1 (a section "What
+  changed since 1.0", the new units in the table, "What comes next").
+- readme.md: written for the GitHub copy (tests without the microscopy
+  ones, the Store codecs, the microscopy edition not in the repository).
+- Example names of the private microscopy data replaced by "sample" in
+  the comments of uContainers, uExtensions, uMView and in TestExtensions
+  (project and GitHub alike); in the GitHub copies of day025.log,
+  day026.log and Strategy_Phase_G.md / .docx as well (the project's logs
+  keep the real names).
+- GitHub copy: the 58 MView units and uMainForm.lfm, MView.lpi / .lpr /
+  .res, the tests (TestExtensions new; build_test.bat without TestLif and
+  TestCalibrations), day025-027, release notes 1.1, Strategy_Phase_G,
+  spec 1.3, the viewer comparison, the architecture, readme.md. Not
+  copied: source\microscopy, MViewLab.*, TestLif / TestCalibrations,
+  specs\microscopy, the wanted-features and automated-tests notes,
+  Hamana's material, the test images.
+- Checked: the GitHub tree alone (no microscopy folder) builds MView.exe
+  (win64); TestNavigation 146, TestExif 17, TestSort 105, TestFilters 53,
+  TestExtensions 55 pass; TestMouse 85 of 86 (the one missing is
+  mouse\Hamana.mouse, absent only in the scratch tree).
+
+User: icons made by MView could not be opened ("Cannot display this image
+saved_previous.ico - Windows can't read this file"), others could.
+- Cause: .ico went to WIC only (Batch D); MakeIconFromImage wrote every
+  size as PNG through TFPWriterPNG, which drops the alpha channel of an
+  opaque picture (CountAlphas: colour type 2). Windows' icon codec reads
+  PNG entries only as 32-bit RGBA. The sort panel was not affected (its
+  own decoder).
+- uIconFile: IconDibEntry (32-bit DIB + AND mask) and IconPngEntry (own
+  PNG writer, always RGBA, zstream + crc); WriteIconFile takes entries.
+- uMView.MakeIconFromImage: DIB for 16 .. 128 px, RGBA PNG for 256 px;
+  FPWritePNG no longer used.
+- umedialoader: DecodeIconBitmap (moved from uSortIcons, which now calls
+  it) and LoadIcon: an .ico is read by MView first (largest picture),
+  WIC only if that fails. Icons made before open again.
+- TestSort: TestIconEntries (6 checks; DIB and PNG read back, the PNG by
+  FPReadPNG with its alpha): 111 pass. Checked under Wine: the user's
+  saved_previous.ico shows (256 x 256).
+
+User: with the right-click menu's preview toggle on, the top bar should
+stay when the mouse leaves; only when opened otherwise close on leaving.
+- uPreviewStrip: Pinned (Show(AMouseInside, APinned)); Tick doesn't
+  close a pinned bar; Hide unpins.
+- uMView: cmdPreviewStrip value 0 (menu, key): open pinned, pin one
+  opened at the edge, else close; value 1 (top edge): open unpinned.
+  PreviewStripPinned; the menu tick shows it. Esc closes it as before.
+- Spec 9.11 and the release notes say so.

@@ -35,6 +35,10 @@ unit uImageSaver;
     "mview" if there is no image).
   - SaveBitmapAsPng: write a bitmap as an 8-bit PNG without alpha,
     fastest compression; creates the folder; raises on failure.
+  - SaveBitmapAs (Day 26): by the name's extension a PNG or (.tif,
+    .tiff) an RGB TIFF; with a scale (µm per pixel of the bitmap, > 0)
+    the file carries it (uImageFileScale: the TIFF ImageJ's way, the PNG
+    a pHYs chunk). TImageSaveThread takes the scale and uses it.
   - TImageSaveThread: write the file; report the outcome as text
     ("saved: ..." or "save failed: ..."). If the folder can't be
     used, write the same name into the fallback folder (the user's
@@ -58,7 +62,8 @@ unit uImageSaver;
   Uses (MView units)
   ------------------
   interface:      uTypes, uDecodedImage
-  implementation: uFileMover (UniqueFileName)
+  implementation: uFileMover (UniqueFileName), uContainers,
+                  uImageFileScale
   Libraries:      Classes, SysUtils, FPWritePNG, ZStream, BGRABitmap,
                   BGRABitmapTypes
 
@@ -89,6 +94,7 @@ type
     FFileName: string;
     FFallbackDir: string;
     FUnique: Boolean;
+    FUmX, FUmY: Double;
     FSavedFileName: string;
     FResultText: string;
   protected
@@ -101,8 +107,11 @@ type
     { AUnique (sorting a pasted or cropped image, Day 21): the folder
       must exist (it is not made), and a name that is taken gets _1,
       _2 ... (never overwritten). }
+    { AUmX / AUmY (Day 26): µm per pixel of AImage's bitmap, written into
+      the file; 0 = none. }
     constructor Create(const AImage: IDecodedImage; const AFileName: string;
-      const AFallbackDir: string = ''; AUnique: Boolean = False);
+      const AFallbackDir: string = ''; AUnique: Boolean = False; AUmX: Double = 0;
+      AUmY: Double = 0);
     { The file asked for. }
     property FileName: string read FFileName;
     { The file actually written ('' if none), valid once Finished. }
@@ -120,10 +129,17 @@ function SavedViewFileName(const ADirectory: string; const AImage: IDecodedImage
   folder. Raises on failure. }
 procedure SaveBitmapAsPng(ABitmap: TBGRABitmap; const AFileName: string);
 
+{ A PNG or (.tif / .tiff) a TIFF, by AFileName's extension; AUmX / AUmY
+  > 0: with that scale (µm per pixel of ABitmap). Creates the folder.
+  Raises on failure. }
+procedure SaveBitmapAs(ABitmap: TBGRABitmap; const AFileName: string; AUmX, AUmY: Double);
+
 implementation
 
 uses
-  uFileMover;
+  uFileMover,
+  uContainers,
+  uImageFileScale;
 
 function QualityName(AQuality: TQualityLevel): string;
 begin
@@ -139,7 +155,7 @@ end;
 function SavedImageFileName(const ADirectory: string; const AImage: IDecodedImage): string;
 begin
   Result := IncludeTrailingPathDelimiter(ADirectory)
-    + ChangeFileExt(ExtractFileName(AImage.Key.FileName), '')
+    + ItemBaseName(AImage.Key.FileName)
     + Format('_%s_%dx%d_%s.png', [QualityName(AImage.Quality),
         AImage.Width, AImage.Height, FormatDateTime('yyyymmdd-hhnnss', Now)]);
 end;
@@ -149,7 +165,7 @@ var
   Base: string;
 begin
   if AImage <> nil then
-    Base := ChangeFileExt(ExtractFileName(AImage.Key.FileName), '')
+    Base := ItemBaseName(AImage.Key.FileName)
   else
     Base := 'mview';
   Result := IncludeTrailingPathDelimiter(ADirectory)
@@ -175,11 +191,84 @@ begin
   end;
 end;
 
+procedure WriteBytesToFile(const AData: TBytes; const AFileName: string);
+var
+  Stream: TFileStream;
+begin
+  Stream := TFileStream.Create(AFileName, fmCreate);
+  try
+    if Length(AData) > 0 then
+      Stream.WriteBuffer(AData[0], Length(AData));
+  finally
+    Stream.Free;
+  end;
+end;
+
+procedure SaveBitmapAs(ABitmap: TBGRABitmap; const AFileName: string; AUmX, AUmY: Double);
+var
+  Ext: string;
+  RGB, Data: TBytes;
+  X, Y, P: Integer;
+  Row: PBGRAPixel;
+  Mem: TMemoryStream;
+  Writer: TFPWriterPNG;
+begin
+  Ext := LowerCase(ExtractFileExt(AFileName));
+  if (Ext = '.tif') or (Ext = '.tiff') then
+  begin
+    ForceDirectories(ExtractFileDir(AFileName));
+    SetLength(RGB, Int64(ABitmap.Width) * ABitmap.Height * 3);
+    P := 0;
+    for Y := 0 to ABitmap.Height - 1 do
+    begin
+      Row := ABitmap.ScanLine[Y];
+      for X := 0 to ABitmap.Width - 1 do
+      begin
+        RGB[P] := Row^.red;
+        RGB[P + 1] := Row^.green;
+        RGB[P + 2] := Row^.blue;
+        Inc(P, 3);
+        Inc(Row);
+      end;
+    end;
+    Data := MakeRgbTiff(ABitmap.Width, ABitmap.Height, RGB, AUmX, AUmY);
+    RGB := nil;
+    if Length(Data) = 0 then
+      raise Exception.Create('the TIFF could not be made');
+    WriteBytesToFile(Data, AFileName);
+    Exit;
+  end;
+  if (AUmX <= 0) or (AUmY <= 0) then
+  begin
+    SaveBitmapAsPng(ABitmap, AFileName);
+    Exit;
+  end;
+  { A PNG with its scale: written to memory, the pHYs chunk added. }
+  ForceDirectories(ExtractFileDir(AFileName));
+  Mem := TMemoryStream.Create;
+  Writer := TFPWriterPNG.Create;
+  try
+    Writer.CompressionLevel := clfastest;
+    Writer.UseAlpha := False;
+    Writer.WordSized := False;
+    ABitmap.SaveToStream(Mem, Writer);
+    SetLength(Data, Mem.Size);
+    if Mem.Size > 0 then
+      Move(Mem.Memory^, Data[0], Mem.Size);
+  finally
+    Writer.Free;
+    Mem.Free;
+  end;
+  WriteBytesToFile(AddPngPixelSize(Data, AUmX, AUmY), AFileName);
+end;
+
 { TImageSaveThread }
 
 constructor TImageSaveThread.Create(const AImage: IDecodedImage; const AFileName: string;
-  const AFallbackDir: string; AUnique: Boolean);
+  const AFallbackDir: string; AUnique: Boolean; AUmX: Double; AUmY: Double);
 begin
+  FUmX := AUmX;
+  FUmY := AUmY;
   FImage := AImage;
   FFileName := AFileName;
   FFallbackDir := AFallbackDir;
@@ -209,9 +298,12 @@ begin
     FFileName := UniqueFileName(ExtractFileDir(FFileName), ExtractFileName(FFileName));
   end;
   try
-    SaveBitmapAsPng(FImage.Bitmap, FFileName);
+    SaveBitmapAs(FImage.Bitmap, FFileName, FUmX, FUmY);
     FSavedFileName := FFileName;
     FResultText := 'saved: ' + FFileName;
+    if (FUmX > 0) and (FUmY > 0) then
+      FResultText := FResultText + '   (with its scale, '
+        + FloatToStrF(FUmX, ffGeneral, 4, 0) + ' µm/px)';
   except
     on E: Exception do
     begin
@@ -227,7 +319,7 @@ begin
         FResultText := 'save failed: ' + Reason
       else
         try
-          SaveBitmapAsPng(FImage.Bitmap, Fallback);
+          SaveBitmapAs(FImage.Bitmap, Fallback, FUmX, FUmY);
           FSavedFileName := Fallback;
           FResultText := 'saved: ' + Fallback + '   (the folder '
             + ExtractFileDir(FFileName) + ' could not be used: ' + Reason + ')';

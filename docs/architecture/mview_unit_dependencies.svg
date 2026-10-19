@@ -1,330 +1,430 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2472" height="1556" viewBox="0 0 2472 1556" font-family="Segoe UI, Helvetica, Arial, sans-serif" xmlns:c2pa="http://c2pa.org/manifest"><metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTo4ZDBhYWMxNS02ZDk5LTQ1OWEtYTMxYi1iZGRhYzE0ODU5NzAAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaJQShhDIsA4pv0xWtteMpw4AAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDpmNGU0YjczNy1lMWViLTRlZGMtOWU0OS1mNjJlZTA0NDFhNDFscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNoFoQ/gYu64RXMFlyW3mIQmAAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFggNW3ddsRX/BhTRfBr7v8D61GoyXxY+G1ExNGwPPRoiKukZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaN3EmAK6Of/vLXefZoXUzvoAAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRNAAAAAAAAAAAAAAAAAGRoYXNoWCBrIV87Rrj3NvYsbdF7v1IHnag/sWozRQZpXHpc9uvUnWRuYW1lbmp1bWJmIG1hbmlmZXN0amV4Y2x1c2lvbnOBomVzdGFydBjPZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOjhkMGFhYzE1LTZkOTktNDU5YS1hMzFiLWJkZGFjMTQ4NTk3MC9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOjZlY2EwNTFiLWUyYWItNDg2ZS1hNzM3LWMwZjNjZDcwZTViZnJjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCA1bd12xFf8GFNF8Gvu/wPrUajJfFj4bUTE0bA89GiIq6JjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggrXhJNhBk4sgPnZP0+PHuAPXuIsBFWnwuL2+28K3Zd3eiY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFggxNBHFA8PXPTZC6wVLRyTzXG1TN8aX76AeXWFU4FN+BR0Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQMa3Bb66WHFdVTRsXV9IctQKHT8BEPRlgvRsJd7OR1USnBzMRTJkP79oCmrBDDdz0Tsd4t0yIExgTWvXMejXgAE=</c2pa:manifest></metadata>
+<svg xmlns="http://www.w3.org/2000/svg" width="3024" height="1706" viewBox="0 0 3024 1706" font-family="Segoe UI, Helvetica, Arial, sans-serif" xmlns:c2pa="http://c2pa.org/manifest"><metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTo5OWQxZGU5My0yM2RlLTQ0ZGEtODJkZS0yMWE2NTM3OGEzODMAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaDaxGV585TwZuMx/VUOdWZ0AAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDpiZGFmMjlkNS1kNmQ4LTRlNzUtODQ4NS1jNWZiNmZiYjkyYTVscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNoYIYkecpNjq94HhcJeQlmFQAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFggdEp4QicNupgIsFu15wKpjHjYHqnpTYVTvL9z5w0Y5o+kZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaP5ZUIJmztlNR7YuD7rUd28AAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRNAAAAAAAAAAAAAAAAAGRoYXNoWCBl5CMZRhr9/EsrkdDer2hcDx1rGs2UTT5cpa9TMj+MU2RuYW1lbmp1bWJmIG1hbmlmZXN0amV4Y2x1c2lvbnOBomVzdGFydBjPZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOjk5ZDFkZTkzLTIzZGUtNDRkYS04MmRlLTIxYTY1Mzc4YTM4My9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOjhkZmQxM2NjLTdjNmYtNGU0OS1hZGQ4LTU3MmExYjJhM2QyNHJjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCB0SnhCJw26mAiwW7XnAqmMeNgeqelNhVO8v3PnDRjmj6JjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFgg+ytbg5ZOoOm5uRqpH9oipXnVhoip536stDkiEcO5xoiiY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFggP9jJwN4cD6iczTzq/1n+0/LqUggLigF3WXUPBelausN0Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQGTahjb+C+ex7zMQW9FG2x7zEjKUpmWS+LCthngptHVzAkuOTTi0HyZbqVXJzsZYCI6AoeFXURS02QRzeiB1XhU=</c2pa:manifest></metadata>
 <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/></marker><marker id="ahf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c4c8cf"/></marker></defs>
-<rect width="2472" height="1556" fill="#ffffff"/>
-<text x="40" y="52" font-size="28" font-weight="700" fill="#1f2937">Versarite MView 1.0 — unit dependencies</text>
+<rect width="3024" height="1706" fill="#ffffff"/>
+<text x="40" y="52" font-size="28" font-weight="700" fill="#1f2937">VersariteViewer 1.1 — unit dependencies</text>
 <text x="40" y="84" font-size="15" fill="#4b5563">Each arrow points from a unit to a unit it uses (its uses clause). Units higher up depend on units lower down; nothing points upwards, so there are no cycles.</text>
-<text x="40" y="106" font-size="15" fill="#4b5563">Generated from the source on 2026-10-05 (49 units, 134 uses). Light arrows go to the shared basics (uTypes, uCommands, uStopwatch, uIOGate, uMemoryGuard); dashed = used in the implementation section only.</text>
-<text x="16" y="1158.0" font-size="12" fill="#9ca3af">L0</text>
-<text x="16" y="930.0" font-size="12" fill="#9ca3af">L1</text>
-<text x="16" y="780.0" font-size="12" fill="#9ca3af">L2</text>
-<text x="16" y="630.0" font-size="12" fill="#9ca3af">L3</text>
-<text x="16" y="480.0" font-size="12" fill="#9ca3af">L4</text>
-<text x="16" y="330.0" font-size="12" fill="#9ca3af">L5</text>
-<text x="16" y="180.0" font-size="12" fill="#9ca3af">L6</text>
-<path d="M1729.7,800.0 C1729.7,920.0 2179.9,1085.0 2179.9,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1410.8,950.0 C1410.8,1029.7 1032.6,1047.3 1032.6,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1218.8,800.0 C1218.8,920.0 1023.3,1007.0 1023.3,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M2088.0,1028.0 C2088.0,1107.7 2217.2,1125.3 2217.2,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1997.2,950.0 C1997.2,1064.8 2198.6,1090.2 2198.6,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1094.1,500.0 C1094.1,620.0 845.2,857.0 845.2,977.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1302.4,500.0 C1302.4,620.0 1413.8,1085.0 1413.8,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1636.1,650.0 C1636.1,770.0 2142.7,1085.0 2142.7,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1511.9,650.0 C1511.9,770.0 1443.6,1085.0 1443.6,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1417.9,350.0 C1417.9,470.0 2124.1,1085.0 2124.1,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1741.2,950.0 C1741.2,1029.7 1060.5,1047.3 1060.5,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M954.0,650.0 C954.0,770.0 795.6,857.0 795.6,977.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M900.8,650.0 C900.8,770.0 517.8,1007.0 517.8,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M996.5,650.0 C996.5,770.0 1324.4,1085.0 1324.4,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M975.2,650.0 C975.2,770.0 976.7,1007.0 976.7,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M620.0,800.0 C620.0,879.6 745.9,897.4 745.9,977.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M570.3,800.0 C570.3,920.0 458.2,1007.0 458.2,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M669.7,800.0 C669.7,920.0 939.5,1007.0 939.5,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M502.3,1028.0 C502.3,1072.5 428.4,1082.5 428.4,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M601.7,1028.0 C601.7,1072.5 930.2,1082.5 930.2,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M881.7,800.0 C881.7,920.0 967.4,1007.0 967.4,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M832.0,800.0 C832.0,879.6 770.8,897.4 770.8,977.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
-<path d="M782.3,800.0 C782.3,920.0 488.0,1007.0 488.0,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
-<path d="M680.0,950.0 C680.0,1029.7 948.8,1047.3 948.8,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1842.3,800.0 C1842.3,920.0 1069.8,1007.0 1069.8,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M808.0,1028.0 C808.0,1072.5 958.1,1082.5 958.1,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1325.8,200.0 C1325.8,320.0 2105.4,1085.0 2105.4,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1260.7,200.0 C1260.7,320.0 1384.0,1085.0 1384.0,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M878.4,500.0 C878.4,620.0 820.4,857.0 820.4,977.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M938.0,500.0 C938.0,620.0 986.0,1007.0 986.0,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1412.1,800.0 C1412.1,920.0 1041.9,1007.0 1041.9,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1222.0,350.0 C1222.0,470.0 2086.8,1085.0 2086.8,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1092.9,350.0 C1092.9,470.0 870.1,857.0 870.1,977.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1078.0,350.0 C1078.0,470.0 547.6,1007.0 547.6,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1167.4,350.0 C1167.4,470.0 1354.2,1085.0 1354.2,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1117.7,350.0 C1117.7,470.0 1004.7,1007.0 1004.7,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1094.1,650.0 C1094.1,770.0 1014.0,1007.0 1014.0,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1006.8,800.0 C1006.8,920.0 995.3,1007.0 995.3,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1623.7,500.0 C1623.7,620.0 2161.3,1085.0 2161.3,1205.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1526.3,1028.0 C1526.3,1072.5 1051.2,1082.5 1051.2,1127.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
-<path d="M1680.0,800.0 C1680.0,844.5 2019.6,854.5 2019.6,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1630.3,800.0 C1630.3,920.0 1896.0,1085.0 1896.0,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1485.2,950.0 C1485.2,1029.7 1311.9,1047.3 1311.9,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1324.8,650.0 C1324.8,762.0 1497.7,787.0 1497.7,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1399.2,650.0 C1399.2,694.5 1717.2,704.5 1717.2,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1293.2,800.0 C1293.2,844.5 1713.3,854.5 1713.3,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1922.8,950.0 C1922.8,1064.8 1945.7,1090.2 1945.7,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1205.9,500.0 C1205.9,620.0 1526.3,857.0 1526.3,977.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1168.6,500.0 C1168.6,612.0 1418.3,637.0 1418.3,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1131.4,500.0 C1131.4,544.5 1112.8,554.5 1112.8,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1362.0,500.0 C1362.0,620.0 1731.9,779.0 1731.9,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1391.8,500.0 C1391.8,620.0 1768.0,1007.0 1768.0,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1421.6,500.0 C1421.6,612.0 1892.0,637.0 1892.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1332.2,500.0 C1332.2,544.5 1592.6,554.5 1592.6,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1064.0,1028.0 C1064.0,1072.5 1708.4,1082.5 1708.4,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1536.8,650.0 C1536.8,762.0 1750.5,787.0 1750.5,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1586.4,650.0 C1586.4,770.0 1869.2,857.0 1869.2,977.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1561.6,650.0 C1561.6,770.0 1797.8,1007.0 1797.8,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1611.2,650.0 C1611.2,694.5 1941.7,704.5 1941.7,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1320.0,1028.0 C1320.0,1072.5 1274.6,1082.5 1274.6,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1192.0,950.0 C1192.0,1064.8 909.2,1090.2 909.2,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-<path d="M1306.1,350.0 C1306.1,394.6 1399.2,404.4 1399.2,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1343.4,350.0 C1343.4,394.6 1611.2,404.4 1611.2,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1380.6,350.0 C1380.6,470.0 1960.0,779.0 1960.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1666.8,950.0 C1666.8,1064.8 671.9,1090.2 671.9,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M424.0,950.0 C424.0,1029.7 194.8,1047.3 194.8,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M922.0,650.0 C922.0,770.0 597.4,1085.0 597.4,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1007.2,650.0 C1007.2,762.0 1638.8,787.0 1638.8,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M868.8,650.0 C868.8,770.0 269.2,1007.0 269.2,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M911.4,650.0 C911.4,770.0 552.0,857.0 552.0,977.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M985.9,650.0 C985.9,770.0 1068.4,1085.0 1068.4,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M879.5,650.0 C879.5,770.0 360.0,1085.0 360.0,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M943.3,650.0 C943.3,762.0 680.0,787.0 680.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M890.1,650.0 C890.1,762.0 424.0,787.0 424.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M932.7,650.0 C932.7,694.5 620.0,704.5 620.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M964.6,650.0 C964.6,694.5 832.0,704.5 832.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M552.0,1028.0 C552.0,1107.7 560.1,1125.3 560.1,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1941.7,800.0 C1941.7,844.5 1769.2,854.5 1769.2,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1892.0,800.0 C1892.0,920.0 1677.2,1085.0 1677.2,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-<path d="M1832.0,1028.0 C1832.0,1072.5 1827.6,1082.5 1827.6,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M936.0,950.0 C936.0,1029.7 694.3,1047.3 694.3,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-<path d="M1270.0,200.0 C1270.0,320.0 1448.0,779.0 1448.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1232.7,200.0 C1232.7,244.6 1362.0,254.4 1362.0,299.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1242.0,200.0 C1242.0,312.1 1324.8,336.9 1324.8,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1251.3,200.0 C1251.3,320.0 1362.0,479.0 1362.0,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1195.5,200.0 C1195.5,244.6 1150.0,254.4 1150.0,299.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1288.6,200.0 C1288.6,312.1 1536.8,336.9 1536.8,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1316.5,200.0 C1316.5,320.0 1930.2,779.0 1930.2,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1297.9,200.0 C1297.9,320.0 1555.4,479.0 1555.4,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1214.1,200.0 C1214.1,320.0 1237.4,1007.0 1237.4,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1204.8,200.0 C1204.8,320.0 1229.2,779.0 1229.2,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1223.4,200.0 C1223.4,320.0 1357.2,857.0 1357.2,977.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1279.3,200.0 C1279.3,320.0 1512.0,1007.0 1512.0,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1307.2,200.0 C1307.2,320.0 1642.8,629.0 1642.8,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-<path d="M1186.2,200.0 C1186.2,320.0 793.7,1007.0 793.7,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-<path d="M997.6,500.0 C997.6,620.0 1657.5,779.0 1657.5,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M967.8,500.0 C967.8,612.0 1006.8,637.0 1006.8,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M908.2,500.0 C908.2,544.5 900.8,554.5 900.8,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1486.6,800.0 C1486.6,879.6 1625.7,897.4 1625.7,977.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1449.4,800.0 C1449.4,920.0 1157.8,1085.0 1157.8,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1523.9,800.0 C1523.9,920.0 1986.8,1007.0 1986.8,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1083.0,350.0 C1083.0,470.0 634.6,1085.0 634.6,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1172.3,350.0 C1172.3,470.0 1398.3,779.0 1398.3,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1192.2,350.0 C1192.2,470.0 1694.7,779.0 1694.7,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1137.6,350.0 C1137.6,394.6 1150.0,404.4 1150.0,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1177.3,350.0 C1177.3,470.0 1468.0,629.0 1468.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1187.2,350.0 C1187.2,470.0 1602.8,1085.0 1602.8,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1202.1,350.0 C1202.1,470.0 1794.8,857.0 1794.8,977.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1127.7,350.0 C1127.7,470.0 1064.0,857.0 1064.0,977.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1197.2,350.0 C1197.2,470.0 1738.2,1007.0 1738.2,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1152.5,350.0 C1152.5,470.0 1256.0,629.0 1256.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1132.6,350.0 C1132.6,470.0 1098.2,1085.0 1098.2,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1207.1,350.0 C1207.1,470.0 1842.3,629.0 1842.3,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1122.7,350.0 C1122.7,470.0 1081.2,629.0 1081.2,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1107.8,350.0 C1107.8,394.6 938.0,404.4 938.0,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1112.8,350.0 C1112.8,462.1 975.2,486.9 975.2,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1212.1,350.0 C1212.1,470.0 1846.3,1085.0 1846.3,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1142.6,350.0 C1142.6,462.1 1187.2,486.9 1187.2,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1182.3,350.0 C1182.3,462.1 1518.1,486.9 1518.1,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1157.4,350.0 C1157.4,470.0 1200.1,1007.0 1200.1,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1147.5,350.0 C1147.5,470.0 1154.8,779.0 1154.8,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1162.4,350.0 C1162.4,470.0 1282.8,857.0 1282.8,977.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1102.8,350.0 C1102.8,470.0 936.0,779.0 936.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1097.9,350.0 C1097.9,470.0 834.8,1085.0 834.8,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-<path d="M1217.0,350.0 C1217.0,470.0 1900.4,779.0 1900.4,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-<path d="M1087.9,350.0 C1087.9,470.0 744.0,1007.0 744.0,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-<path d="M1205.9,650.0 C1205.9,770.0 1576.0,857.0 1576.0,977.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1168.6,650.0 C1168.6,694.5 1517.7,704.5 1517.7,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1131.4,650.0 C1131.4,770.0 1128.0,1085.0 1128.0,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
-<path d="M1081.2,800.0 C1081.2,844.5 1676.1,854.5 1676.1,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1574.0,500.0 C1574.0,620.0 1989.8,779.0 1989.8,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1524.3,500.0 C1524.3,544.5 1629.9,554.5 1629.9,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1576.0,1028.0 C1576.0,1107.7 1187.6,1125.3 1187.6,1205.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<path d="M1625.7,1028.0 C1625.7,1072.5 2061.2,1082.5 2061.2,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
-<rect x="1158.0" y="1128" width="196" height="50" rx="8" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.6"/>
-<text x="1256.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#8A6D0B">uSortFolders</text>
-<text x="1256.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">sort folders and their slots</text>
-<rect x="1320.0" y="1120" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1339.0" y="1132" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="1582.0" y="750" width="196" height="50" rx="8" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.6"/>
-<text x="1680.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#8A6D0B">uMousePage</text>
-<text x="1680.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">&quot;Mouse &amp; keys&quot; page</text>
-<rect x="1350.0" y="900" width="196" height="50" rx="8" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.6"/>
-<text x="1448.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#8A6D0B">uConfig</text>
-<text x="1448.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">MView.ini as typed settings</text>
-<rect x="1264.0" y="600" width="196" height="50" rx="8" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.6"/>
-<text x="1362.0" y="621" text-anchor="middle" font-size="14.5" font-weight="700" fill="#8A6D0B">uIniEditor</text>
-<text x="1362.0" y="639" text-anchor="middle" font-size="11.2" fill="#374151">settings screen (ini editor)</text>
-<rect x="1158.0" y="750" width="196" height="50" rx="8" fill="#E6EEF0" stroke="#3D6670" stroke-width="1.6"/>
-<text x="1256.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#3D6670">uImageCache</text>
-<text x="1256.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">decoded images, LRU + window</text>
-<rect x="1990.0" y="978" width="196" height="50" rx="8" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.6" stroke-dasharray="5 3"/>
-<text x="2088.0" y="999" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6E3F8C">uInputHandler</text>
-<text x="2088.0" y="1017" text-anchor="middle" font-size="11.2" fill="#374151">RETIRED, not used</text>
-<rect x="1862.0" y="900" width="196" height="50" rx="8" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.6"/>
-<text x="1960.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6E3F8C">uMouseEngine</text>
-<text x="1960.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">mouse / keys -&gt; commands</text>
-<rect x="1798.0" y="1206" width="196" height="50" rx="8" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.6"/>
-<text x="1896.0" y="1227" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6E3F8C">uMouseProfile</text>
-<text x="1896.0" y="1245" text-anchor="middle" font-size="11.2" fill="#374151">Default.mouse: zones, events</text>
-<rect x="1052.0" y="450" width="196" height="50" rx="8" fill="#DFF1F3" stroke="#17707A" stroke-width="1.6"/>
-<text x="1150.0" y="471" text-anchor="middle" font-size="14.5" font-weight="700" fill="#17707A">uDirectoryScanner</text>
-<text x="1150.0" y="489" text-anchor="middle" font-size="11.2" fill="#374151">scanner thread: folders</text>
-<rect x="1264.0" y="450" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
-<text x="1362.0" y="471" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uGLRenderer</text>
-<text x="1362.0" y="489" text-anchor="middle" font-size="11.2" fill="#374151">GPU renderer: tiles, filter shader</text>
-<rect x="966.0" y="978" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
-<text x="1064.0" y="999" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uFilterPanel</text>
-<text x="1064.0" y="1017" text-anchor="middle" font-size="11.2" fill="#374151">filter panel, histogram</text>
-<rect x="1128.0" y="970" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1147.0" y="982" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="1476.0" y="600" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
-<text x="1574.0" y="621" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uRenderer</text>
-<text x="1574.0" y="639" text-anchor="middle" font-size="11.2" fill="#374151">view state, CPU renderer, overlays</text>
-<rect x="1222.0" y="978" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
-<text x="1320.0" y="999" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uSortPanel</text>
-<text x="1320.0" y="1017" text-anchor="middle" font-size="11.2" fill="#374151">sort panel, right edge</text>
-<rect x="1384.0" y="970" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1403.0" y="982" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="1094.0" y="900" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
-<text x="1192.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uSortIcons</text>
-<text x="1192.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">slot icons, loader thread</text>
-<rect x="1256.0" y="892" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1275.0" y="904" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="1264.0" y="300" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
-<text x="1362.0" y="321" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uGLMediaView</text>
-<text x="1362.0" y="339" text-anchor="middle" font-size="11.2" fill="#374151">OpenGL drawing surface</text>
-<rect x="1606.0" y="900" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="1704.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uDecodedImage</text>
-<text x="1704.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">decoded image (ref-counted)</text>
-<rect x="326.0" y="900" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="424.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uJpegHeader</text>
-<text x="424.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">JPEG header, EXIF thumbnail</text>
-<rect x="840.0" y="600" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="938.0" y="621" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uMediaLoader</text>
-<text x="938.0" y="639" text-anchor="middle" font-size="11.2" fill="#374151">file -&gt; pixels, picks decoder</text>
-<rect x="522.0" y="750" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="620.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uTiffQuick</text>
-<text x="620.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">fast TIFF: raw rows, own LZW</text>
-<rect x="134.0" y="1128" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="232.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uExifOrientation</text>
-<text x="232.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">EXIF orientation value</text>
-<rect x="1030.0" y="1206" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="1128.0" y="1227" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uImageFormats</text>
-<text x="1128.0" y="1245" text-anchor="middle" font-size="11.2" fill="#374151">image extensions; videos</text>
-<rect x="262.0" y="1206" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="360.0" y="1227" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uImageScaling</text>
-<text x="360.0" y="1245" text-anchor="middle" font-size="11.2" fill="#374151">fast box downscaling</text>
-<rect x="518.0" y="1206" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="616.0" y="1227" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uAnimation</text>
-<text x="616.0" y="1245" text-anchor="middle" font-size="11.2" fill="#374151">frames, cursor, frame clock</text>
-<rect x="454.0" y="978" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="552.0" y="999" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uGifDecoder</text>
-<text x="552.0" y="1017" text-anchor="middle" font-size="11.2" fill="#374151">own GIF decoder</text>
-<rect x="734.0" y="750" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="832.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uWicDecoder</text>
-<text x="832.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">Windows WIC decoding</text>
-<rect x="582.0" y="900" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
-<text x="680.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uJpegDecoder</text>
-<text x="680.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">own JPEG decoder (fallback)</text>
-<rect x="1670.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="1768.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uFilters</text>
-<text x="1768.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">filter maths, Auto levels</text>
-<rect x="1832.0" y="1120" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1851.0" y="1132" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="1794.0" y="750" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="1892.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uImageSaver</text>
-<text x="1892.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">save PNG (background thread)</text>
-<rect x="1926.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="2024.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uNaturalSort</text>
-<text x="2024.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">file name ordering</text>
-<rect x="2182.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="2280.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uSingleInstance</text>
-<text x="2280.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">only one MView: hand over</text>
-<rect x="2344.0" y="1120" width="38" height="16" rx="8" fill="#F59E0B"/><text x="2363.0" y="1132" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="1734.0" y="978" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="1832.0" y="999" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uFilterImage</text>
-<text x="1832.0" y="1017" text-anchor="middle" font-size="11.2" fill="#374151">filters, sharpen, turn pixels</text>
-<rect x="1896.0" y="970" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1915.0" y="982" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="1414.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="1512.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uWatchdog</text>
-<text x="1512.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">emergency exit, deadline</text>
-<rect x="1542.0" y="1206" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="1640.0" y="1227" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uFileMover</text>
-<text x="1640.0" y="1245" text-anchor="middle" font-size="11.2" fill="#374151">copy / move thread, undo, log</text>
-<rect x="1704.0" y="1198" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1723.0" y="1210" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="1286.0" y="1206" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="1384.0" y="1227" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uStopwatch</text>
-<text x="1384.0" y="1245" text-anchor="middle" font-size="11.2" fill="#374151">ms timer, process age</text>
-<rect x="646.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="744.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uTotalCommander</text>
-<text x="744.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">find / start TC, side by side</text>
-<rect x="808.0" y="1120" width="38" height="16" rx="8" fill="#F59E0B"/><text x="827.0" y="1132" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="838.0" y="900" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="936.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uTCFollow</text>
-<text x="936.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">follows Total Commander</text>
-<rect x="1000.0" y="892" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1019.0" y="904" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="774.0" y="1206" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="872.0" y="1227" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uIconFile</text>
-<text x="872.0" y="1245" text-anchor="middle" font-size="11.2" fill="#374151">.ico read and write</text>
-<rect x="936.0" y="1198" width="38" height="16" rx="8" fill="#F59E0B"/><text x="955.0" y="1210" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
-<rect x="710.0" y="978" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="808.0" y="999" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uIOGate</text>
-<text x="808.0" y="1017" text-anchor="middle" font-size="11.2" fill="#374151">display reads go first</text>
-<rect x="390.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="488.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uMemoryGuard</text>
-<text x="488.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">refuse images too big</text>
-<rect x="1158.0" y="150" width="196" height="50" rx="8" fill="#FBE3E1" stroke="#A8322D" stroke-width="1.6"/>
-<text x="1256.0" y="171" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A8322D">uMainForm</text>
-<text x="1256.0" y="189" text-anchor="middle" font-size="11.2" fill="#374151">window, menu, screen switch</text>
-<rect x="840.0" y="450" width="196" height="50" rx="8" fill="#E6EEF0" stroke="#3D6670" stroke-width="1.6"/>
-<text x="938.0" y="471" text-anchor="middle" font-size="14.5" font-weight="700" fill="#3D6670">uJobScheduler</text>
-<text x="938.0" y="489" text-anchor="middle" font-size="11.2" fill="#374151">decode worker threads</text>
-<rect x="1370.0" y="750" width="196" height="50" rx="8" fill="#DFF1F3" stroke="#17707A" stroke-width="1.6"/>
-<text x="1468.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#17707A">uDirectoryTree</text>
-<text x="1468.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">folder tree of a root</text>
-<rect x="2054.0" y="1206" width="196" height="50" rx="8" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.6"/>
-<text x="2152.0" y="1227" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6E3F8C">uCommands</text>
-<text x="2152.0" y="1245" text-anchor="middle" font-size="11.2" fill="#374151">the command vocabulary</text>
-<rect x="902.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
-<text x="1000.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uTypes</text>
-<text x="1000.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">shared basic types</text>
-<rect x="1052.0" y="300" width="196" height="50" rx="8" fill="#E3EAF7" stroke="#2F5597" stroke-width="1.6"/>
-<text x="1150.0" y="321" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2F5597">uMView</text>
-<text x="1150.0" y="339" text-anchor="middle" font-size="11.2" fill="#374151">the viewer: commands, sorting, filters</text>
-<rect x="1052.0" y="600" width="196" height="50" rx="8" fill="#DFF1F3" stroke="#17707A" stroke-width="1.6"/>
-<text x="1150.0" y="621" text-anchor="middle" font-size="14.5" font-weight="700" fill="#17707A">uNavigator</text>
-<text x="1150.0" y="639" text-anchor="middle" font-size="11.2" fill="#374151">prev / next image and folder</text>
-<rect x="946.0" y="750" width="196" height="50" rx="8" fill="#E6EEF0" stroke="#3D6670" stroke-width="1.6"/>
-<text x="1044.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#3D6670">uJobQueue</text>
-<text x="1044.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">decode jobs, locked queue</text>
-<rect x="1476.0" y="450" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
-<text x="1574.0" y="471" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uMediaView</text>
-<text x="1574.0" y="489" text-anchor="middle" font-size="11.2" fill="#374151">CPU drawing surface</text>
-<rect x="1478.0" y="978" width="196" height="50" rx="8" fill="#DFF1F3" stroke="#17707A" stroke-width="1.6"/>
-<text x="1576.0" y="999" text-anchor="middle" font-size="14.5" font-weight="700" fill="#17707A">uDirectoryImages</text>
-<text x="1576.0" y="1017" text-anchor="middle" font-size="11.2" fill="#374151">image list of one folder</text>
-<text x="40" y="1382" font-size="14" font-weight="700" fill="#1f2937">Source folders</text>
-<rect x="40" y="1396" width="22" height="16" rx="4" fill="#FBE3E1" stroke="#A8322D" stroke-width="1.5"/>
-<text x="70" y="1409" font-size="12.5" fill="#374151">main — window</text>
-<rect x="190.3" y="1396" width="22" height="16" rx="4" fill="#E3EAF7" stroke="#2F5597" stroke-width="1.5"/>
-<text x="220.3" y="1409" font-size="12.5" fill="#374151">core — viewer</text>
-<rect x="340.6" y="1396" width="22" height="16" rx="4" fill="#DFF1F3" stroke="#17707A" stroke-width="1.5"/>
-<text x="370.6" y="1409" font-size="12.5" fill="#374151">core — navigation</text>
-<rect x="519.3" y="1396" width="22" height="16" rx="4" fill="#E6EEF0" stroke="#3D6670" stroke-width="1.5"/>
-<text x="549.3" y="1409" font-size="12.5" fill="#374151">core + cache — jobs, cache</text>
-<rect x="761.9" y="1396" width="22" height="16" rx="4" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.5"/>
-<text x="791.9" y="1409" font-size="12.5" fill="#374151">imaging — decoding</text>
-<rect x="947.7" y="1396" width="22" height="16" rx="4" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.5"/>
-<text x="977.7" y="1409" font-size="12.5" fill="#374151">rendering — drawing, panels (+ core/uMediaView)</text>
-<rect x="1339.4" y="1396" width="22" height="16" rx="4" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.5"/>
-<text x="1369.4" y="1409" font-size="12.5" fill="#374151">mouse (+ core/uCommands)</text>
-<rect x="1567.8000000000002" y="1396" width="22" height="16" rx="4" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.5"/>
-<text x="1597.8000000000002" y="1409" font-size="12.5" fill="#374151">config — settings</text>
-<rect x="1746.5000000000002" y="1396" width="22" height="16" rx="4" fill="#ECECEC" stroke="#505050" stroke-width="1.5"/>
-<text x="1776.5000000000002" y="1409" font-size="12.5" fill="#374151">utility (+ core/uTypes)</text>
-<path d="M40,1436 L100,1436" stroke="#6b7280" stroke-width="1.4" marker-end="url(#ah)"/><text x="110" y="1440" font-size="12.5" fill="#374151">uses (interface section)</text>
-<path d="M290,1436 L350,1436" stroke="#6b7280" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#ah)"/><text x="360" y="1440" font-size="12.5" fill="#374151">uses (implementation section only)</text>
-<path d="M600,1436 L660,1436" stroke="#c4c8cf" stroke-width="1.2" marker-end="url(#ahf)"/><text x="670" y="1440" font-size="12.5" fill="#374151">uses a shared basic unit</text>
-<rect x="880" y="1428" width="38" height="16" rx="8" fill="#F59E0B"/><text x="899" y="1440" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text><text x="928" y="1440" font-size="12.5" fill="#374151">since the last picture (Day 19): sorting, filters, Total Commander, one instance.</text>
-<text x="40" y="1468" font-size="12.5" fill="#374151">L0 … L6: dependency depth (L0 uses no other MView unit).  Dashed box: retired unit, still compiled.  The microscopy edition will add its own units on top of these, in source\microscopy\.</text>
-</svg>
+<text x="40" y="106" font-size="15" fill="#4b5563">Generated from the source on 2026-10-19 (62 units, 192 uses). Light arrows go to the shared basics (uTypes, uCommands, uStopwatch, uIOGate, uMemoryGuard); dashed = used in the implementation section only.</text>
+<text x="16" y="1308.0" font-size="12" fill="#9ca3af">L0</text>
+<text x="16" y="1080.0" font-size="12" fill="#9ca3af">L1</text>
+<text x="16" y="930.0" font-size="12" fill="#9ca3af">L2</text>
+<text x="16" y="780.0" font-size="12" fill="#9ca3af">L3</text>
+<text x="16" y="630.0" font-size="12" fill="#9ca3af">L4</text>
+<text x="16" y="480.0" font-size="12" fill="#9ca3af">L5</text>
+<text x="16" y="330.0" font-size="12" fill="#9ca3af">L6</text>
+<text x="16" y="180.0" font-size="12" fill="#9ca3af">L7</text>
+<path d="M730.4,950.0 C730.4,1070.0 266.3,1235.0 266.3,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1230.6,1178.0 C1230.6,1257.7 1793.0,1275.3 1793.0,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1781.2,800.0 C1781.2,920.0 1867.5,1235.0 1867.5,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M572.0,1100.0 C572.0,1214.8 249.8,1240.2 249.8,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M790.8,1100.0 C790.8,1214.8 282.9,1240.2 282.9,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1744.0,500.0 C1744.0,620.0 1879.9,929.0 1879.9,1049.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1594.1,500.0 C1594.1,620.0 1310.2,1235.0 1310.2,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1687.7,950.0 C1687.7,1070.0 1848.9,1235.0 1848.9,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
+<path d="M2236.0,1178.0 C2236.0,1257.7 1917.2,1275.3 1917.2,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
+<path d="M1254.8,650.0 C1254.8,770.0 316.0,1235.0 316.0,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1366.5,650.0 C1366.5,770.0 1280.4,1235.0 1280.4,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1942.8,1178.0 C1942.8,1257.7 1898.5,1275.3 1898.5,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
+<path d="M1370.1,350.0 C1370.1,470.0 349.1,1235.0 349.1,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1051.7,950.0 C1051.7,1070.0 1786.8,1235.0 1786.8,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1564.6,800.0 C1564.6,912.0 1824.1,937.0 1824.1,1049.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1480.8,800.0 C1480.8,920.0 1241.8,1157.0 1241.8,1277.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1508.7,800.0 C1508.7,920.0 1340.0,1235.0 1340.0,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1573.9,800.0 C1573.9,920.0 1824.1,1235.0 1824.1,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1214.0,950.0 C1214.0,994.5 1786.8,1004.5 1786.8,1049.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1164.3,950.0 C1164.3,1070.0 1152.4,1157.0 1152.4,1277.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1263.7,950.0 C1263.7,1070.0 1799.2,1235.0 1799.2,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1831.4,950.0 C1831.4,994.5 1898.5,1004.5 1898.5,1049.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
+<path d="M1868.6,950.0 C1868.6,1070.0 1879.9,1235.0 1879.9,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
+<path d="M2062.0,950.0 C2062.0,1070.0 1904.8,1235.0 1904.8,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1340.0,1100.0 C1340.0,1179.7 1182.2,1197.3 1182.2,1277.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1389.7,1100.0 C1389.7,1214.8 1811.7,1240.2 1811.7,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1937.4,800.0 C1937.4,912.0 1917.2,937.0 1917.2,1049.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
+<path d="M1974.6,800.0 C1974.6,920.0 1892.3,1235.0 1892.3,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
+<path d="M1426.0,950.0 C1426.0,1070.0 1817.9,1235.0 1817.9,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1475.7,950.0 C1475.7,994.5 1805.5,1004.5 1805.5,1049.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
+<path d="M1376.3,950.0 C1376.3,1070.0 1212.0,1157.0 1212.0,1277.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" stroke-dasharray="6 4" marker-end="url(#ahf)"/>
+<path d="M1596.0,1100.0 C1596.0,1214.8 1842.7,1240.2 1842.7,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M955.6,800.0 C955.6,920.0 1780.6,1235.0 1780.6,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M956.0,1178.0 C956.0,1257.7 299.4,1275.3 299.4,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1724.0,1178.0 C1724.0,1257.7 1861.3,1275.3 1861.3,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1852.0,1100.0 C1852.0,1214.8 1886.1,1240.2 1886.1,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1460.9,200.0 C1460.9,320.0 365.7,1235.0 365.7,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1521.8,200.0 C1521.8,320.0 1369.8,1235.0 1369.8,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1569.2,200.0 C1569.2,320.0 1830.3,1235.0 1830.3,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1561.8,650.0 C1561.8,770.0 1842.7,929.0 1842.7,1049.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1591.6,650.0 C1591.6,770.0 1836.5,1235.0 1836.5,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M2138.2,800.0 C2138.2,920.0 1911.0,1235.0 1911.0,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1565.2,350.0 C1565.2,470.0 382.2,1235.0 382.2,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1653.2,350.0 C1653.2,470.0 1861.3,929.0 1861.3,1049.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1609.2,350.0 C1609.2,470.0 1271.6,1157.0 1271.6,1277.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1619.4,350.0 C1619.4,470.0 1399.6,1235.0 1399.6,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1656.6,350.0 C1656.6,470.0 1855.1,1235.0 1855.1,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1714.2,650.0 C1714.2,770.0 1873.7,1235.0 1873.7,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1357.2,800.0 C1357.2,920.0 1805.5,1235.0 1805.5,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M1270.3,500.0 C1270.3,620.0 332.6,1235.0 332.6,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M2255.4,950.0 C2255.4,1070.0 1923.4,1235.0 1923.4,1355.0" fill="none" stroke="#c4c8cf" stroke-width="1.0" opacity="0.85" marker-end="url(#ahf)"/>
+<path d="M849.6,950.0 C849.6,994.5 768.4,1004.5 768.4,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M760.2,950.0 C760.2,1070.0 394.3,1157.0 394.3,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M790.0,950.0 C790.0,1070.0 534.8,1235.0 534.8,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M819.8,950.0 C819.8,1070.0 644.1,1157.0 644.1,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1267.9,1178.0 C1267.9,1222.5 1924.1,1232.5 1924.1,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1156.1,1178.0 C1156.1,1257.7 584.4,1275.3 584.4,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1193.4,1178.0 C1193.4,1222.5 718.6,1232.5 718.6,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1167.6,800.0 C1167.6,920.0 1162.3,1007.0 1162.3,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1108.0,800.0 C1108.0,844.5 752.8,854.5 752.8,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1048.4,800.0 C1048.4,920.0 559.6,1235.0 559.6,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1137.8,800.0 C1137.8,920.0 893.9,1007.0 893.9,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1078.2,800.0 C1078.2,920.0 681.4,1157.0 681.4,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1706.8,800.0 C1706.8,844.5 1051.7,854.5 1051.7,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M865.2,1100.0 C865.2,1179.7 444.0,1197.3 444.0,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1803.6,500.0 C1803.6,620.0 2255.4,779.0 2255.4,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1773.8,500.0 C1773.8,612.0 2168.0,637.0 2168.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1714.2,500.0 C1714.2,544.5 1781.2,554.5 1781.2,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1684.4,500.0 C1684.4,620.0 1730.2,1007.0 1730.2,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1544.4,500.0 C1544.4,620.0 985.4,779.0 985.4,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1494.8,500.0 C1494.8,620.0 956.0,1157.0 956.0,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1469.9,500.0 C1469.9,612.0 896.0,637.0 896.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1569.2,500.0 C1569.2,544.5 1301.4,554.5 1301.4,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1519.6,500.0 C1519.6,620.0 943.6,1007.0 943.6,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1588.3,950.0 C1588.3,1029.7 993.2,1047.3 993.2,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1638.0,950.0 C1638.0,1070.0 985.8,1157.0 985.8,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1329.3,650.0 C1329.3,762.0 952.3,787.0 952.3,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1347.9,650.0 C1347.9,770.0 1046.8,929.0 1046.8,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1292.1,650.0 C1292.1,770.0 926.2,1157.0 926.2,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1273.5,650.0 C1273.5,694.5 846.3,704.5 846.3,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1385.2,650.0 C1385.2,770.0 1680.6,1007.0 1680.6,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1310.7,650.0 C1310.7,770.0 918.8,1007.0 918.8,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M2017.2,1178.0 C2017.2,1222.5 2035.9,1232.5 2035.9,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2108.0,1100.0 C2108.0,1179.7 2285.7,1197.3 2285.7,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1481.9,350.0 C1481.9,394.6 1494.8,404.4 1494.8,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1444.6,350.0 C1444.6,394.6 1282.8,404.4 1282.8,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1407.4,350.0 C1407.4,470.0 828.0,929.0 828.0,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M952.3,950.0 C952.3,1070.0 1028.1,1235.0 1028.1,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1002.0,950.0 C1002.0,1029.7 1668.1,1047.3 1668.1,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1468.0,1178.0 C1468.0,1222.5 1674.3,1232.5 1674.3,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1471.5,800.0 C1471.5,920.0 1102.6,1235.0 1102.6,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1546.0,800.0 C1546.0,920.0 1693.0,1007.0 1693.0,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1462.2,800.0 C1462.2,844.5 1002.0,854.5 1002.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1555.3,800.0 C1555.3,920.0 1724.0,1157.0 1724.0,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1499.4,800.0 C1499.4,912.0 1340.0,937.0 1340.0,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1601.8,800.0 C1601.8,920.0 2685.9,1157.0 2685.9,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1592.5,800.0 C1592.5,920.0 2308.1,1235.0 2308.1,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1536.7,800.0 C1536.7,912.0 1596.0,937.0 1596.0,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1527.3,800.0 C1527.3,920.0 1468.0,1007.0 1468.0,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1490.1,800.0 C1490.1,844.5 1214.0,854.5 1214.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1518.0,800.0 C1518.0,844.5 1426.0,854.5 1426.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1583.2,800.0 C1583.2,920.0 2186.3,1157.0 2186.3,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1794.1,950.0 C1794.1,1029.7 1755.0,1047.3 1755.0,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1905.9,950.0 C1905.9,1070.0 2382.6,1235.0 2382.6,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M2012.3,950.0 C2012.3,1029.7 1767.4,1047.3 1767.4,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2111.7,950.0 C2111.7,1070.0 2826.3,1235.0 2826.3,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1290.3,1100.0 C1290.3,1214.8 1065.4,1240.2 1065.4,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1900.1,800.0 C1900.1,844.5 1068.2,854.5 1068.2,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M2011.9,800.0 C2011.9,920.0 2419.9,1235.0 2419.9,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M896.0,800.0 C896.0,844.5 935.8,854.5 935.8,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M925.8,800.0 C925.8,920.0 1655.7,1007.0 1655.7,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M866.2,800.0 C866.2,920.0 790.8,1235.0 790.8,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M836.4,800.0 C836.4,920.0 188.0,1157.0 188.0,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M700.0,1178.0 C700.0,1257.7 509.9,1275.3 509.9,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1084.0,1100.0 C1084.0,1179.7 896.4,1197.3 896.4,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2492.0,1178.0 C2492.0,1222.5 2810.1,1232.5 2810.1,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M2364.0,1100.0 C2364.0,1179.7 2541.7,1197.3 2541.7,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1501.5,200.0 C1501.5,320.0 1212.0,1007.0 1212.0,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1589.6,200.0 C1589.6,320.0 2070.8,1235.0 2070.8,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1528.6,200.0 C1528.6,244.6 1426.0,254.4 1426.0,299.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1542.2,200.0 C1542.2,312.1 1569.2,336.9 1569.2,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1494.8,200.0 C1494.8,320.0 1108.0,629.0 1108.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1555.7,200.0 C1555.7,244.6 1638.0,254.4 1638.0,299.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1508.3,200.0 C1508.3,312.1 1357.2,336.9 1357.2,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1481.2,200.0 C1481.2,320.0 857.8,929.0 857.8,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1515.1,200.0 C1515.1,320.0 1338.6,479.0 1338.6,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1535.4,200.0 C1535.4,320.0 1468.0,1157.0 1468.0,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1576.0,200.0 C1576.0,320.0 1961.4,1157.0 1961.4,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1596.3,200.0 C1596.3,320.0 2070.8,929.0 2070.8,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1582.8,200.0 C1582.8,320.0 1942.8,1007.0 1942.8,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1548.9,200.0 C1548.9,320.0 1596.0,1235.0 1596.0,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1562.5,200.0 C1562.5,320.0 1705.4,1007.0 1705.4,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1467.7,200.0 C1467.7,320.0 609.2,1235.0 609.2,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1488.0,200.0 C1488.0,320.0 968.4,1007.0 968.4,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1474.4,200.0 C1474.4,320.0 827.2,779.0 827.2,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1603.1,200.0 C1603.1,320.0 2442.3,1157.0 2442.3,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1472.4,650.0 C1472.4,762.0 1018.6,787.0 1018.6,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1502.2,650.0 C1502.2,694.5 1282.8,704.5 1282.8,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1532.0,650.0 C1532.0,694.5 1494.8,704.5 1494.8,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2108.4,800.0 C2108.4,920.0 1779.9,1007.0 1779.9,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2168.0,800.0 C2168.0,844.5 2329.9,854.5 2329.9,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2197.8,800.0 C2197.8,920.0 2760.4,1157.0 2760.4,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2227.6,800.0 C2227.6,920.0 2876.0,1235.0 2876.0,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1599.1,350.0 C1599.1,470.0 1139.9,1235.0 1139.9,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1605.8,350.0 C1605.8,470.0 1261.7,1007.0 1261.7,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1649.8,350.0 C1649.8,470.0 1850.0,779.0 1850.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1632.9,350.0 C1632.9,470.0 1717.8,1007.0 1717.8,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1595.7,350.0 C1595.7,470.0 1035.1,779.0 1035.1,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1700.6,350.0 C1700.6,470.0 2492.0,1007.0 2492.0,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1690.5,350.0 C1690.5,470.0 2218.1,779.0 2218.1,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1639.7,350.0 C1639.7,394.6 1744.0,404.4 1744.0,449.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1680.3,350.0 C1680.3,470.0 2118.3,629.0 2118.3,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1636.3,350.0 C1636.3,470.0 1773.7,1157.0 1773.7,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1673.5,350.0 C1673.5,470.0 2145.2,1235.0 2145.2,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1578.8,350.0 C1578.8,470.0 865.2,1235.0 865.2,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1602.5,350.0 C1602.5,470.0 1121.2,929.0 1121.2,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1629.5,350.0 C1629.5,470.0 1638.0,779.0 1638.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1588.9,350.0 C1588.9,470.0 1015.6,1157.0 1015.6,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1660.0,350.0 C1660.0,470.0 1956.0,629.0 1956.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1643.1,350.0 C1643.1,470.0 1744.0,629.0 1744.0,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1710.8,350.0 C1710.8,470.0 2710.8,1157.0 2710.8,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1585.5,350.0 C1585.5,470.0 945.7,629.0 945.7,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1612.6,350.0 C1612.6,470.0 1357.2,629.0 1357.2,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1622.8,350.0 C1622.8,462.1 1532.0,486.9 1532.0,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1626.2,350.0 C1626.2,470.0 1569.2,629.0 1569.2,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1568.6,350.0 C1568.6,470.0 493.7,1157.0 493.7,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1646.5,350.0 C1646.5,462.1 1706.8,486.9 1706.8,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1683.7,350.0 C1683.7,470.0 2236.0,1007.0 2236.0,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1616.0,350.0 C1616.0,462.1 1375.9,486.9 1375.9,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1663.4,350.0 C1663.4,470.0 1998.6,1157.0 1998.6,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1676.9,350.0 C1676.9,470.0 2145.2,929.0 2145.2,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1666.8,350.0 C1666.8,470.0 2017.2,1007.0 2017.2,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1693.9,350.0 C1693.9,470.0 2364.0,929.0 2364.0,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1707.4,350.0 C1707.4,470.0 2620.0,1235.0 2620.0,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1572.0,350.0 C1572.0,470.0 634.1,1235.0 634.1,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1592.3,350.0 C1592.3,470.0 1018.1,1007.0 1018.1,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1687.1,350.0 C1687.1,470.0 2236.0,1157.0 2236.0,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1697.2,350.0 C1697.2,470.0 2345.4,1235.0 2345.4,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1582.1,350.0 C1582.1,470.0 887.6,929.0 887.6,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1575.4,350.0 C1575.4,470.0 755.9,1157.0 755.9,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1704.0,350.0 C1704.0,470.0 2492.0,1157.0 2492.0,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1670.2,350.0 C1670.2,470.0 2062.0,779.0 2062.0,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1773.8,650.0 C1773.8,762.0 2292.6,787.0 2292.6,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1744.0,650.0 C1744.0,694.5 2217.7,704.5 2217.7,749.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1684.4,650.0 C1684.4,770.0 1742.6,1007.0 1742.6,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1803.6,650.0 C1803.6,770.0 2735.6,1157.0 2735.6,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<path d="M1282.8,800.0 C1282.8,844.5 968.9,854.5 968.9,899.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1320.0,500.0 C1320.0,620.0 798.2,929.0 798.2,1049.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M1369.7,500.0 C1369.7,544.5 1264.1,554.5 1264.1,599.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2292.6,950.0 C2292.6,1070.0 2785.2,1157.0 2785.2,1277.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2329.9,950.0 C2329.9,1070.0 2925.7,1235.0 2925.7,1355.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" marker-end="url(#ah)"/>
+<path d="M2218.1,950.0 C2218.1,1029.7 1792.3,1047.3 1792.3,1127.0" fill="none" stroke="#6b7280" stroke-width="1.3" opacity="0.9" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<rect x="1882.0" y="1278" width="196" height="50" rx="8" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.6"/>
+<text x="1980.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#8A6D0B">uSortFolders</text>
+<text x="1980.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">sort folders and their slots</text>
+<rect x="692.0" y="900" width="196" height="50" rx="8" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.6"/>
+<text x="790.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#8A6D0B">uMousePage</text>
+<text x="790.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">&quot;Mouse &amp; keys&quot; page</text>
+<rect x="1114.0" y="1128" width="196" height="50" rx="8" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.6"/>
+<text x="1212.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#8A6D0B">uConfig</text>
+<text x="1212.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">VersariteViewer.ini as typed settings</text>
+<rect x="1010.0" y="750" width="196" height="50" rx="8" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.6"/>
+<text x="1108.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#8A6D0B">uIniEditor</text>
+<text x="1108.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">settings screen (ini editor)</text>
+<rect x="1646.0" y="750" width="196" height="50" rx="8" fill="#E6EEF0" stroke="#3D6670" stroke-width="1.6"/>
+<text x="1744.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#3D6670">uImageCache</text>
+<text x="1744.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">decoded images, LRU + window</text>
+<rect x="474.0" y="1050" width="196" height="50" rx="8" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.6" stroke-dasharray="5 3"/>
+<text x="572.0" y="1071" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6E3F8C">uInputHandler</text>
+<text x="572.0" y="1089" text-anchor="middle" font-size="11.2" fill="#374151">RETIRED, not used</text>
+<rect x="730.0" y="1050" width="196" height="50" rx="8" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.6"/>
+<text x="828.0" y="1071" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6E3F8C">uMouseEngine</text>
+<text x="828.0" y="1089" text-anchor="middle" font-size="11.2" fill="#374151">mouse / keys -&gt; commands</text>
+<rect x="346.0" y="1278" width="196" height="50" rx="8" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.6"/>
+<text x="444.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6E3F8C">uMouseProfile</text>
+<text x="444.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">Default.mouse: zones, events</text>
+<rect x="1646.0" y="450" width="196" height="50" rx="8" fill="#DFF1F3" stroke="#17707A" stroke-width="1.6"/>
+<text x="1744.0" y="471" text-anchor="middle" font-size="14.5" font-weight="700" fill="#17707A">uDirectoryScanner</text>
+<text x="1744.0" y="489" text-anchor="middle" font-size="11.2" fill="#374151">scanner thread: folders</text>
+<rect x="1434.0" y="450" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
+<text x="1532.0" y="471" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uGLRenderer</text>
+<text x="1532.0" y="489" text-anchor="middle" font-size="11.2" fill="#374151">GPU renderer: tiles, filter shader</text>
+<rect x="1540.0" y="900" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
+<text x="1638.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uFilterPanel</text>
+<text x="1638.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">filter panel, histogram</text>
+<rect x="2138.0" y="1128" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
+<text x="2236.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uPreviewStrip</text>
+<text x="2236.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">preview strip (top bar)</text>
+<rect x="2300.0" y="1120" width="38" height="16" rx="8" fill="#F59E0B"/><text x="2319.0" y="1132" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="1222.0" y="600" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
+<text x="1320.0" y="621" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uRenderer</text>
+<text x="1320.0" y="639" text-anchor="middle" font-size="11.2" fill="#374151">view state, CPU renderer, overlays</text>
+<rect x="1882.0" y="1128" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
+<text x="1980.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uSortPanel</text>
+<text x="1980.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">sort panel, right edge</text>
+<rect x="2010.0" y="1050" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
+<text x="2108.0" y="1071" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uSortIcons</text>
+<text x="2108.0" y="1089" text-anchor="middle" font-size="11.2" fill="#374151">slot icons, loader thread</text>
+<rect x="1328.0" y="300" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
+<text x="1426.0" y="321" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uGLMediaView</text>
+<text x="1426.0" y="339" text-anchor="middle" font-size="11.2" fill="#374151">OpenGL drawing surface</text>
+<rect x="904.0" y="900" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1002.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uDecodedImage</text>
+<text x="1002.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">decoded image (ref-counted)</text>
+<rect x="1370.0" y="1128" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1468.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uJpegHeader</text>
+<text x="1468.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">JPEG header, EXIF thumbnail</text>
+<rect x="1434.0" y="750" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1532.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uMediaLoader</text>
+<text x="1532.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">file -&gt; pixels, picks decoder</text>
+<rect x="1116.0" y="900" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1214.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uTiffQuick</text>
+<text x="1214.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">fast TIFF: raw rows, own LZW</text>
+<rect x="1626.0" y="1278" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1724.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uExifOrientation</text>
+<text x="1724.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">EXIF orientation value</text>
+<rect x="2650.0" y="1278" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="2748.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uImageFormats</text>
+<text x="2748.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">image extensions; videos</text>
+<rect x="1752.0" y="900" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1850.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uContainerThumbs</text>
+<text x="1850.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">container entries in the panel</text>
+<rect x="1914.0" y="892" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1933.0" y="904" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="2266.0" y="1356" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="2364.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uImageScaling</text>
+<text x="2364.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">fast box downscaling</text>
+<rect x="986.0" y="1356" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1084.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uAnimation</text>
+<text x="1084.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">frames, cursor, frame clock</text>
+<rect x="1964.0" y="900" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="2062.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uZipContainer</text>
+<text x="2062.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">ZIP / CBZ as containers</text>
+<rect x="2126.0" y="892" width="38" height="16" rx="8" fill="#F59E0B"/><text x="2145.0" y="904" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="2010.0" y="1356" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="2108.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uExifRotate</text>
+<text x="2108.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">lossless turn: EXIF tag</text>
+<rect x="2172.0" y="1348" width="38" height="16" rx="8" fill="#F59E0B"/><text x="2191.0" y="1360" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="1242.0" y="1050" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1340.0" y="1071" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uGifDecoder</text>
+<text x="1340.0" y="1089" text-anchor="middle" font-size="11.2" fill="#374151">own GIF decoder</text>
+<rect x="1858.0" y="750" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1956.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uFolderThumbs</text>
+<text x="1956.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">folder thumbnails, scan bar</text>
+<rect x="2020.0" y="742" width="38" height="16" rx="8" fill="#F59E0B"/><text x="2039.0" y="754" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="1328.0" y="900" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1426.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uWicDecoder</text>
+<text x="1426.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">Windows WIC decoding</text>
+<rect x="1498.0" y="1050" width="196" height="50" rx="8" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.6"/>
+<text x="1596.0" y="1071" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2E7A48">uJpegDecoder</text>
+<text x="1596.0" y="1089" text-anchor="middle" font-size="11.2" fill="#374151">own JPEG decoder (fallback)</text>
+<rect x="858.0" y="1278" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="956.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uFilters</text>
+<text x="956.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">filter maths, Auto levels</text>
+<rect x="798.0" y="750" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="896.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uImageSaver</text>
+<text x="896.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">save PNG (background thread)</text>
+<rect x="2778.0" y="1356" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="2876.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uNaturalSort</text>
+<text x="2876.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">file name ordering</text>
+<rect x="602.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="700.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uSingleInstance</text>
+<text x="700.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">only one instance: hand over</text>
+<rect x="90.0" y="1278" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="188.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uImageFileScale</text>
+<text x="188.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">scale stored in the file</text>
+<rect x="252.0" y="1270" width="38" height="16" rx="8" fill="#F59E0B"/><text x="271.0" y="1282" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="858.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="956.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uExtensions</text>
+<text x="956.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">optional readers, switches</text>
+<rect x="1020.0" y="1120" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1039.0" y="1132" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="986.0" y="1050" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="1084.0" y="1071" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uFilterImage</text>
+<text x="1084.0" y="1089" text-anchor="middle" font-size="11.2" fill="#374151">filters, sharpen, turn pixels</text>
+<rect x="1498.0" y="1356" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="1596.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uWatchdog</text>
+<text x="1596.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">emergency exit, deadline</text>
+<rect x="730.0" y="1356" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="828.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uFileMover</text>
+<text x="828.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">copy / move thread, undo, log</text>
+<rect x="2522.0" y="1356" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="2620.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uClipboardImage</text>
+<text x="2620.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">paste / copy images</text>
+<rect x="2684.0" y="1348" width="38" height="16" rx="8" fill="#F59E0B"/><text x="2703.0" y="1360" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="1242.0" y="1356" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="1340.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uStopwatch</text>
+<text x="1340.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">ms timer, process age</text>
+<rect x="474.0" y="1356" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="572.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uEdition</text>
+<text x="572.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">edition names (Viewer / Lab)</text>
+<rect x="636.0" y="1348" width="38" height="16" rx="8" fill="#F59E0B"/><text x="655.0" y="1360" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="2394.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="2492.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uDirPeek</text>
+<text x="2492.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">counts a folder (own thread)</text>
+<rect x="2556.0" y="1120" width="38" height="16" rx="8" fill="#F59E0B"/><text x="2575.0" y="1132" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="1626.0" y="1128" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="1724.0" y="1149" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uContainers</text>
+<text x="1724.0" y="1167" text-anchor="middle" font-size="11.2" fill="#374151">multi-image files: file|id</text>
+<rect x="1788.0" y="1120" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1807.0" y="1132" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="2394.0" y="1278" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="2492.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uTotalCommander</text>
+<text x="2492.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">find / start TC, side by side</text>
+<rect x="2266.0" y="1050" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="2364.0" y="1071" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uTCFollow</text>
+<text x="2364.0" y="1089" text-anchor="middle" font-size="11.2" fill="#374151">follows Total Commander</text>
+<rect x="602.0" y="1278" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="700.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uSafeFile</text>
+<text x="700.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">atomic writes, end line, backup</text>
+<rect x="764.0" y="1270" width="38" height="16" rx="8" fill="#F59E0B"/><text x="783.0" y="1282" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="2138.0" y="1278" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="2236.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uIconFile</text>
+<text x="2236.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">.ico read and write</text>
+<rect x="1754.0" y="1050" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="1852.0" y="1071" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uIOGate</text>
+<text x="1852.0" y="1089" text-anchor="middle" font-size="11.2" fill="#374151">display reads go first</text>
+<rect x="1114.0" y="1278" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="1212.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uMemoryGuard</text>
+<text x="1212.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">refuse images too big</text>
+<rect x="1370.0" y="1278" width="196" height="50" rx="8" fill="#FBE3E1" stroke="#A8322D" stroke-width="1.6"/>
+<text x="1468.0" y="1299" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A8322D">uSlotMenuWindow</text>
+<text x="1468.0" y="1317" text-anchor="middle" font-size="11.2" fill="#374151">slot menu window (bold entries)</text>
+<rect x="1532.0" y="1270" width="38" height="16" rx="8" fill="#F59E0B"/><text x="1551.0" y="1282" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text>
+<rect x="1434.0" y="150" width="196" height="50" rx="8" fill="#FBE3E1" stroke="#A8322D" stroke-width="1.6"/>
+<text x="1532.0" y="171" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A8322D">uMainForm</text>
+<text x="1532.0" y="189" text-anchor="middle" font-size="11.2" fill="#374151">window, menu, screen switch</text>
+<rect x="1434.0" y="600" width="196" height="50" rx="8" fill="#E6EEF0" stroke="#3D6670" stroke-width="1.6"/>
+<text x="1532.0" y="621" text-anchor="middle" font-size="14.5" font-weight="700" fill="#3D6670">uJobScheduler</text>
+<text x="1532.0" y="639" text-anchor="middle" font-size="11.2" fill="#374151">decode worker threads</text>
+<rect x="2070.0" y="750" width="196" height="50" rx="8" fill="#DFF1F3" stroke="#17707A" stroke-width="1.6"/>
+<text x="2168.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#17707A">uDirectoryTree</text>
+<text x="2168.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">folder tree of a root</text>
+<rect x="218.0" y="1356" width="196" height="50" rx="8" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.6"/>
+<text x="316.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6E3F8C">uCommands</text>
+<text x="316.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">the command vocabulary</text>
+<rect x="1754.0" y="1356" width="196" height="50" rx="8" fill="#ECECEC" stroke="#505050" stroke-width="1.6"/>
+<text x="1852.0" y="1377" text-anchor="middle" font-size="14.5" font-weight="700" fill="#505050">uTypes</text>
+<text x="1852.0" y="1395" text-anchor="middle" font-size="11.2" fill="#374151">shared basic types</text>
+<rect x="1540.0" y="300" width="196" height="50" rx="8" fill="#E3EAF7" stroke="#2F5597" stroke-width="1.6"/>
+<text x="1638.0" y="321" text-anchor="middle" font-size="14.5" font-weight="700" fill="#2F5597">uMView</text>
+<text x="1638.0" y="339" text-anchor="middle" font-size="11.2" fill="#374151">the viewer: commands, sorting, filters</text>
+<rect x="1646.0" y="600" width="196" height="50" rx="8" fill="#DFF1F3" stroke="#17707A" stroke-width="1.6"/>
+<text x="1744.0" y="621" text-anchor="middle" font-size="14.5" font-weight="700" fill="#17707A">uNavigator</text>
+<text x="1744.0" y="639" text-anchor="middle" font-size="11.2" fill="#374151">prev / next image and folder</text>
+<rect x="1222.0" y="750" width="196" height="50" rx="8" fill="#E6EEF0" stroke="#3D6670" stroke-width="1.6"/>
+<text x="1320.0" y="771" text-anchor="middle" font-size="14.5" font-weight="700" fill="#3D6670">uJobQueue</text>
+<text x="1320.0" y="789" text-anchor="middle" font-size="11.2" fill="#374151">decode jobs, locked queue</text>
+<rect x="1222.0" y="450" width="196" height="50" rx="8" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.6"/>
+<text x="1320.0" y="471" text-anchor="middle" font-size="14.5" font-weight="700" fill="#A65A1E">uMediaView</text>
+<text x="1320.0" y="489" text-anchor="middle" font-size="11.2" fill="#374151">CPU drawing surface</text>
+<rect x="2176.0" y="900" width="196" height="50" rx="8" fill="#DFF1F3" stroke="#17707A" stroke-width="1.6"/>
+<text x="2274.0" y="921" text-anchor="middle" font-size="14.5" font-weight="700" fill="#17707A">uDirectoryImages</text>
+<text x="2274.0" y="939" text-anchor="middle" font-size="11.2" fill="#374151">image list of one folder</text>
+<text x="40" y="1532" font-size="14" font-weight="700" fill="#1f2937">Source folders</text>
+<rect x="40" y="1546" width="22" height="16" rx="4" fill="#FBE3E1" stroke="#A8322D" stroke-width="1.5"/>
+<text x="70" y="1559" font-size="12.5" fill="#374151">main — window</text>
+<rect x="190.3" y="1546" width="22" height="16" rx="4" fill="#E3EAF7" stroke="#2F5597" stroke-width="1.5"/>
+<text x="220.3" y="1559" font-size="12.5" fill="#374151">core — viewer</text>
+<rect x="340.6" y="1546" width="22" height="16" rx="4" fill="#DFF1F3" stroke="#17707A" stroke-width="1.5"/>
+<text x="370.6" y="1559" font-size="12.5" fill="#374151">core — navigation</text>
+<rect x="519.3" y="1546" width="22" height="16" rx="4" fill="#E6EEF0" stroke="#3D6670" stroke-width="1.5"/>
+<text x="549.3" y="1559" font-size="12.5" fill="#374151">core + cache — jobs, cache</text>
+<rect x="761.9" y="1546" width="22" height="16" rx="4" fill="#E2F2E6" stroke="#2E7A48" stroke-width="1.5"/>
+<text x="791.9" y="1559" font-size="12.5" fill="#374151">imaging — decoding</text>
+<rect x="947.7" y="1546" width="22" height="16" rx="4" fill="#FCEBDD" stroke="#A65A1E" stroke-width="1.5"/>
+<text x="977.7" y="1559" font-size="12.5" fill="#374151">rendering — drawing, panels (+ core/uMediaView)</text>
+<rect x="1339.4" y="1546" width="22" height="16" rx="4" fill="#F0E6F6" stroke="#6E3F8C" stroke-width="1.5"/>
+<text x="1369.4" y="1559" font-size="12.5" fill="#374151">mouse (+ core/uCommands)</text>
+<rect x="1567.8000000000002" y="1546" width="22" height="16" rx="4" fill="#FBF3D2" stroke="#8A6D0B" stroke-width="1.5"/>
+<text x="1597.8000000000002" y="1559" font-size="12.5" fill="#374151">config — settings</text>
+<rect x="1746.5000000000002" y="1546" width="22" height="16" rx="4" fill="#ECECEC" stroke="#505050" stroke-width="1.5"/>
+<text x="1776.5000000000002" y="1559" font-size="12.5" fill="#374151">utility (+ core/uTypes)</text>
+<path d="M40,1586 L100,1586" stroke="#6b7280" stroke-width="1.4" marker-end="url(#ah)"/><text x="110" y="1590" font-size="12.5" fill="#374151">uses (interface section)</text>
+<path d="M290,1586 L350,1586" stroke="#6b7280" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#ah)"/><text x="360" y="1590" font-size="12.5" fill="#374151">uses (implementation section only)</text>
+<path d="M600,1586 L660,1586" stroke="#c4c8cf" stroke-width="1.2" marker-end="url(#ahf)"/><text x="670" y="1590" font-size="12.5" fill="#374151">uses a shared basic unit</text>
+<rect x="880" y="1578" width="38" height="16" rx="8" fill="#F59E0B"/><text x="899" y="1590" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">NEW</text><text x="928" y="1590" font-size="12.5" fill="#374151">since 1.0: containers (ZIP / CBZ), folder thumbnails, safe settings, dir preview, lossless rotation.</text>
+<text x="40" y="1618" font-size="12.5" fill="#374151">L0 … L7: dependency depth (L0 uses no other MView unit).  Dashed box: retired unit, still compiled.  Versarite Image Lab adds its own units on top of these, in source\microscopy\ (not shown).</text>
+</svg>

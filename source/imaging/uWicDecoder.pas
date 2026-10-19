@@ -296,6 +296,35 @@ begin
     raise EWicError.CreateFmt('WIC: %s failed (0x%.8x)', [AStep, LongWord(AResult)]);
 end;
 
+{ The frame with the most pixels (an icon's largest size). }
+function LargestFrame(ADecoder: IWICBitmapDecoder): IWICBitmapFrameDecode;
+var
+  Count, W, H: LongWord;
+  I: Integer;
+  Best: Int64;
+  F: IWICBitmapFrameDecode;
+begin
+  Result := nil;
+  Best := -1;
+  Count := 0;
+  Check(ADecoder.GetFrameCount(Count), 'GetFrameCount');
+  for I := 0 to Integer(Count) - 1 do
+  begin
+    F := nil;
+    if (ADecoder.GetFrame(LongWord(I), F) < 0) or (F = nil) then
+      Continue;
+    if F.GetSize(W, H) < 0 then
+      Continue;
+    if Int64(W) * H > Best then
+    begin
+      Best := Int64(W) * H;
+      Result := F;
+    end;
+  end;
+  if Result = nil then
+    Check(ADecoder.GetFrame(0, Result), 'GetFrame');
+end;
+
 procedure CopyRow(ASource: PByte; ADest: PBGRAPixel; AWidth: Integer);
 var
   X: Integer;
@@ -579,7 +608,12 @@ begin
   WideName := UnicodeString(AFileName);
   Check(Factory.CreateDecoderFromFilename(PWideChar(WideName), nil, GENERIC_READ_ACCESS,
     WICDecodeMetadataCacheOnDemand, Decoder), 'CreateDecoderFromFilename');
-  Check(Decoder.GetFrame(0, Frame), 'GetFrame');
+  { An icon holds several sizes: the largest (1.1, testers). Other
+    files: the first picture. }
+  if LowerCase(ExtractFileExt(AFileName)) = '.ico' then
+    Frame := LargestFrame(Decoder)
+  else
+    Check(Decoder.GetFrame(0, Frame), 'GetFrame');
   Check(Factory.CreateFormatConverter(Converter), 'CreateFormatConverter');
   Check(Converter.Initialize(Frame, GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone,
     nil, 0.0, WICBitmapPaletteTypeCustom), 'converter Initialize');

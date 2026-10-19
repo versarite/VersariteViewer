@@ -229,6 +229,7 @@ end;
 procedure TGLMediaView.MouseLeave;
 begin
   inherited MouseLeave;
+  FInput.MouseLeft;               { no edge any more (Day 27) }
   if Assigned(FOnOverlayMouse) then
     FOnOverlayMouse(omLeave, obOther, 0, 0, 0, False, False);
 end;

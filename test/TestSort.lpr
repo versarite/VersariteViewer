@@ -13,7 +13,10 @@ program TestSort;
     _previous, then _previous_1), and uIconFile: the directory of an
     .ico built in memory (32-bit and 4-bit pictures, a PNG entry),
     choosing the picture for a size, decoding with transparency, and
-    WriteIconFile read back.
+    WriteIconFile read back; 1.1: IconDibEntry and IconPngEntry (an
+    opaque picture keeps its alpha channel, colour type 6: Windows
+    refuses PNG entries without it), read back with the FPC PNG reader.
+  - 1.1: uSafeFile (the ini is written through a .tmp and one replace).
 
   Works in a folder "sorttest" next to this program, removed at the
   end. Build and run with build_test.bat.
@@ -24,9 +27,11 @@ program TestSort;
 uses
   {$IFDEF UNIX}cthreads,{$ENDIF}
   SysUtils, Classes, IniFiles,
+  FPImage, FPReadPNG,
   uFileMover,
   uSortFolders,
-  uIconFile;
+  uIconFile,
+  uSafeFile;
 
 var
   PassCount, FailCount: Integer;
@@ -309,8 +314,9 @@ begin
 
     F.Remove(0);
     F.SaveToIni(Ini);
-    Ini.ReadSection(SortSection, Keys);
+    Ini.ReadSection(ListSectionPrefix + '1', Keys);
     Check('ini: keys of a removed slot are gone', Keys.IndexOf('Slot3Folder') < 0, Keys.CommaText);
+    Check('ini: the slots are in [DirList1]', Keys.IndexOf('Slot2Folder') >= 0, Keys.CommaText);
     G.LoadFromIni(Ini);
     Check('ini: two slots after remove', G.Count = 2);
 
@@ -321,7 +327,69 @@ begin
     Check('recent: at most MaxRecentFolders', F.Recent.Count <= MaxRecentFolders);
 
     Check('ParseSlotColor', ParseSlotColor(SlotColorName(scOrange), scGrey) = scOrange);
-    Check('ParseSlotColor: unknown -> default', ParseSlotColor('pink', scGrey) = scGrey);
+    Check('ParseSlotColor: unknown -> default', ParseSlotColor('teal', scGrey) = scGrey);
+    Check('ParseSlotColor: Pink (Day 27)', ParseSlotColor('pink', scGrey) = scPink);
+
+    { Several lists (Day 27): [DirList<n>], the arrows, a new empty list
+      after the last, then round again. }
+    F.Clear;
+    Check('arrows: nothing yet, not red', not F.NextIsNew(1) and not F.NextIsNew(-1));
+    F.SetFolder(0, 'D:\A1');
+    Check('lists: one', F.ListCount = 1);
+    Check('arrows: one filled list, both red', F.NextIsNew(1) and F.NextIsNew(-1));
+    F.CycleList(1);
+    Check('lists: a new, empty one after the last', (F.ListCount = 2) and (F.Count = 0)
+      and (F.ListIndex = 1));
+    F.CycleList(1);
+    Check('lists: an empty one is dropped, round to the first', (F.ListCount = 1)
+      and (F.ListIndex = 0) and (F.Count = 1) and (F.Slot(0).Folder = 'D:\A1'));
+    F.CycleList(-1);
+    Check('lists: left from the first: a new one', (F.ListCount = 2) and (F.Count = 0));
+    F.SetFolder(0, 'D:\B1');
+    F.SetFolder(1, 'D:\B2');
+    Check('arrows: on the second of two, right red, left not', F.NextIsNew(1)
+      and not F.NextIsNew(-1));
+    F.CycleList(1);
+    Check('arrows: on the new list, neither red', not F.NextIsNew(1) and not F.NextIsNew(-1));
+    Check('lists: the next one is new', (F.ListCount = 3) and (F.Count = 0) and (F.ListIndex = 2));
+    F.CycleList(1);
+    Check('lists: round to the first', (F.ListIndex = 0) and (F.Slot(0).Folder = 'D:\A1'));
+    F.CycleList(1);
+    Check('lists: the second kept its folders', (F.ListIndex = 1) and (F.Count = 2)
+      and (F.Slot(1).Folder = 'D:\B2'));
+    F.SaveToIni(Ini);
+    Check('ini: [DirList2]', Ini.SectionExists(ListSectionPrefix + '2')
+      and not Ini.SectionExists(ListSectionPrefix + '3'));
+    Check('ini: List = 2', Ini.ReadInteger(SortSection, KEY_LIST, 0) = 2);
+    G.LoadFromIni(Ini);
+    Check('ini: lists read back', (G.ListCount = 2) and (G.ListIndex = 1) and (G.Count = 2)
+      and (G.Slot(0).Folder = 'D:\B1'));
+
+    { The old layout: slots in [Sort] are read as list 1 and moved. }
+    Ini.EraseSection(ListSectionPrefix + '1');
+    Ini.EraseSection(ListSectionPrefix + '2');
+    Ini.WriteString(SortSection, 'Slot1Folder', 'D:\Old');
+    Ini.WriteInteger(SortSection, KEY_LIST, 1);
+    G.LoadFromIni(Ini);
+    Check('old [Sort] slots read', (G.ListCount = 1) and (G.Count = 1) and (G.Slot(0).Folder = 'D:\Old'));
+    G.SaveToIni(Ini);
+    Check('old [Sort] slots moved to [DirList1]', (not Ini.ValueExists(SortSection, 'Slot1Folder'))
+      and (Ini.ReadString(ListSectionPrefix + '1', 'Slot1Folder', '') = 'D:\Old'));
+
+    { Rapid Selection: ten fixed slots, keys 1 .. 0; the list before comes back. }
+    G.SetRapid(True, 'D:\Pics');
+    Check('rapid: ten slots', (G.Count = RapidSlots) and G.Rapid);
+    Check('rapid: Selection1 first, Selection0 last',
+      (G.Slot(0).Folder = IncludeTrailingPathDelimiter('D:\Pics') + 'Selection1')
+      and (G.Slot(9).Name = 'Selection0'), G.Slot(0).Folder);
+    Check('rapid: labels 1 .. 0', (G.SlotLabel(0) = '1') and (G.SlotLabel(9) = '0'));
+    Check('rapid: not changed by hand', G.SetFolder(G.Count, 'D:\X') = -1);
+    G.CycleList(1);
+    Check('rapid: the arrows do nothing', G.Count = RapidSlots);
+    G.SaveToIni(Ini);
+    Check('rapid: never written', Ini.ReadString(ListSectionPrefix + '1', 'Slot1Folder', '') = 'D:\Old');
+    G.SetRapid(False, '');
+    Check('rapid off: the list before', (not G.Rapid) and (G.Count = 1) and (G.Slot(0).Folder = 'D:\Old'));
     Check('FolderDisplayName', FolderDisplayName('D:\Sorted\Good') = 'Good',
       FolderDisplayName('D:\Sorted\Good'));
     Check('IconBaseName', IconBaseName('D:\Sorted\Good') = 'Good', IconBaseName('D:\Sorted\Good'));
@@ -403,6 +471,171 @@ begin
   Put32(B, 0);
   Put32(B, APalette);
   Put32(B, 0);
+end;
+
+{ 1.1: copy / cut / paste of a button between lists. }
+procedure TestClip;
+var
+  F: TSortFolders;
+  Why: string;
+  I: Integer;
+begin
+  WriteLn('TSortFolders: copy / cut / paste');
+  F := TSortFolders.Create;
+  try
+    F.SetFolder(0, 'D:\A');
+    F.SetFolder(1, 'D:\B');
+    F.SetFolder(2, 'D:\C');
+    F.SetName(1, 'Bee');
+    Check('nothing to paste at first', not F.HasClip and (F.PasteSlot(0, Why) = -1) and (Why <> ''), Why);
+    F.CopySlot(1, False);
+    Check('copied', F.HasClip and not F.ClipIsCut and (F.ClipName = 'Bee'));
+    Check('a copy is not dimmed', not F.IsCutSlot(1));
+    Check('a copy into its own list: refused (already there)', (F.PasteSlot(2, Why) = -1) and (Pos('already', Why) > 0), Why);
+    F.CycleList(1);                     { a new, empty list }
+    Check('on the new list', (F.ListIndex = 1) and (F.Count = 0), IntToStr(F.ListIndex));
+    Check('pasted on top of the empty list', F.PasteSlot(-1, Why) = 0, Why);
+    Check('with its name, colour and icon', (F.Count = 1) and (F.Slot(0).Name = 'Bee')
+      and (F.Slot(0).Folder = 'D:\B'));
+    Check('the copy stays to paste again', F.HasClip);
+    F.CycleList(-1);
+    Check('back on list 1: still three', (F.ListIndex = 0) and (F.Count = 3), IntToStr(F.Count));
+
+    { Cut C, paste it in list 2 after Bee: it leaves list 1. }
+    F.CopySlot(2, True);
+    Check('cut: dimmed in its list', F.IsCutSlot(2) and not F.IsCutSlot(0));
+    F.CycleList(1);
+    Check('list 2', (F.ListIndex = 1) and (F.Count = 1), IntToStr(F.ListIndex) + ' ' + IntToStr(F.Count));
+    Check('pasted after Bee', F.PasteSlot(0, Why) = 1, Why);
+    Check('list 2: Bee, C', (F.Count = 2) and (F.Slot(1).Folder = 'D:\C'));
+    Check('a cut is pasted once', not F.HasClip);
+    F.CycleList(1);                     { round: list 1 again }
+    F.CycleList(1);
+    I := F.ListIndex;
+    Check('list 1 has lost C', (F.Count = 2) and (F.Slot(0).Folder = 'D:\A') and (F.Slot(1).Folder = 'D:\B'),
+      IntToStr(I) + ' ' + IntToStr(F.Count));
+
+    { Cut within one list: a move. }
+    F.CopySlot(0, True);
+    Check('cut A, pasted after B: a move', (F.PasteSlot(1, Why) = 1) and (F.Count = 2)
+      and (F.Slot(0).Folder = 'D:\B') and (F.Slot(1).Folder = 'D:\A'), Why);
+    F.CopySlot(0, True);
+    F.CancelCut;
+    Check('cancelled: nothing dimmed, nothing to paste', not F.HasClip and not F.IsCutSlot(0));
+  finally
+    F.Free;
+  end;
+end;
+
+{ 1.1: a settings file written safely. }
+procedure TestSafeFile;
+var
+  Name, Text, Error: string;
+begin
+  WriteLn('uSafeFile');
+  Name := Root + 'safe.ini';
+  Check('new file written', WriteTextFileSafely(Name, '[A]' + LineEnding + 'x=1' + LineEnding, Error), Error);
+  Check('read back', ReadTextFile(Name, Text) and (Text = '[A]' + LineEnding + 'x=1' + LineEnding), Text);
+  Check('replaced', WriteTextFileSafely(Name, '[B]' + LineEnding, Error) and ReadTextFile(Name, Text)
+    and (Text = '[B]' + LineEnding), Text);
+  Check('no .tmp left', not FileExists(Name + '.tmp'));
+  Check('a folder that is not there: False, said why',
+    not WriteTextFileSafely(Root + 'no such folder' + PathDelim + 'x.ini', 'x', Error) and (Error <> ''), Error);
+  Check('the old file stays when the write fails', ReadTextFile(Name, Text) and (Text = '[B]' + LineEnding));
+  Check('a UTF-8 BOM is dropped', WriteTextFileSafely(Name, #$EF#$BB#$BF'[C]', Error)
+    and ReadTextFile(Name, Text) and (Text = '[C]'), Text);
+end;
+
+{ 1.1: entries written from pixels. }
+procedure TestIconEntries;
+var
+  Pixels, Back: TIconPixels;
+  Dib, PngData, Written: TBytes;
+  Entries: TIconEntries;
+  Pictures: array of TBytes;
+  Sizes: array of Integer;
+  Stream: TMemoryStream;
+  Image: TFPMemoryImage;
+  Reader: TFPReaderPNG;
+  Col: TFPColor;
+  X, Y: Integer;
+  Same: Boolean;
+begin
+  WriteLn('uIconFile: entries written (1.1)');
+  { 3 x 2: opaque colours, one fully transparent pixel. }
+  Pixels.Width := 3;
+  Pixels.Height := 2;
+  SetLength(Pixels.Data, 6);
+  Pixels.Data[0] := $FFFF0000;   { red }
+  Pixels.Data[1] := $FF00FF00;   { green }
+  Pixels.Data[2] := $FF0000FF;   { blue }
+  Pixels.Data[3] := $00000000;   { transparent }
+  Pixels.Data[4] := $80FFFFFF;   { white, half }
+  Pixels.Data[5] := $FF123456;
+
+  Dib := IconDibEntry(Pixels);
+  Check('DIB: header 40, height doubled, 32 bit',
+    (Length(Dib) >= 40) and (Dib[0] = 40) and (Dib[4] = 3) and (Dib[8] = 4) and (Dib[14] = 32));
+  Check('DIB: size = header + pixels + mask', Length(Dib) = 40 + 6 * 4 + 2 * 4, IntToStr(Length(Dib)));
+
+  { Opaque picture as PNG: still RGBA. }
+  PngData := IconPngEntry(Pixels);
+  Check('PNG: colour type 6 (RGBA), 8 bit', (Length(PngData) > 33) and (PngData[24] = 8) and (PngData[25] = 6));
+
+  SetLength(Pictures, 2);
+  Pictures[0] := Dib;
+  Pictures[1] := PngData;
+  SetLength(Sizes, 2);
+  Sizes[0] := 3;
+  Sizes[1] := 3;
+  Stream := TMemoryStream.Create;
+  try
+    WriteIconFile(Stream, Pictures, Sizes);
+    SetLength(Written, Stream.Size);
+    Move(Stream.Memory^, Written[0], Stream.Size);
+  finally
+    Stream.Free;
+  end;
+  Check('written icon: a DIB and a PNG entry', ReadIconDirectory(Written, Entries)
+    and (Length(Entries) = 2) and not Entries[0].IsPng and Entries[1].IsPng
+    and (Entries[0].BitCount = 32));
+  if Length(Entries) <> 2 then
+    Exit;
+  Same := DecodeIconDib(Written, Entries[0], Back) and (Back.Width = 3) and (Back.Height = 2)
+    and (Length(Back.Data) = 6);
+  if Same then
+    for X := 0 to 5 do
+      Same := Same and (Back.Data[X] = Pixels.Data[X]);
+  Check('DIB read back: the same pixels (top row first)', Same);
+
+  { The PNG through the FPC reader. }
+  Image := TFPMemoryImage.Create(0, 0);
+  Reader := TFPReaderPNG.Create;
+  Stream := TMemoryStream.Create;
+  try
+    Stream.WriteBuffer(PngData[0], Length(PngData));
+    Stream.Position := 0;
+    Same := True;
+    try
+      Image.LoadFromStream(Stream, Reader);
+    except
+      Same := False;
+    end;
+    Same := Same and (Image.Width = 3) and (Image.Height = 2);
+    if Same then
+      for Y := 0 to 1 do
+        for X := 0 to 2 do
+        begin
+          Col := Image.Colors[X, Y];
+          Same := Same and ((LongWord(Col.Alpha shr 8) shl 24 or LongWord(Col.Red shr 8) shl 16
+            or LongWord(Col.Green shr 8) shl 8 or LongWord(Col.Blue shr 8)) = Pixels.Data[Y * 3 + X]);
+        end;
+    Check('PNG read back by FPReadPNG: the same pixels and alpha', Same);
+  finally
+    Stream.Free;
+    Reader.Free;
+    Image.Free;
+  end;
 end;
 
 procedure TestIconFile;
@@ -530,7 +763,7 @@ end;
 begin
   PassCount := 0;
   FailCount := 0;
-  WriteLn('MView sorting test (Phase G)');
+  WriteLn('VersariteViewer sorting test (Phase G)');
   Root := ExtractFilePath(ParamStr(0)) + 'sorttest' + PathDelim;
   RemoveTree(Root);
   ForceDirectories(Root);
@@ -541,6 +774,9 @@ begin
     TestFolders;
     TestWrite;
     TestIconFile;
+    TestIconEntries;
+    TestSafeFile;
+    TestClip;
   finally
     RemoveTree(Root);
   end;

@@ -283,7 +283,7 @@ end;
 begin
   PassCount := 0;
   FailCount := 0;
-  WriteLn('MView filter test (Phase H)');
+  WriteLn('VersariteViewer filter test (Phase H)');
   TestNeutral;
   TestTone;
   TestColour;

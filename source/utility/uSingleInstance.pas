@@ -47,12 +47,12 @@ unit uSingleInstance;
 
   Uses (MView units)
   ------------------
-  (none)
+  implementation: uEdition (the names: one instance per edition)
   Libraries:      SysUtils; Windows (Windows only)
 
   Used by
   -------
-  MView.lpr
+  VersariteViewer.lpr, VersariteViewerLab.lpr
 }
 
 {$mode ObjFPC}{$H+}
@@ -77,11 +77,27 @@ implementation
 
 {$IFDEF WINDOWS}
 uses
-  Windows;
+  Windows,
+  SysUtils,
+  uEdition;
 
 const
-  MutexName = 'Local\VersariteMView.Instance';
-  MappingName = 'Local\VersariteMView.Window';
+  { Per edition (uEdition, M0): VersariteViewer and Versarite Image Lab
+    each have their own one instance (Local\VersariteViewer.Instance,
+    Local\VersariteImageLab.Instance). }
+  MutexNameFmt = 'Local\%s.Instance';
+  MappingNameFmt = 'Local\%s.Window';
+
+function MutexName: string;
+begin
+  Result := Format(MutexNameFmt, [EditionId]);
+end;
+
+function MappingName: string;
+begin
+  Result := Format(MappingNameFmt, [EditionId]);
+end;
+
 
 type
   TSharedWindow = record
@@ -133,7 +149,7 @@ function MViewSendMessageTimeoutW(AWnd: HWND; AMsg: UINT; AWParam: WPARAM; ALPar
   external 'user32.dll' name 'SendMessageTimeoutW';
 
 const
-  ListenerClassName: WideString = 'VersariteMViewInstanceListener';
+  ListenerClassName: WideString = 'VersariteViewerInstanceListener';
   HwndMessage = HWND(High(PtrUInt) - 2);   { HWND_MESSAGE (-3): a message-only window }
   AsfwAny = DWORD($FFFFFFFF);       { ASFW_ANY }
 

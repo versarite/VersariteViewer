@@ -115,14 +115,15 @@ unit uMainForm;
                   uMediaView, uGLRenderer, uGLMediaView, uConfig,
                   uSortFolders, uSortPanel, uSortIcons, uIniEditor, uStopwatch,
                   uWatchdog
-  implementation: uMousePage, uTotalCommander
+  implementation: uMousePage, uTotalCommander, uEdition (names,
+                  About), uExtensions (the edition's menu entries)
   Libraries:      Classes, SysUtils, Forms, Controls, Graphics, Menus,
                   ExtCtrls, LCLType, LCLIntf, StdCtrls, Dialogs, Clipbrd,
                   Math, BGRABitmap
 
   Used by
   -------
-  MView.lpr (program)
+  VersariteViewer.lpr, VersariteViewerLab.lpr (programs)
 }
 
 {$mode ObjFPC}{$H+}
@@ -137,6 +138,7 @@ uses
   Graphics,
   Menus,
   ExtCtrls,
+  LCLType,
   uCommands,
   uMouseEngine,
   uRenderer,
@@ -150,7 +152,10 @@ uses
   uSortIcons,
   uIniEditor,
   uStopwatch,
-  uWatchdog;
+  uWatchdog,
+  uTypes,
+  uSlotMenuWindow,
+  uExifRotate;
 
 type
 
@@ -167,10 +172,21 @@ type
     FGLView: TGLMediaView;
     FPopupMenu: TPopupMenu;
     FCropItem: TMenuItem;
+    { Rotate losslessly (1.1): JPEGs only; Tag = the TOrientOp. }
+    FRotateItem: TMenuItem;
     FUndoItem: TMenuItem;
     FSortMenu: TPopupMenu;       { a slot's "..." menu / the "+" menu (Phase G) }
     FSortMenuSlot: Integer;      { the slot it is for; -1 = a new slot }
     FSortMenuIcons: TStringList; { the icon files offered in it (names in the icon folder) }
+    { The slot menu shown as MView's own window (Day 27, testers: stays
+      open while moving, Move up / down repeat while held). }
+    FSlotMenuWindow: TSlotMenuWindow;
+    FMoveTopItem, FMoveUpItem, FMoveDownItem: TMenuItem;
+    { Rapid Selection on / off (Day 27, testers). }
+    FRapidItem: TMenuItem;
+    { The sort panel and the scan bar, on / off (ticked while open). }
+    FSortPanelItem: TMenuItem;
+    FPreviewStripItem: TMenuItem;
     FMakeIconItem: TMenuItem;
     { Side by side with Total Commander (Phase G, user): on, the place to
       go back to, and a Total Commander just started that is still to be
@@ -183,6 +199,13 @@ type
     FMagnifierItem: TMenuItem;
     { Follow Total Commander (Day 23): off / folder / folder and cursor. }
     FFollowItems: array[0..2] of TMenuItem;
+    { Total Commander dir preview (1.1, testers): on / off. }
+    FDirPreviewItem: TMenuItem;
+    { The order of the images (Day 27, testers): Tag = the TSortMode. }
+    FSortOrderItems: array[TSortMode] of TMenuItem;
+    { The edition's own entries (uExtensions, M0), before "About";
+      Tag = the entry's index. None in MView. }
+    FExtensionItems: array of TMenuItem;
     FSideBySide: Boolean;
     FSideWasFullscreen: Boolean;
     FSideBounds: TRect;
@@ -217,8 +240,19 @@ type
     FViewerEnded: Boolean;       { a viewer was closed with Esc before }
     FEscHeld: Boolean;           { the Esc that left the viewer is still down }
     FWindowCreatedMs: Double;    { start-up: ms after the process started }
+    { Esc to the settings (user, Day 25): the viewer that is closing in
+      the background - its threads told to stop, freed by FCloseTimer
+      once they are back (or after CloseWaitMs). }
+    FClosingViewer: TMView;
+    FCloseTimer: TTimer;
+    FCloseStartTick: QWord;
 
     procedure CreateViewer;
+    procedure HandleCloseTimer(Sender: TObject);
+    { The closing viewer freed now (waiting for its threads if needed);
+      the settings screen does what it kept (Save, View images).
+      AOnExit: MView is ending (the exit deadline stays armed). }
+    procedure FinishClosingViewer(AOnExit: Boolean = False);
     { AApplyBounds: put the window where it was last time (not when
       coming back from the viewer). }
     procedure ShowEditor(AApplyBounds: Boolean = True);
@@ -239,16 +273,19 @@ type
     function TryCreateGLView(out AReason: string): Boolean;
     function ViewInput: TMouseEngine;
     procedure UpdateCursor;
+    procedure HandleExtensionMenuOpen(AOpen: Boolean);
     procedure HandleDeactivate(Sender: TObject);
     procedure HandleCommand(Sender: TObject; ACommand: TCommand; const AArgs: TCommandArgs);
     procedure HandleExitRequest(Sender: TObject);
     procedure HandleToggleFullscreen(Sender: TObject);
     procedure HandleExitMenuClick(Sender: TObject);
     procedure HandleAboutMenuClick(Sender: TObject);
+    procedure HandleExtensionMenuClick(Sender: TObject);
     procedure HandleSaveMenuClick(Sender: TObject);
     procedure HandleSaveAsMenuClick(Sender: TObject);
     procedure HandleSaveDebugMenuClick(Sender: TObject);
     procedure HandlePasteMenuClick(Sender: TObject);
+    procedure HandleCopyMenuClick(Sender: TObject);
     procedure HandleCropMenuClick(Sender: TObject);
     procedure HandleSortPanelMenuClick(Sender: TObject);
     procedure HandleDeleteMenuClick(Sender: TObject);
@@ -263,6 +300,9 @@ type
     procedure HandleSortColorClick(Sender: TObject);
     procedure HandleSortMoveClick(Sender: TObject);
     procedure HandleSortRemoveClick(Sender: TObject);
+    procedure HandleSortClipClick(Sender: TObject);
+    procedure HandleDirPreviewMenuClick(Sender: TObject);
+    procedure HandleRotateMenuClick(Sender: TObject);
     procedure HandleSortIconClick(Sender: TObject);
     procedure HandleSortOpenClick(Sender: TObject);
     procedure AcceptDropsOn(AControl: TWinControl);
@@ -276,6 +316,20 @@ type
     procedure HandleResizeMenuClick(Sender: TObject);
     procedure HandleMagnifierMenuClick(Sender: TObject);
     procedure HandleFollowMenuClick(Sender: TObject);
+    procedure HandleSortRenameClick(Sender: TObject);
+    procedure HandleSortMakeFolderClick(Sender: TObject);
+    procedure HandleSlotMenuClosed(Sender: TObject);
+    procedure UpdateSortMoveItems;
+    procedure HandleRapidMenuClick(Sender: TObject);
+    procedure HandlePreviewStripMenuClick(Sender: TObject);
+    procedure AddMenuLine;
+    { The Total Commander entries: bold, Side by side deep green (user,
+      Day 27). }
+    procedure HandleStrongMenuDraw(Sender: TObject; ACanvas: TCanvas; ARect: TRect;
+      AState: TOwnerDrawState);
+    procedure HandleStrongMenuMeasure(Sender: TObject; ACanvas: TCanvas;
+      var AWidth, AHeight: Integer);
+    procedure HandleSortOrderMenuClick(Sender: TObject);
     { AFolder: Total Commander's folder when no image is shown yet (the
       start, [Startup] Mode=2); '' = the current image's. }
     procedure ToggleSideBySide(const AFolder: string = '');
@@ -295,7 +349,7 @@ type
     procedure HandleChangeBounds(Sender: TObject);
   public
     { Only one instance: a second MView's file or folder ('' = just come
-      to the front); MView.lpr hands it to uSingleInstance's listener. }
+      to the front); VersariteViewer.lpr hands it to uSingleInstance's listener. }
     procedure HandleHandedOver(const APath: string);
   end;
 
@@ -305,25 +359,33 @@ var
 implementation
 
 uses
-  LCLType,
   LCLIntf,
+  Themes,
   StdCtrls,
   Dialogs,
   Clipbrd,
   Math,
   BGRABitmap,
   uTotalCommander,
-  uMousePage;
+  uMousePage,
+  uEdition,
+  uExtensions,
+  uContainers;
 
 {$R *.lfm}
 
 const
-  { The About box: what MView is, and where it comes from. }
-  AboutText =
-    'Versarite MView 1.0.1' + LineEnding +
-    'A fast image viewer, driven by the mouse.' + LineEnding +
-    'Its microscopy edition (measuring, metadata, editing) follows as a branch of its own.' + LineEnding +
-    LineEnding +
+  { The slot menu's "Move to top" (Day 27): its Tag. }
+  MoveToTopTag = -100000;
+  { A menu entry drawn deep green (HandleStrongMenuDraw): its Tag. }
+  StrongGreenTag = -200000;
+  StrongGreen = TColor($00006400);
+  { ... drawn red (Rapid sorting). }
+  StrongRedTag = -200001;
+  StrongRed = TColor($000000C8);
+  { The About box: what MView is, and where it comes from. The first lines
+    are the edition's (uEdition): AboutText. }
+  AboutBody =
     'Written with support from Claude/Opus 5.5 and ChatGPT' + LineEnding +
     LineEnding +
     'Dedicated by DL1BWA/KD1AEV to Makito Miyano, creator of Hamana (last version 2006) ,' + LineEnding +
@@ -332,7 +394,7 @@ const
     LineEnding +
     'Built with Free Pascal and Lazarus.' + LineEnding +
     'Free software under the GNU GPL v3.' + LineEnding +
-    'Kryptonite, if MView ever hangs: ' + EmergencyExitKeyText + '.';
+    'Kryptonite, if it ever hangs: ' + EmergencyExitKeyText + '.';
 
   { Time for a normal shutdown (threads stopped, settings saved). }
   ExitDeadlineMs = 4000;
@@ -344,24 +406,40 @@ const
   MinWindowWidth = 200;
   MinWindowHeight = 150;
   { The map of the screen, shown at the very first start (Day 24). }
-  WelcomeFileName = 'MView_welcome.png';
+  WelcomeSuffix = '_welcome.png';      { VersariteViewer_welcome.png, per edition }
   { The window place is saved this long after the last move / resize
     (viewer; the settings editor saves it on close). }
   BoundsSaveDelayMs = 1000;
 
 { TMainForm }
 
-{ The very first start: MView.ini isn't there yet (it is made right
-  after) and MView_welcome.png is next to MView.exe: its path, else ''. }
+{ The About box's text: the edition's name and version, then the rest. }
+function AboutText: string;
+begin
+  Result := EditionTitle + ' ' + EditionVersion + LineEnding;
+  if EditionId = 'VersariteViewer' then
+    Result := Result + 'A fast image viewer, driven by the mouse.' + LineEnding
+      + 'Its microscopy edition, Versarite Image Lab (metadata, calibration, measuring),'
+      + LineEnding + 'is a program of its own, in development.' + LineEnding
+  else
+    Result := Result + 'The microscopy edition of VersariteViewer.' + LineEnding;
+  Result := Result + LineEnding + AboutBody;
+end;
+
+{ The very first start: the edition's ini isn't there yet (it is made
+  right after; an MView.ini from before the rename counts as there) and
+  <EditionId>_welcome.png (VersariteViewer_welcome.png) is next to the
+  program: its path, else ''. }
 function WelcomeForFirstStart: string;
 var
   Dir: string;
 begin
   Result := '';
   Dir := ExtractFilePath(ParamStr(0));
-  if (ParamCount = 0) and not FileExists(Dir + 'MView.ini')
-    and FileExists(Dir + WelcomeFileName) then
-    Result := Dir + WelcomeFileName;
+  if (ParamCount = 0) and not FileExists(EditionIniFileName)
+    and not FileExists(EditionOldIniFileName)        { 1.1: not new, renamed }
+    and FileExists(Dir + EditionId + WelcomeSuffix) then
+    Result := Dir + EditionId + WelcomeSuffix;
 end;
 
 { [Startup] Mode is 1 or 2 (read before any window is made). }
@@ -386,7 +464,7 @@ end;
 procedure TMainForm.FormCreate(Sender: TObject);
 begin
   FWindowCreatedMs := ProcessAgeMs;
-  Caption := 'MView';
+  Caption := EditionCaption;
   Color := clBlack;
 
   { Failsafe (uWatchdog): Ctrl+Alt+Shift+Q ends MView even when it is
@@ -403,6 +481,13 @@ begin
   FDeliveryTimer.Interval := 50;
   FDeliveryTimer.OnTimer := @HandleDeliveryTimer;
   OnDeactivate := @HandleDeactivate;
+  { An edition's popup (the left panel's scale list): the pointer stays
+    (Day 26). }
+  uExtensions.OnMenuOpen := @HandleExtensionMenuOpen;
+  FCloseTimer := TTimer.Create(Self);
+  FCloseTimer.Enabled := False;
+  FCloseTimer.Interval := 50;
+  FCloseTimer.OnTimer := @HandleCloseTimer;
 
   { Drag and drop: a file or folder dropped on the window opens it,
     like a command line argument (in the settings editor too). }
@@ -431,8 +516,18 @@ procedure TMainForm.CreateViewer;
 var
   Item: TMenuItem;
   FollowIndex: Integer;
+  RotateOp: TOrientOp;
+  ExtensionIndex: Integer;
   ViewStartMs: Double;
+  Order: TSortMode;
 begin
+  { A viewer still closing from the last Esc goes first (two viewers
+    must not run at once: they share the read gate and the files); a
+    kept "View images" is not needed any more (this is the viewer), a
+    kept Save is done before the new viewer reads the settings. }
+  if Assigned(FEditor) then
+    FEditor.CancelPendingView;
+  FinishClosingViewer;
   FMView := TMView.Create;
   FMView.Initialize;
   { The window's place from last time (unless the settings editor
@@ -451,70 +546,27 @@ begin
   FMView.OnSortMenu := @HandleSortMenu;
 
   { The menu (spec §3.1), opened by the mouse profile's Menu command
-    (right click by default). }
+    (right click by default). Its order and grouping are the user's
+    (Day 27): Total Commander first, then the file, then the viewing
+    aids, then About / Exit. Entries left out are kept but hidden
+    (their commands still work from the mouse profile). }
   FPopupMenu := TPopupMenu.Create(Self);
-  Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := 'Paste image     (Ctrl+V)';
-  Item.OnClick := @HandlePasteMenuClick;
-  FPopupMenu.Items.Add(Item);
-  { Edit mode: the selected area becomes the image (enabled when there
-    is a selection). }
-  FCropItem := TMenuItem.Create(FPopupMenu);
-  FCropItem.Caption := 'Crop selection';
-  FCropItem.OnClick := @HandleCropMenuClick;
-  FPopupMenu.Items.Add(FCropItem);
-  { A copy at the size shown (the info line's W x H), like Crop; Save /
-    the sort panel then write that size (user, Day 22). }
-  FResizeItem := TMenuItem.Create(FPopupMenu);
-  FResizeItem.Caption := 'Resize to the size shown';
-  FResizeItem.OnClick := @HandleResizeMenuClick;
-  FPopupMenu.Items.Add(FResizeItem);
-  Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := 'Save image';
-  Item.OnClick := @HandleSaveMenuClick;
-  FPopupMenu.Items.Add(Item);
-  { As in IrfanView: Save goes straight to the save folder, Save as asks. }
-  Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := 'Save image as ...';
-  Item.OnClick := @HandleSaveAsMenuClick;
-  FPopupMenu.Items.Add(Item);
-  Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := 'Save image and view (debugging)';
-  Item.OnClick := @HandleSaveDebugMenuClick;
-  FPopupMenu.Items.Add(Item);
-  Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := '-';
-  FPopupMenu.Items.Add(Item);
-  { Sorting (Phase G): the panel also opens at the right edge. Delete
-    moves the file into the deleted-files folder; Undo takes back the
-    last copy, move or delete. }
-  Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := 'Sort panel (side menu)';
-  Item.OnClick := @HandleSortPanelMenuClick;
-  FPopupMenu.Items.Add(Item);
-  Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := 'Delete current image';
-  Item.OnClick := @HandleDeleteMenuClick;
-  FPopupMenu.Items.Add(Item);
-  FUndoItem := TMenuItem.Create(FPopupMenu);
-  FUndoItem.Caption := 'Undo';
-  FUndoItem.OnClick := @HandleUndoMenuClick;
-  FPopupMenu.Items.Add(FUndoItem);
-  { Stage 2: an icon for the sort panel, named after this image's folder. }
-  FMakeIconItem := TMenuItem.Create(FPopupMenu);
-  FMakeIconItem.Caption := 'Make icon from this image';
-  FMakeIconItem.OnClick := @HandleMakeIconMenuClick;
-  FPopupMenu.Items.Add(FMakeIconItem);
+
   { MView to the left half, Total Commander to the right, in this
-    image's folder; again: back. }
+    image's folder; again: back. Bold, deep green (user). }
   FSideItem := TMenuItem.Create(FPopupMenu);
   FSideItem.Caption := 'Side by side with Total Commander';
   FSideItem.OnClick := @HandleSideBySideMenuClick;
+  FSideItem.OnDrawItem := @HandleStrongMenuDraw;
+  FSideItem.OnMeasureItem := @HandleStrongMenuMeasure;
+  FSideItem.Tag := StrongGreenTag;
   FPopupMenu.Items.Add(FSideItem);
   { Follow Total Commander: its folder, or also the image under its
-    cursor (MView as its viewer). Tag = the mode. }
+    cursor (MView as its viewer). Tag = the mode. Bold (user). }
   Item := TMenuItem.Create(FPopupMenu);
   Item.Caption := 'Follow Total Commander';
+  Item.OnDrawItem := @HandleStrongMenuDraw;
+  Item.OnMeasureItem := @HandleStrongMenuMeasure;
   FPopupMenu.Items.Add(Item);
   FFollowItems[0] := TMenuItem.Create(FPopupMenu);
   FFollowItems[0].Caption := 'Off';
@@ -530,41 +582,179 @@ begin
     FFollowItems[FollowIndex].OnClick := @HandleFollowMenuClick;
     Item.Add(FFollowItems[FollowIndex]);
   end;
+  { The folder under Total Commander's cursor as a slide show (1.1). }
+  FDirPreviewItem := TMenuItem.Create(FPopupMenu);
+  FDirPreviewItem.Caption := 'Total Commander dir preview  (a folder under its cursor plays)';
+  FDirPreviewItem.OnClick := @HandleDirPreviewMenuClick;
+  FPopupMenu.Items.Add(FDirPreviewItem);
+  AddMenuLine;
+
+  { The file. The image at its own resolution to the clipboard (Day 25). }
   Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := '-';
+  Item.Caption := 'Copy image     (Ctrl+C)';
+  Item.OnClick := @HandleCopyMenuClick;
   FPopupMenu.Items.Add(Item);
-  { Looking closer (Phase H): the filter panel also opens at the left
-    edge. Lock filters: they stay for the next images (else the next
-    image starts unfiltered). }
-  { The magnifier (ticked while on). }
-  FMagnifierItem := TMenuItem.Create(FPopupMenu);
-  FMagnifierItem.Caption := 'Magnifier (lens)';
-  FMagnifierItem.OnClick := @HandleMagnifierMenuClick;
-  FPopupMenu.Items.Add(FMagnifierItem);
+  Item := TMenuItem.Create(FPopupMenu);
+  Item.Caption := 'Paste image     (Ctrl+V)';
+  Item.OnClick := @HandlePasteMenuClick;
+  FPopupMenu.Items.Add(Item);
+  { Moves the file into the deleted-files folder (never really deleted). }
+  Item := TMenuItem.Create(FPopupMenu);
+  Item.Caption := 'Delete current image  (into the deleted-files folder)';
+  Item.OnClick := @HandleDeleteMenuClick;
+  FPopupMenu.Items.Add(Item);
+  Item := TMenuItem.Create(FPopupMenu);
+  Item.Caption := 'Save image';
+  Item.OnClick := @HandleSaveMenuClick;
+  FPopupMenu.Items.Add(Item);
+  { As in IrfanView: Save goes straight to the save folder, Save as asks. }
+  Item := TMenuItem.Create(FPopupMenu);
+  Item.Caption := 'Save image as ...';
+  Item.OnClick := @HandleSaveAsMenuClick;
+  FPopupMenu.Items.Add(Item);
+  { Edit mode: the selected area becomes the image; shown only once a
+    selection is made (user, Day 27). }
+  FCropItem := TMenuItem.Create(FPopupMenu);
+  FCropItem.Caption := 'Crop selection';
+  FCropItem.OnClick := @HandleCropMenuClick;
+  FCropItem.Visible := False;
+  FPopupMenu.Items.Add(FCropItem);
+  { A copy at the size shown (the info line's W x H), like Crop (user,
+    Day 22); an icon for the sort panel from this image. }
+  FResizeItem := TMenuItem.Create(FPopupMenu);
+  FResizeItem.Caption := 'Resize to the size shown';
+  FResizeItem.OnClick := @HandleResizeMenuClick;
+  FPopupMenu.Items.Add(FResizeItem);
+  FMakeIconItem := TMenuItem.Create(FPopupMenu);
+  FMakeIconItem.Caption := 'Make icon from this image';
+  FMakeIconItem.OnClick := @HandleMakeIconMenuClick;
+  FPopupMenu.Items.Add(FMakeIconItem);
+  { Lossless: the JPEG's orientation tag (1.1, user). }
+  FRotateItem := TMenuItem.Create(FPopupMenu);
+  FRotateItem.Caption := 'Rotate losslessly  (JPEG)';
+  FPopupMenu.Items.Add(FRotateItem);
+  for RotateOp := Low(TOrientOp) to High(TOrientOp) do
+  begin
+    Item := TMenuItem.Create(FPopupMenu);
+    case RotateOp of
+      ooRotateRight: Item.Caption := '90 degrees right';
+      ooRotateLeft: Item.Caption := '90 degrees left';
+      ooRotate180: Item.Caption := '180 degrees';
+      ooFlipHorizontal: Item.Caption := 'Mirror left-right';
+      ooFlipVertical: Item.Caption := 'Mirror top-bottom';
+    end;
+    Item.Tag := Ord(RotateOp);
+    Item.OnClick := @HandleRotateMenuClick;
+    FRotateItem.Add(Item);
+  end;
+  { Hidden (user, Day 27: "might be useful later"). }
+  Item := TMenuItem.Create(FPopupMenu);
+  Item.Caption := 'Save image and view (debugging)';
+  Item.OnClick := @HandleSaveDebugMenuClick;
+  Item.Visible := False;
+  FPopupMenu.Items.Add(Item);
+  AddMenuLine;
+
+  { Ten fixed folders, keys 1 .. 0 move the image (Day 27, testers). }
+  FRapidItem := TMenuItem.Create(FPopupMenu);
+  FRapidItem.Caption := 'Rapid sorting  (keys 1 .. 0)';
+  { Bold, red (user, Day 27). }
+  FRapidItem.Tag := StrongRedTag;
+  FRapidItem.OnDrawItem := @HandleStrongMenuDraw;
+  FRapidItem.OnMeasureItem := @HandleStrongMenuMeasure;
+  FRapidItem.OnClick := @HandleRapidMenuClick;
+  FPopupMenu.Items.Add(FRapidItem);
+  { On / off (ticked while open; it also opens at the right edge). }
+  FSortPanelItem := TMenuItem.Create(FPopupMenu);
+  FSortPanelItem.Caption := 'Sort panel (side menu)';
+  FSortPanelItem.OnClick := @HandleSortPanelMenuClick;
+  FPopupMenu.Items.Add(FSortPanelItem);
+  { On / off (ticked while open; it also opens at the top edge). }
+  FPreviewStripItem := TMenuItem.Create(FPopupMenu);
+  FPreviewStripItem.Caption := 'Preview strip  (or rest the mouse at the top edge)';
+  FPreviewStripItem.OnClick := @HandlePreviewStripMenuClick;
+  FPopupMenu.Items.Add(FPreviewStripItem);
+  { The filter panel also opens at the left edge. Lock filters: they stay
+    for the next images. }
+  { Hidden (user, Day 27: the left edge and the mouse command
+    FilterPanel open it). }
   Item := TMenuItem.Create(FPopupMenu);
   Item.Caption := 'Filters (side menu, left)';
   Item.OnClick := @HandleFilterPanelMenuClick;
+  Item.Visible := False;
   FPopupMenu.Items.Add(Item);
-  FLockFiltersItem := TMenuItem.Create(FPopupMenu);
-  FLockFiltersItem.Caption := 'Lock filters';
-  FLockFiltersItem.OnClick := @HandleLockFiltersMenuClick;
-  FPopupMenu.Items.Add(FLockFiltersItem);
-  { The filters into the pixels of a copy, like Crop (enabled while a
-    filter is set). }
+  { The filters (and the rotation, the measurement) into the pixels of a
+    copy (enabled while there is something to apply). }
   FApplyFiltersItem := TMenuItem.Create(FPopupMenu);
   FApplyFiltersItem.Caption := 'Apply filters to a copy';
   FApplyFiltersItem.OnClick := @HandleApplyFiltersMenuClick;
   FPopupMenu.Items.Add(FApplyFiltersItem);
+  { The order of the images (Day 27, testers): by date, by name, random
+    (Random again: a new shuffle). }
   Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := '-';
+  Item.Caption := 'Order of the images';
   FPopupMenu.Items.Add(Item);
-  { The homage to Hamana (docs\From_Hamana_to_MView.md). }
+  for Order := Low(TSortMode) to High(TSortMode) do
+  begin
+    FSortOrderItems[Order] := TMenuItem.Create(FPopupMenu);
+    case Order of
+      smDateDescending: FSortOrderItems[Order].Caption := 'By date, newest first';
+      smDateAscending: FSortOrderItems[Order].Caption := 'By date, oldest first';
+      smFileNameAscending: FSortOrderItems[Order].Caption := 'By name, A - Z';
+      smFileNameDescending: FSortOrderItems[Order].Caption := 'By name, Z - A';
+      smRandom: FSortOrderItems[Order].Caption := 'Random  (again: shuffle anew)';
+    end;
+    FSortOrderItems[Order].Tag := Ord(Order);
+    FSortOrderItems[Order].RadioItem := True;
+    FSortOrderItems[Order].GroupIndex := 2;
+    FSortOrderItems[Order].OnClick := @HandleSortOrderMenuClick;
+    Item.Add(FSortOrderItems[Order]);
+  end;
+
+  { Not in the user's menu (Day 27): kept, hidden. Their commands still
+    work (mouse profile: Undo, Magnifier; Undo also by a click on the
+    sort panel's bottom line). }
+  { Lock filters: hidden (user, Day 27: the filter panel has its own
+    lock symbol); the command LockFilters stays. }
+  FLockFiltersItem := TMenuItem.Create(FPopupMenu);
+  FLockFiltersItem.Caption := 'Lock filters';
+  FLockFiltersItem.OnClick := @HandleLockFiltersMenuClick;
+  FLockFiltersItem.Visible := False;
+  FPopupMenu.Items.Add(FLockFiltersItem);
+  FUndoItem := TMenuItem.Create(FPopupMenu);
+  FUndoItem.Caption := 'Undo';
+  FUndoItem.OnClick := @HandleUndoMenuClick;
+  FUndoItem.Visible := False;
+  FPopupMenu.Items.Add(FUndoItem);
+  FMagnifierItem := TMenuItem.Create(FPopupMenu);
+  FMagnifierItem.Caption := 'Magnifier (lens)';
+  FMagnifierItem.OnClick := @HandleMagnifierMenuClick;
+  FMagnifierItem.Visible := False;
+  FPopupMenu.Items.Add(FMagnifierItem);
+
+  { The edition's own entries (uExtensions, M0): a group of their own
+    (none in MView). }
+  if MenuEntryCount > 0 then
+  begin
+    AddMenuLine;
+    SetLength(FExtensionItems, MenuEntryCount);
+    for ExtensionIndex := 0 to MenuEntryCount - 1 do
+    begin
+      FExtensionItems[ExtensionIndex] := TMenuItem.Create(FPopupMenu);
+      FExtensionItems[ExtensionIndex].Caption := MenuEntry(ExtensionIndex).Caption;
+      FExtensionItems[ExtensionIndex].Tag := ExtensionIndex;
+      FExtensionItems[ExtensionIndex].OnClick := @HandleExtensionMenuClick;
+      FPopupMenu.Items.Add(FExtensionItems[ExtensionIndex]);
+    end;
+  end;
+  AddMenuLine;
+  { The homage to Hamana (docs\From_Hamana_to_VersariteViewer.md). }
   Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := 'About Versarite MView';
+  Item.Caption := 'About ' + EditionTitle;
   Item.OnClick := @HandleAboutMenuClick;
   FPopupMenu.Items.Add(Item);
   Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := 'Exit     (if MView ever hangs: ' + EmergencyExitKeyText + ')';
+  Item.Caption := 'Exit     (if it ever hangs: ' + EmergencyExitKeyText + ')';
   Item.OnClick := @HandleExitMenuClick;
   FPopupMenu.Items.Add(Item);
 
@@ -578,6 +768,11 @@ begin
   begin
     ViewInput.SetProfile(FMView.MouseProfile);
     ViewInput.ZonesEnabled := FMView.Config.ZonesEnabled;
+    { The edges (Day 27): the bottom one switches zoom mode (zones off),
+      the top one opens the preview strip. }
+    ViewInput.EdgeWidth := Max(2, Round(FMView.Config.EdgeWidth * Max(1.0, Screen.PixelsPerInch / 96)));
+    ViewInput.BottomEdgeMs := FMView.Config.BottomEdgeMs;
+    ViewInput.TopEdgeMs := FMView.Config.TopEdgeMs;
   end;
   FDeliveryTimer.Enabled := True;
 
@@ -589,6 +784,7 @@ end;
 procedure TMainForm.ShowEditor(AApplyBounds: Boolean);
 var
   Config: TConfig;
+  Note: string;
 begin
   { Complete the file first: a new installation gets one with all
     defaults, an older one gets the keys added since (existing values,
@@ -606,6 +802,9 @@ begin
     { Coming back from the viewer: the editor made at the start is still
       there (hidden); it reads the files again (the viewer may have
       written them). }
+    { One layout for all of it, not one per control (Day 25). }
+    DisableAutoSizing;
+    try
     if FEditor = nil then
     begin
       FEditor := TIniEditor.Create(Self);
@@ -618,12 +817,19 @@ begin
     FEditor.Visible := True;
     FEditor.LoadFile(Config.IniFileName);
     FEditor.LoadMouseProfile(Config.MouseProfileFileName);
+    { A damaged ini was restored at the start (1.1): said once. }
+    Note := TakeIniNote;
+    if Note <> '' then
+      FEditor.ShowNote(Note);
+    finally
+      EnableAutoSizing;
+    end;
     { Files dropped anywhere on it (the text too) open the viewer. }
     AcceptDropsOn(FEditor);
   finally
     Config.Free;
   end;
-  Caption := 'MView - settings';
+  Caption := EditionCaption + ' - settings';
 end;
 
 { "View images": the viewer with the settings just saved, and the last
@@ -642,7 +848,7 @@ begin
     writes it back on exit). }
   RememberBounds;
   FEditor.Visible := False;
-  Caption := 'MView';
+  Caption := EditionCaption;
   CreateViewer;
   { The window is already on screen and won't be resized now (unless
     StartFullscreen): give the viewer its real size. }
@@ -708,18 +914,17 @@ begin
   FDeliveryTimer.Enabled := False;
   OnResize := nil;
   DetachViews;
-  { The views first (they reach TMView's renderer), then the viewer.
-    Its shutdown waits for the worker threads: as on exit, a worker
-    stuck in a read must not freeze the window for good (the settings
-    are saved before the wait). }
-  if Assigned(Watchdog) then
-    Watchdog.ArmExitDeadline(ExitDeadline);
+  { The views first (they reach TMView's renderer), then the viewer -
+    in the background (user, Day 25: the settings show at once). Its
+    settings are saved now (the settings screen reads them next), its
+    threads told to stop; FCloseTimer frees it once they are back. }
   FView := nil;
   FreeAndNil(FCpuView);
   FreeAndNil(FGLView);
-  FreeAndNil(FMView);
-  if Assigned(Watchdog) then
-    Watchdog.DisarmExitDeadline;
+  FMView.BeginClose;
+  FClosingViewer := FMView;
+  FMView := nil;
+  FCloseStartTick := GetTickCount64;
   FreeAndNil(FPopupMenu);
   FreeAndNil(FSortMenu);
   FUndoItem := nil;
@@ -744,13 +949,60 @@ begin
     down; a quick press may be up already). }
   FEscHeld := GetKeyState(VK_ESCAPE) < 0;
   FCropItem := nil;
+  FExtensionItems := nil;
   FStarted := False;
   FCursorHidden := False;
   FMenuOpen := False;
 
   ShowEditor(False);
-  Caption := 'MView - settings';
+  Caption := EditionCaption + ' - settings';
   FEditor.FocusEditor;
+  { Save and View images wait (a spinner) until the viewer has closed. }
+  FEditor.Busy := True;
+  FCloseTimer.Enabled := True;
+end;
+
+
+const
+  { Threads not back after this long: freed the old way (waiting, with
+    the watchdog's deadline). }
+  CloseWaitMs = 15000;
+
+procedure TMainForm.HandleCloseTimer(Sender: TObject);
+begin
+  { A copy under way is waited for however long it takes (never half a
+    file); anything else at most CloseWaitMs. }
+  if (FClosingViewer = nil) or FClosingViewer.CloseFinished
+    or ((GetTickCount64 - FCloseStartTick > CloseWaitMs) and not FClosingViewer.FileJobsBusy) then
+    FinishClosingViewer;
+end;
+
+procedure TMainForm.FinishClosingViewer(AOnExit: Boolean);
+var
+  Viewer: TMView;
+begin
+  FCloseTimer.Enabled := False;
+  { A kept Save first: the closing viewer writes no settings any more
+    (they were saved at Esc), and a worker stuck in a read below must
+    not cost the user's save. The window's place again after it (the
+    editor's text holds the place from when it was loaded). }
+  if Assigned(FEditor) and FEditor.FlushPendingSave and (FMView = nil) then
+    RememberBounds;
+  if FClosingViewer <> nil then
+  begin
+    Viewer := FClosingViewer;
+    FClosingViewer := nil;
+    { Its threads are back, normally: this waits for nothing. A worker
+      stuck in a read must not freeze the window for good. }
+    if Assigned(Watchdog) and not AOnExit then
+      Watchdog.ArmExitDeadline(ExitDeadline);
+    Viewer.Free;
+    if Assigned(Watchdog) and not AOnExit then
+      Watchdog.DisarmExitDeadline;
+  end;
+  { What the settings screen kept (Save, View images). }
+  if Assigned(FEditor) then
+    FEditor.Busy := False;
 end;
 
 procedure TMainForm.HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -957,6 +1209,7 @@ begin
     components; make sure it can't paint with a freed renderer. }
   { A return to the settings screen (Esc) may still be waiting. }
   Application.RemoveAsyncCalls(Self);
+  uExtensions.OnMenuOpen := nil;
   OnResize := nil;
   FDeliveryTimer.Enabled := False;
   FDeliveryTimer.OnTimer := nil;
@@ -964,6 +1217,12 @@ begin
   { The renderer belongs to TMView and goes with it. }
   DetachViews;
   FreeAndNil(FMView);
+  { A viewer still closing from Esc (and a save kept by the settings;
+    not a kept "View images": MView is ending). }
+  if Assigned(FEditor) then
+    FEditor.CancelPendingView;
+  FinishClosingViewer(True);
+  FCloseTimer.OnTimer := nil;
   FreeAndNil(FSortMenuIcons);
 end;
 
@@ -1112,6 +1371,8 @@ procedure TMainForm.HandleCommand(Sender: TObject; ACommand: TCommand;
 var
   P: TPoint;
   I: Integer;
+  Entry: TExtensionMenuEntry;
+  Order: TSortMode;
 begin
   { Placing windows is the window's business. }
   if ACommand = cmdSideBySide then
@@ -1130,22 +1391,41 @@ begin
         FView.Cursor := FMView.ViewCursor;
       end;
       P := FView.ClientToScreen(Point(Round(AArgs.X), Round(AArgs.Y)));
-      FCropItem.Visible := FMView.EditMode;
-      FCropItem.Enabled := FMView.CanCrop;
+      FCropItem.Visible := FMView.CanCrop;
       FUndoItem.Caption := FMView.UndoCaption;
       FUndoItem.Visible := FUndoItem.Caption <> '';
       FMakeIconItem.Enabled := FMView.CanMakeIcon;
+      FRotateItem.Visible := FMView.CanRotateLossless;
       FSideItem.Checked := FSideBySide;
+      FSortPanelItem.Checked := FMView.SortPanelVisible;
+      FPreviewStripItem.Checked := FMView.PreviewStripPinned;
+      FDirPreviewItem.Checked := FMView.DirPreview;
       FLockFiltersItem.Checked := FMView.FiltersLocked;
       FApplyFiltersItem.Enabled := FMView.CanApplyFilters;
-      if FMView.ViewRotated then
+      { What goes into the copy (Day 26: the measurement too). }
+      if FMView.ViewRotated and FMView.CopyBurnsIn then
+        FApplyFiltersItem.Caption := 'Apply filters, rotation and measurement to a copy'
+      else if FMView.ViewRotated then
         FApplyFiltersItem.Caption := 'Apply filters and rotation to a copy'
+      else if FMView.CopyBurnsIn then
+        FApplyFiltersItem.Caption := 'Apply filters and measurement to a copy'
       else
         FApplyFiltersItem.Caption := 'Apply filters to a copy';
       FResizeItem.Enabled := FMView.CanResizeToShown;
       FMagnifierItem.Checked := FMView.MagnifierOn;
       for I := 0 to 2 do
         FFollowItems[I].Checked := FMView.FollowMode = I;
+      for Order := Low(TSortMode) to High(TSortMode) do
+        FSortOrderItems[Order].Checked := FMView.SortOrder = Order;
+      FRapidItem.Checked := FMView.RapidSelection;
+      { The edition's entries ask the edition (nil test: enabled /
+        unchecked). }
+      for I := 0 to High(FExtensionItems) do
+      begin
+        Entry := MenuEntry(I);
+        FExtensionItems[I].Enabled := (not Assigned(Entry.IsEnabled)) or Entry.IsEnabled(FMView);
+        FExtensionItems[I].Checked := Assigned(Entry.IsChecked) and Entry.IsChecked(FMView);
+      end;
       if FMView.ShownSizeText <> '' then
         FResizeItem.Caption := 'Resize to the size shown (' + FMView.ShownSizeText + ')'
       else
@@ -1185,6 +1465,7 @@ procedure TMainForm.HandleSaveAsMenuClick(Sender: TObject);
 var
   Dialog: TSaveDialog;
   Dir, Suggested: string;
+  SaveName, Ext: string;
 begin
   if not FMView.CanSaveImage then
   begin
@@ -1198,11 +1479,32 @@ begin
     Dialog.Title := 'Save image as';
     Dialog.InitialDir := Dir;
     Dialog.FileName := Suggested;
-    Dialog.Filter := 'PNG image (*.png)|*.png';
+    { PNG, or TIFF (Day 26: in the microscopy edition with the scale,
+      ImageJ's way, so Fiji opens it in µm). }
+    Dialog.Filter := 'PNG image (*.png)|*.png|TIFF image (*.tif)|*.tif';
+    Dialog.FilterIndex := 1;
     Dialog.DefaultExt := 'png';
     Dialog.Options := Dialog.Options + [ofOverwritePrompt, ofPathMustExist, ofNoReadOnlyReturn];
     if Dialog.Execute then
-      FMView.SaveImageAs(Dialog.FileName);
+    begin
+      SaveName := Dialog.FileName;
+      { TIFF chosen: its ending, whatever the suggestion had ("cell.png",
+        "cell.jpg" -> "cell.tif"; "cell.v2" -> "cell.v2.tif"). The dialog
+        asked about the name it returned: a renamed one is asked here. }
+      Ext := LowerCase(ExtractFileExt(SaveName));
+      if (Dialog.FilterIndex = 2) and (Ext <> '.tif') and (Ext <> '.tiff') then
+      begin
+        if (Ext = '.png') or (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.bmp')
+          or (Ext = '.gif') then
+          SaveName := ChangeFileExt(SaveName, '.tif')
+        else
+          SaveName := SaveName + '.tif';
+        if FileExists(SaveName) and (MessageDlg('Save image as', ExtractFileName(SaveName)
+          + ' exists already. Replace it?', mtConfirmation, [mbYes, mbNo], 0) <> mrYes) then
+          Exit;
+      end;
+      FMView.SaveImageAs(SaveName);
+    end;
   finally
     Dialog.Free;
   end;
@@ -1226,9 +1528,17 @@ begin
   FMView.Execute(cmdPaste);
 end;
 
+procedure TMainForm.HandleCopyMenuClick(Sender: TObject);
+begin
+  FMView.Execute(cmdCopyImage);
+end;
+
 function TMainForm.ExitDeadline: Integer;
 begin
-  if Assigned(FMView) and FMView.FileJobsBusy then
+  { A copy under way (also in a viewer still closing after Esc) may take
+    long: never cut it off halfway. }
+  if (Assigned(FMView) and FMView.FileJobsBusy)
+    or (Assigned(FClosingViewer) and FClosingViewer.FileJobsBusy) then
     Result := FileJobDeadlineMs
   else
     Result := ExitDeadlineMs;
@@ -1254,9 +1564,95 @@ end;
 
 { ---- Sorting (Phase G, G1) ---- }
 
+{ On / off (Day 27, user: a toggle). }
 procedure TMainForm.HandleSortPanelMenuClick(Sender: TObject);
 begin
-  FMView.ShowSortPanel(True);
+  FMView.ShowSortPanel(not FMView.SortPanelVisible);
+end;
+
+procedure TMainForm.AddMenuLine;
+var
+  Item: TMenuItem;
+begin
+  Item := TMenuItem.Create(FPopupMenu);
+  Item.Caption := '-';
+  FPopupMenu.Items.Add(Item);
+end;
+
+{ Drawn here (LCL draws every Windows menu entry itself; an entry with
+  its own OnDrawItem is left to it): the menu's background, the hover,
+  a tick when checked, the caption bold, deep green for Side by side.
+  The submenu arrow of "Follow" is drawn by Windows. }
+procedure TMainForm.HandleStrongMenuDraw(Sender: TObject; ACanvas: TCanvas; ARect: TRect;
+  AState: TOwnerDrawState);
+var
+  Item: TMenuItem;
+  Gutter, CX, CY, S: Integer;
+  ItemText: string;
+begin
+  if not (Sender is TMenuItem) then
+    Exit;
+  Item := TMenuItem(Sender);
+  ACanvas.Font.Assign(Screen.MenuFont);
+  ACanvas.Font.Style := [fsBold];
+  if Item.Tag = StrongGreenTag then
+    ACanvas.Font.Color := StrongGreen
+  else if Item.Tag = StrongRedTag then
+    ACanvas.Font.Color := StrongRed
+  else
+    ACanvas.Font.Color := clMenuText;
+  if ThemeServices.ThemesEnabled then
+  begin
+    { As the other entries: the themed menu background and hover (the
+      text keeps its colour on the light hover). }
+    ThemeServices.DrawElement(ACanvas.Handle, ThemeServices.GetElementDetails(tmPopupBackground), ARect);
+    if odSelected in AState then
+      ThemeServices.DrawElement(ACanvas.Handle, ThemeServices.GetElementDetails(tmPopupItemHot), ARect)
+    else
+      ThemeServices.DrawElement(ACanvas.Handle, ThemeServices.GetElementDetails(tmPopupItemNormal), ARect);
+  end
+  else
+  begin
+    if odSelected in AState then
+    begin
+      ACanvas.Brush.Color := clHighlight;
+      ACanvas.Font.Color := clHighlightText;
+    end
+    else
+      ACanvas.Brush.Color := clMenu;
+    ACanvas.FillRect(ARect);
+  end;
+  { Where the other entries' text starts (after the check column). }
+  Gutter := ARect.Height + Max(8, ARect.Height div 2);
+  if Item.Checked then
+  begin
+    CX := ARect.Left + Gutter div 2;
+    CY := (ARect.Top + ARect.Bottom) div 2;
+    S := Max(3, ARect.Height div 6);
+    ACanvas.Pen.Color := ACanvas.Font.Color;
+    ACanvas.Pen.Width := 2;
+    ACanvas.Line(CX - S - 1, CY, CX - 1, CY + S);
+    ACanvas.Line(CX - 1, CY + S, CX + S + 2, CY - S - 1);
+    ACanvas.Pen.Width := 1;
+  end;
+  ItemText := StringReplace(Item.Caption, '&&', #1, [rfReplaceAll]);
+  ItemText := StringReplace(ItemText, '&', '', [rfReplaceAll]);
+  ItemText := StringReplace(ItemText, #1, '&', [rfReplaceAll]);
+  ACanvas.Brush.Style := bsClear;
+  ACanvas.TextOut(ARect.Left + Gutter, ARect.Top + (ARect.Height - ACanvas.TextHeight(ItemText)) div 2,
+    ItemText);
+  ACanvas.Brush.Style := bsSolid;
+end;
+
+procedure TMainForm.HandleStrongMenuMeasure(Sender: TObject; ACanvas: TCanvas;
+  var AWidth, AHeight: Integer);
+begin
+  if not (Sender is TMenuItem) then
+    Exit;
+  ACanvas.Font.Assign(Screen.MenuFont);
+  ACanvas.Font.Style := [fsBold];
+  AWidth := Max(AWidth, ACanvas.TextWidth(TMenuItem(Sender).Caption) + 3 * AHeight + 16);
+  AHeight := Max(AHeight, ACanvas.TextHeight('Ag') + 8);
 end;
 
 procedure TMainForm.HandleFilterPanelMenuClick(Sender: TObject);
@@ -1265,14 +1661,34 @@ begin
 end;
 
 procedure TMainForm.HandleLockFiltersMenuClick(Sender: TObject);
+var
+  Args: TCommandArgs;
 begin
-  FMView.Execute(cmdLockFilters);
+  Args := Default(TCommandArgs);
+  Args.Value := 1;                     { said: from the menu }
+  FMView.Execute(cmdLockFilters, Args);
 end;
 
 procedure TMainForm.HandleFollowMenuClick(Sender: TObject);
 begin
   if Sender is TMenuItem then
     FMView.SetFollowMode(TMenuItem(Sender).Tag);
+end;
+
+procedure TMainForm.HandlePreviewStripMenuClick(Sender: TObject);
+begin
+  FMView.Execute(cmdPreviewStrip);
+end;
+
+procedure TMainForm.HandleRapidMenuClick(Sender: TObject);
+begin
+  FMView.SetRapidSelection(not FMView.RapidSelection);
+end;
+
+procedure TMainForm.HandleSortOrderMenuClick(Sender: TObject);
+begin
+  if Sender is TMenuItem then
+    FMView.SetSortOrder(TSortMode(TMenuItem(Sender).Tag));
 end;
 
 procedure TMainForm.HandleMagnifierMenuClick(Sender: TObject);
@@ -1345,12 +1761,17 @@ var
 begin
   if FMView = nil then
     Exit;
+  if Assigned(FSlotMenuWindow) and FSlotMenuWindow.Visible then
+    FSlotMenuWindow.CloseMenu;
   Folders := FMView.Config.SortFolders;
   if (ASlot >= Folders.Count) then
     Exit;
   if ASlot < 0 then
     ASlot := -1;
   FSortMenuSlot := ASlot;
+  FMoveTopItem := nil;
+  FMoveUpItem := nil;
+  FMoveDownItem := nil;
   if FSortMenu = nil then
     FSortMenu := TPopupMenu.Create(Self);
   if FSortMenuIcons = nil then
@@ -1360,6 +1781,20 @@ begin
   end;
   FSortMenu.Items.Clear;
 
+  { Rapid Selection (Day 27): a fixed list; only into the folder, or off. }
+  if Folders.Rapid then
+  begin
+    if ASlot < 0 then
+      Exit;
+    Item := NewItem(nil, MenuText(Folders.Slot(ASlot).Folder), nil);
+    Item.Enabled := False;
+    NewItem(nil, 'Open this folder  (swipe over the button)', @HandleSortOpenClick);
+    NewItem(nil, '-', nil);
+    NewItem(nil, 'Rapid sorting off', @HandleRapidMenuClick);
+  end
+  else
+  begin
+
   if ASlot >= 0 then
   begin
     Item := NewItem(nil, MenuText(Folders.Slot(ASlot).Folder), nil);
@@ -1367,6 +1802,13 @@ begin
     { Into the folder (also: a swipe left or right over the button, or a
       wheel click on it). }
     NewItem(nil, 'Open this folder  (swipe over the button)', @HandleSortOpenClick);
+    { The name in the list only; the folder keeps its own (Day 27,
+      testers). }
+    NewItem(nil, 'Rename ...  (in this list)', @HandleSortRenameClick);
+    { A new folder beside this one or inside it, "<name>_001", added to
+      the list below this button (Day 27, testers). }
+    NewItem(nil, 'Make folder  (beside this one)', @HandleSortMakeFolderClick, 0);
+    NewItem(nil, 'Make subfolder  (inside this one)', @HandleSortMakeFolderClick, 1);
     NewItem(nil, '-', nil);
   end;
   NewItem(nil, 'Choose folder ...', @HandleSortChooseClick);
@@ -1380,7 +1822,7 @@ begin
 
   if FMView.Navigator.HasCurrentImage then
   begin
-    Dir := ExcludeTrailingPathDelimiter(FMView.Navigator.CurrentDirectory);
+    Dir := ExcludeTrailingPathDelimiter(FMView.FolderOnDisk);
     NewItem(nil, 'This image''s folder:  ' + MenuText(FolderDisplayName(Dir)),
       @HandleSortImageFolderClick);
     if ExtractFileDir(Dir) <> Dir then
@@ -1403,6 +1845,13 @@ begin
     Icons := FMView.SortIcons;
     IconFolder := FMView.Config.IconFilesFolder;
     Auto := IconBaseName(Folders.Slot(ASlot).Folder);
+    { Another file first (Day 27, testers: with many icons it was far
+      down), then the icon folder, the automatic choices, the folder's
+      icons. }
+    { Used most (1.1, user): bold, deep green. }
+    NewItem(Sub, 'Choose icon file ...', @HandleSortIconChooseClick, SlotMenuStrongTag);
+    NewItem(Sub, 'Open the icon folder', @HandleSortIconFolderClick);
+    NewItem(Sub, '-', nil);
     Item := NewItem(Sub, 'By name  (' + MenuText(Auto) + '.ico / .png in the icon folder)',
       @HandleSortIconClick, -1);
     Item.RadioItem := True;
@@ -1432,27 +1881,124 @@ begin
     end
     else
       NewItem(Sub, '(reading the icon folder ...)', nil).Enabled := False;
-    NewItem(Sub, '-', nil);
-    NewItem(Sub, 'Choose icon file ...', @HandleSortIconChooseClick);
-    NewItem(Sub, 'Open the icon folder', @HandleSortIconFolderClick);
-    Item := NewItem(nil, 'Move up', @HandleSortMoveClick, -1);
-    Item.Enabled := ASlot > 0;
-    Item := NewItem(nil, 'Move down', @HandleSortMoveClick, 1);
-    Item.Enabled := ASlot < Folders.Count - 1;
+    { To the top (Day 27, testers); the window stays open, up / down
+      repeat while held. }
+    NewItem(nil, '-', nil);
+    FMoveTopItem := NewItem(nil, 'Move to top', @HandleSortMoveClick, MoveToTopTag);
+    FMoveTopItem.Hint := SlotMenuRepeatHint;
+    FMoveUpItem := NewItem(nil, 'Move up  (hold: on and on)', @HandleSortMoveClick, -1);
+    FMoveUpItem.Hint := SlotMenuRepeatHint;
+    FMoveDownItem := NewItem(nil, 'Move down  (hold: on and on)', @HandleSortMoveClick, 1);
+    FMoveDownItem.Hint := SlotMenuRepeatHint;
+    UpdateSortMoveItems;
+    { To another page of the panel (1.1, testers): copy or cut, then
+      paste in the other list (after the button its menu is opened on). }
+    Sub := NewItem(nil, 'Copy / move entry', nil);
+    NewItem(Sub, 'Copy entry', @HandleSortClipClick, 0);
+    NewItem(Sub, 'Cut entry  (it leaves its place when pasted)', @HandleSortClipClick, 1);
+    Item := NewItem(Sub, 'Paste entry  (after this one)', @HandleSortClipClick, 2);
+    if Folders.HasClip then
+      Item.Caption := 'Paste entry "' + MenuText(Folders.ClipName) + '"  (after this one)'
+    else
+      Item.Enabled := False;
     NewItem(nil, '-', nil);
     NewItem(nil, 'Remove this button', @HandleSortRemoveClick);
+  end
+  else if Folders.HasClip then
+  begin
+    { The panel's own menu (no button): paste on top, e.g. into an empty
+      list. }
+    NewItem(nil, '-', nil);
+    NewItem(nil, 'Paste entry "' + MenuText(Folders.ClipName) + '"  (on top)', @HandleSortClipClick, 2);
   end;
+
+  end;   { not Rapid Selection }
 
   { The panel stays open behind its menu (the mouse leaves the view). }
   FMView.ShowSortPanel(True);
-  FMenuOpen := True;
-  try
-    FSortMenu.PopUp(AScreen.X, AScreen.Y);
-  finally
-    FMenuOpen := False;
-    if Assigned(ViewInput) then
-      ViewInput.NoteActivity(GetTickCount64);
+  if FSlotMenuWindow = nil then
+  begin
+    FSlotMenuWindow := TSlotMenuWindow.CreateMenu(Self);
+    FSlotMenuWindow.OnClosed := @HandleSlotMenuClosed;
   end;
+  FMenuOpen := True;
+  { Left of the panel, so the folders stay in sight (Day 27, testers). }
+  FSlotMenuWindow.ShowMenu(FSortMenu.Items, AScreen.X - 2, AScreen.Y - 8);
+end;
+
+procedure TMainForm.HandleSlotMenuClosed(Sender: TObject);
+begin
+  FMenuOpen := False;
+  if Assigned(ViewInput) then
+    ViewInput.NoteActivity(GetTickCount64);
+end;
+
+{ Move to top / up / down: enabled where the slot can go. }
+procedure TMainForm.UpdateSortMoveItems;
+var
+  N: Integer;
+begin
+  if FMView = nil then
+    Exit;
+  N := FMView.Config.SortFolders.Count;
+  if Assigned(FMoveTopItem) then
+    FMoveTopItem.Enabled := FSortMenuSlot > 0;
+  if Assigned(FMoveUpItem) then
+    FMoveUpItem.Enabled := FSortMenuSlot > 0;
+  if Assigned(FMoveDownItem) then
+    FMoveDownItem.Enabled := (FSortMenuSlot >= 0) and (FSortMenuSlot < N - 1);
+end;
+
+{ "<name>_001", "<name>_002" ...: the first free one beside the slot's
+  folder (Tag 0) or inside it (Tag 1), made, and added to the list just
+  below the slot. }
+procedure TMainForm.HandleSortMakeFolderClick(Sender: TObject);
+var
+  Folders: TSortFolders;
+  Base, Where, NewDir: string;
+  N, Index: Integer;
+begin
+  if (FMView = nil) or (FSortMenuSlot < 0) then
+    Exit;
+  Folders := FMView.Config.SortFolders;
+  if FSortMenuSlot >= Folders.Count then
+    Exit;
+  Base := ExcludeTrailingPathDelimiter(Folders.Slot(FSortMenuSlot).Folder);
+  if TMenuItem(Sender).Tag = 1 then
+    Where := Base
+  else
+    Where := ExtractFileDir(Base);
+  if (Where = '') or not DirectoryExists(Where) then
+  begin
+    FMView.StatusNote('cannot make a folder: ' + Where + ' not found', 3000);
+    Exit;
+  end;
+  NewDir := '';
+  for N := 1 to 999 do
+    if not DirectoryExists(IncludeTrailingPathDelimiter(Where) + FolderDisplayName(Base)
+      + Format('_%.3d', [N])) then
+    begin
+      NewDir := IncludeTrailingPathDelimiter(Where) + FolderDisplayName(Base) + Format('_%.3d', [N]);
+      Break;
+    end;
+  if (NewDir = '') or not CreateDir(NewDir) then
+  begin
+    FMView.StatusNote('could not make a folder in ' + Where, 3000);
+    Exit;
+  end;
+  Index := Folders.SetFolder(Folders.Count, NewDir);
+  if Index < 0 then
+  begin
+    FMView.StatusNote('made ' + NewDir + ' (the list is full)', 3000);
+    Exit;
+  end;
+  if Index <> FSortMenuSlot + 1 then
+  begin
+    Folders.Move(Index, FSortMenuSlot + 1);
+    Index := FSortMenuSlot + 1;
+  end;
+  FMView.SortFoldersChanged(Index);
+  FMView.StatusNote('made ' + NewDir, 2500);
 end;
 
 { The folder for the slot the menu is for, or a new slot. }
@@ -1468,9 +2014,10 @@ begin
     Index := FSortMenuSlot
   else
     Index := Folders.Count;
-  if Folders.SetFolder(Index, AFolder) < 0 then
+  Index := Folders.SetFolder(Index, AFolder);
+  if Index < 0 then
     Exit;   { all slots in use }
-  FMView.SortFoldersChanged;
+  FMView.SortFoldersChanged(Index);
 end;
 
 procedure TMainForm.HandleSortChooseClick(Sender: TObject);
@@ -1508,13 +2055,13 @@ end;
 procedure TMainForm.HandleSortImageFolderClick(Sender: TObject);
 begin
   if FMView.Navigator.HasCurrentImage then
-    AssignSortFolder(ExcludeTrailingPathDelimiter(FMView.Navigator.CurrentDirectory));
+    AssignSortFolder(ExcludeTrailingPathDelimiter(FMView.FolderOnDisk));
 end;
 
 procedure TMainForm.HandleSortParentFolderClick(Sender: TObject);
 begin
   if FMView.Navigator.HasCurrentImage then
-    AssignSortFolder(ExtractFileDir(ExcludeTrailingPathDelimiter(FMView.Navigator.CurrentDirectory)));
+    AssignSortFolder(ExtractFileDir(ExcludeTrailingPathDelimiter(FMView.FolderOnDisk)));
 end;
 
 procedure TMainForm.HandleSortColorClick(Sender: TObject);
@@ -1531,11 +2078,96 @@ var
 begin
   if FSortMenuSlot < 0 then
     Exit;
-  Target := FSortMenuSlot + TMenuItem(Sender).Tag;
-  if (Target < 0) or (Target >= FMView.Config.SortFolders.Count) then
+  if TMenuItem(Sender).Tag = MoveToTopTag then
+    Target := 0
+  else
+    Target := FSortMenuSlot + TMenuItem(Sender).Tag;
+  if (Target < 0) or (Target >= FMView.Config.SortFolders.Count)
+    or (Target = FSortMenuSlot) then
     Exit;
   FMView.Config.SortFolders.Move(FSortMenuSlot, Target);
+  { The menu stays open (Day 27): it now is for the slot's new place. }
+  FSortMenuSlot := Target;
+  UpdateSortMoveItems;
+  FMView.SortFoldersChanged(Target);
+end;
+
+{ The name the slot has in the list (Day 27, testers); the folder on
+  disk is not renamed. }
+procedure TMainForm.HandleSortRenameClick(Sender: TObject);
+var
+  Folders: TSortFolders;
+  NewName: string;
+begin
+  if (FMView = nil) or (FSortMenuSlot < 0) then
+    Exit;
+  Folders := FMView.Config.SortFolders;
+  if FSortMenuSlot >= Folders.Count then
+    Exit;
+  NewName := Folders.Slot(FSortMenuSlot).Name;
+  FMenuOpen := True;
+  try
+    if not InputQuery('Rename', 'Name in the list (the folder ' + FolderDisplayName(
+      Folders.Slot(FSortMenuSlot).Folder) + ' keeps its own; empty = its name):', NewName) then
+      Exit;
+  finally
+    FMenuOpen := False;
+  end;
+  NewName := Trim(NewName);
+  if NewName = '' then
+    NewName := FolderDisplayName(Folders.Slot(FSortMenuSlot).Folder);
+  Folders.SetName(FSortMenuSlot, NewName);
   FMView.SortFoldersChanged;
+end;
+
+procedure TMainForm.HandleRotateMenuClick(Sender: TObject);
+begin
+  if FMView <> nil then
+    FMView.RotateLossless(TOrientOp(TMenuItem(Sender).Tag));
+end;
+
+procedure TMainForm.HandleDirPreviewMenuClick(Sender: TObject);
+begin
+  if FMView <> nil then
+    FMView.SetDirPreview(not FMView.DirPreview);
+end;
+
+{ Copy (Tag 0), cut (1) or paste (2) a button (1.1). }
+procedure TMainForm.HandleSortClipClick(Sender: TObject);
+var
+  Folders: TSortFolders;
+  Why: string;
+  Pasted: Integer;
+begin
+  if FMView = nil then
+    Exit;
+  Folders := FMView.Config.SortFolders;
+  case TMenuItem(Sender).Tag of
+    0, 1:
+      begin
+        if (FSortMenuSlot < 0) or (FSortMenuSlot >= Folders.Count) then
+          Exit;
+        Folders.CopySlot(FSortMenuSlot, TMenuItem(Sender).Tag = 1);
+        FMView.SortFoldersChanged;
+        if Folders.ClipIsCut then
+          FMView.ShowNote('cut: ' + Folders.ClipName + ' - paste it in another list (its menu: '
+            + 'Copy / move entry > Paste); Esc cancels', 8000)
+        else
+          FMView.ShowNote('copied: ' + Folders.ClipName + ' - paste it in another list (its menu: '
+            + 'Copy / move entry > Paste)', 8000);
+      end;
+    2:
+      begin
+        Pasted := Folders.PasteSlot(FSortMenuSlot, Why);
+        if Pasted < 0 then
+          FMView.ShowNote('not pasted: ' + Why, 5000)
+        else
+        begin
+          FMView.SortFoldersChanged(Pasted);
+          FMView.ShowNote('pasted: ' + Folders.Slot(Pasted).Name, 3000);
+        end;
+      end;
+  end;
 end;
 
 procedure TMainForm.HandleSortRemoveClick(Sender: TObject);
@@ -1684,6 +2316,16 @@ begin
       end;
   for I := 0 to High(FileNames) do
   begin
+    { A container (.lif, the microscopy edition, M2c): opened in the
+      view, never a sort folder and never kept (Day 25, user: containers
+      are transient in the panel). Never in MView (no reader). }
+    if IsContainerName(FileNames[I]) and FileExists(FileNames[I]) then
+    begin
+      if Added > 0 then
+        FMView.SortFoldersChanged;
+      FMView.OpenDroppedContainer(FileNames[I]);
+      Exit;
+    end;
     { A drop is rare and made by hand: asking the disk here is fine. }
     if not DirectoryExists(FileNames[I]) then
       Continue;
@@ -1719,16 +2361,48 @@ begin
     FView.Cursor := FMView.ViewCursor;   { a cross while the magnifier follows }
 end;
 
+{ An edition's popup menu opens / closed (uExtensions.NoteMenuOpen): as
+  the right-click menu, the pointer shows and doesn't hide meanwhile;
+  the time in the menu doesn't count. }
+procedure TMainForm.HandleExtensionMenuOpen(AOpen: Boolean);
+begin
+  FMenuOpen := AOpen;
+  if AOpen then
+  begin
+    if FCursorHidden and (FView <> nil) and (FMView <> nil) then
+    begin
+      FCursorHidden := False;
+      FView.Cursor := FMView.ViewCursor;
+    end;
+  end
+  else if Assigned(ViewInput) then
+    ViewInput.NoteActivity(GetTickCount64);
+end;
+
 procedure TMainForm.HandleExitMenuClick(Sender: TObject);
 begin
   Hide;
   Close;
 end;
 
-{ The dedication (docs\From_Hamana_to_MView.md). }
+{ An edition's own entry (uExtensions, M0): its action, with the viewer. }
+procedure TMainForm.HandleExtensionMenuClick(Sender: TObject);
+var
+  Entry: TExtensionMenuEntry;
+begin
+  if not (Sender is TMenuItem) then
+    Exit;
+  if (TMenuItem(Sender).Tag < 0) or (TMenuItem(Sender).Tag >= MenuEntryCount) then
+    Exit;
+  Entry := MenuEntry(TMenuItem(Sender).Tag);
+  if Assigned(Entry.Action) then
+    Entry.Action(FMView);
+end;
+
+{ The dedication (docs\From_Hamana_to_VersariteViewer.md). }
 procedure TMainForm.HandleAboutMenuClick(Sender: TObject);
 begin
-  Application.MessageBox(PChar(AboutText), 'About Versarite MView', MB_OK or MB_ICONINFORMATION);
+  Application.MessageBox(PChar(AboutText), PChar('About ' + EditionTitle), MB_OK or MB_ICONINFORMATION);
   { Time spent reading doesn't count towards hiding the cursor. }
   if Assigned(ViewInput) then
     ViewInput.NoteActivity(GetTickCount64);
@@ -1846,7 +2520,59 @@ begin
   SetFullscreen(not FFullscreen);
 end;
 
+{ Fullscreen (Day 25, user): a borderless window one pixel taller than
+  its screen, not the LCL's wsFullScreen. A GPU-drawn (OpenGL) window
+  that covers its screen exactly is shown by Windows / the driver as a
+  "full-screen picture"; a popup over it (the right-click menu) forces a
+  switch back, and the Intel driver flickers then and puts the window
+  behind the others (seen on a Dell XPS 15 on its Intel GPU; NVIDIA was
+  fine). One pixel more is not exactly the screen: no such mode, no
+  flicker. The extra row is below the screen's bottom edge, unseen.
+  Known: Khronos forum "TrackPopupMenu breaks full-screen OpenGL
+  window" (one pixel less fixed it); Qt gives such windows a border. }
+{$IFDEF WINDOWS}
+{ The window's frame on and off without making the window again (Day 25:
+  LCL's BorderStyle re-creates the form's window, and with it every
+  control of the hidden settings screen - over a second on each Esc
+  from fullscreen). }
+const
+  GWL_STYLE_ = -16;
+  WS_CAPTION_ = $00C00000;
+  WS_THICKFRAME_ = $00040000;
+  SWP_FRAME_ONLY = $0001 or $0002 or $0004 or $0010 or $0020 or $0200;
+    { NOSIZE, NOMOVE, NOZORDER, NOACTIVATE, FRAMECHANGED, NOOWNERZORDER }
+
+{$IFDEF CPU64}
+function MViewGetWindowLong(AWnd: THandle; AIndex: LongInt): PtrInt; stdcall;
+  external 'user32.dll' name 'GetWindowLongPtrW';
+function MViewSetWindowLong(AWnd: THandle; AIndex: LongInt; AValue: PtrInt): PtrInt; stdcall;
+  external 'user32.dll' name 'SetWindowLongPtrW';
+{$ELSE}
+function MViewGetWindowLong(AWnd: THandle; AIndex: LongInt): PtrInt; stdcall;
+  external 'user32.dll' name 'GetWindowLongW';
+function MViewSetWindowLong(AWnd: THandle; AIndex: LongInt; AValue: PtrInt): PtrInt; stdcall;
+  external 'user32.dll' name 'SetWindowLongW';
+{$ENDIF}
+function MViewSetWindowPos(AWnd, AAfter: THandle; X, Y, CX, CY: LongInt; AFlags: LongWord): LongBool;
+  stdcall; external 'user32.dll' name 'SetWindowPos';
+
+procedure SetWindowFrame(AWnd: THandle; AOn: Boolean);
+var
+  Style: PtrInt;
+begin
+  Style := MViewGetWindowLong(AWnd, GWL_STYLE_);
+  if AOn then
+    Style := Style or WS_CAPTION_ or WS_THICKFRAME_
+  else
+    Style := Style and not (WS_CAPTION_ or WS_THICKFRAME_);
+  MViewSetWindowLong(AWnd, GWL_STYLE_, Style);
+  MViewSetWindowPos(AWnd, 0, 0, 0, 0, 0, SWP_FRAME_ONLY);
+end;
+{$ENDIF}
+
 procedure TMainForm.SetFullscreen(AValue: Boolean);
+var
+  R: TRect;
 begin
   if AValue = FFullscreen then
     Exit;
@@ -1855,13 +2581,26 @@ begin
   if AValue then
   begin
     FNormalBounds := BoundsRect;
+    R := Monitor.BoundsRect;           { the screen the window is on }
+    if WindowState <> wsNormal then
+      WindowState := wsNormal;
+    {$IFDEF WINDOWS}
+    SetWindowFrame(Handle, False);
+    {$ELSE}
     BorderStyle := bsNone;
-    WindowState := wsFullScreen;
+    {$ENDIF}
+    Inc(R.Bottom);
+    BoundsRect := R;
   end
   else
   begin
-    WindowState := wsNormal;
+    if WindowState <> wsNormal then
+      WindowState := wsNormal;
+    {$IFDEF WINDOWS}
+    SetWindowFrame(Handle, True);
+    {$ELSE}
     BorderStyle := bsSizeable;
+    {$ENDIF}
     BoundsRect := FNormalBounds;
   end;
 end;
@@ -1904,7 +2643,7 @@ begin
   Exe := TotalCommanderExe(FMView.Config.TotalCommander, Wnd);
   if (Wnd = 0) and (Exe = '') then
   begin
-    FMView.ShowNote('Total Commander not found: put its path into MView.ini, [Sort] TotalCommander=',
+    FMView.ShowNote(EditionText('Total Commander not found: put its path into VersariteViewer.ini, [Sort] TotalCommander='),
       10000);
     Exit;
   end;
@@ -1928,7 +2667,7 @@ begin
 
   { Total Commander: into this image's folder (started if not running). }
   if FMView.Navigator.HasCurrentImage then
-    Folder := ExcludeTrailingPathDelimiter(FMView.Navigator.CurrentDirectory)
+    Folder := ExcludeTrailingPathDelimiter(FMView.FolderOnDisk)
   else
     Folder := AFolder;      { at the start: the start folder }
   if Exe <> '' then
@@ -1947,7 +2686,7 @@ begin
   end
   else if Folder <> '' then
     FMView.ShowNote('Total Commander''s program was not found: it can''t be told the folder '
-      + '(set [Sort] TotalCommander= in MView.ini)', 8000);
+      + EditionText('(set [Sort] TotalCommander= in VersariteViewer.ini)'), 8000);
 
   if Wnd <> 0 then
   begin

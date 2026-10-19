@@ -13,8 +13,8 @@ unit uInputHandler;
 
   Status: retired. The mouse language (uMouseEngine + uMouseProfile)
   replaced it after all; no unit uses it any more. Kept for reference
-  only. It is still listed in MView.lpr's uses and in MView.lpi, so it
-  is compiled; it can be removed from MView.lpr and the project.
+  only. It is still listed in VersariteViewer.lpr's uses and in VersariteViewer.lpi, so it
+  is compiled; it can be removed from VersariteViewer.lpr and the project.
 
   Owns
   ----
@@ -59,7 +59,7 @@ unit uInputHandler;
 
   Used by
   -------
-  none (only listed in MView.lpr)
+  none (only listed in VersariteViewer.lpr)
 
   Controls
   --------

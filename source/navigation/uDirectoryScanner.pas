@@ -162,12 +162,19 @@ type
     { UI thread. Stops the thread and waits for it. Safe to call more
       than once. }
     procedure Shutdown;
+    { UI thread, without waiting (Day 25): no more deliveries, the
+      thread told to stop; Finished says when it has. Shutdown after it
+      waits for nothing. }
+    procedure BeginShutdown;
 
     property OnStartReady: TStartReadyEvent read FOnStartReady write FOnStartReady;
     property OnTreeReady: TTreeReadyEvent read FOnTreeReady write FOnTreeReady;
   end;
 
 implementation
+
+uses
+  uContainers;
 
 const
   IdleWaitMs = 200;
@@ -267,8 +274,10 @@ end;
 { Scanner thread: step 1 of a request. }
 function TDirectoryScanner.Resolve(const APath, ASelect: string; ARecursive: Boolean): TScanStart;
 var
-  Path, SelectPath, SelectDirectory: string;
+  Path, SelectPath, SelectDirectory, ContainerOpened: string;
+  Index: Integer;
 begin
+  ContainerOpened := '';
   Result := TScanStart.Create;
   Result.RequestedPath := APath;
   Result.Found := False;
@@ -284,19 +293,30 @@ begin
     if ASelect <> '' then
     begin
       SelectPath := TNavigator.FullPath(ASelect);
-      SelectDirectory := ExcludeTrailingPathDelimiter(ExtractFileDir(SelectPath));
-      if TNavigator.IsInside(SelectDirectory, Path) and FileExists(SelectPath) then
+      SelectDirectory := ExcludeTrailingPathDelimiter(ItemDirectory(SelectPath));
+      if TNavigator.IsInside(SelectDirectory, Path) and ItemExists(SelectPath) then
       begin
         Result.TargetFile := SelectPath;
         Result.TargetDirectory := SelectDirectory;
       end;
     end;
   end
-  else if FileExists(Path) then
+  else if IsContainerName(Path) and FileExists(Path) then
   begin
+    { A container (.lif) opened: its folder, on its first image (user,
+      Day 25: a one-time folder). Never in MView (no reader). }
+    Result.Found := True;
+    ContainerOpened := Path;
+    Result.TargetDirectory := ExcludeTrailingPathDelimiter(ExtractFileDir(Path));
+    Result.Root := TNavigator.ChooseRoot(Result.TargetDirectory, ARecursive);
+  end
+  else if ItemExists(Path) then
+  begin
+    { A file; or an image inside a container (its container is its
+      folder; for an ordinary file ItemExists = FileExists). }
     Result.Found := True;
     Result.TargetFile := Path;
-    Result.TargetDirectory := ExcludeTrailingPathDelimiter(ExtractFileDir(Path));
+    Result.TargetDirectory := ExcludeTrailingPathDelimiter(ItemDirectory(Path));
     Result.Root := TNavigator.ChooseRoot(Result.TargetDirectory, ARecursive);
   end;
   Alive;
@@ -305,6 +325,18 @@ begin
   begin
     Result.Listing := TDirectoryImages.Create;
     Result.Listing.Scan(Result.TargetDirectory);
+    if ContainerOpened <> '' then
+    begin
+      { An image of it to resume on (an older ini named the container
+        as the folder), else its first. }
+      Index := -1;
+      if (ASelect <> '') and SameText(ContainerFileOf(TNavigator.FullPath(ASelect)), ContainerOpened) then
+        Index := Result.Listing.IndexOfFile(TNavigator.FullPath(ASelect));
+      if Index < 0 then
+        Index := Result.Listing.FirstOfContainer(ContainerOpened);
+      if Index >= 0 then
+        Result.TargetFile := Result.Listing.FileName(Index);
+    end;
     Alive;
   end;
 end;
@@ -459,6 +491,16 @@ begin
   Terminate;
   FWakeUp.SetEvent;
   TThread.RemoveQueuedEvents(Self);
+end;
+
+procedure TDirectoryScanner.BeginShutdown;
+begin
+  if FShuttingDown then
+    Exit;
+  FOnStartReady := nil;
+  FOnTreeReady := nil;
+  Terminate;
+  FWakeUp.SetEvent;
 end;
 
 procedure TDirectoryScanner.Shutdown;

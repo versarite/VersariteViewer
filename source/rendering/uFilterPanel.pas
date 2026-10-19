@@ -41,6 +41,9 @@ unit uFilterPanel;
     passing it).
   - Edge opening and closing, as the sort panel (uSortPanel), at the
     left edge.
+  - The edition's rows (M3b, uExtensions' panel sections; none in
+    MView): below Auto / Reset all, a line above; hover, hint at the
+    bottom; TMView passes their clicks on.
 
   Does NOT
   --------
@@ -54,7 +57,7 @@ unit uFilterPanel;
 
   Uses (MView units)
   ------------------
-  interface:      uFilters
+  interface:      uFilters, uExtensions
   Libraries:      Classes, SysUtils, Math, Types, Graphics, BGRABitmap,
                   BGRABitmapTypes
 
@@ -75,15 +78,19 @@ uses
   Graphics,
   BGRABitmap,
   BGRABitmapTypes,
-  uFilters;
+  uFilters,
+  uExtensions;
 
 type
 
-  TFilterPart = (fpNone, fpPanel, fpRow, fpAuto, fpReset, fpLock, fpPin);
+  { fpExtra: a row of an edition's panel section (uExtensions, M3b;
+    none in MView). }
+  TFilterPart = (fpNone, fpPanel, fpRow, fpAuto, fpReset, fpLock, fpPin, fpExtra);
 
   TFilterHit = record
     Part: TFilterPart;
     Kind: TFilterKind;    { fpRow: the filter }
+    Extra: Integer;       { fpExtra: the row (all sections counted); else -1 }
   end;
 
   TFilterPanel = class(TObject)
@@ -99,6 +106,7 @@ type
     FFilters: TFilterSettings;
 
     FViewW, FViewH: Integer;
+    FTop: Integer;               { below the on-screen text line at the top (Day 27) }
     FWidth, FHeight: Integer;
     FHeaderH, FFooterH, FRowH: Integer;
     FHistH: Integer;             { the histogram below the header }
@@ -107,6 +115,8 @@ type
     FHistROI: Boolean;           { of the selection, not the whole image }
     FAutoOn: Boolean;            { Auto for every image (double-click) }
     FHover: TFilterHit;
+    FExtraRows: Integer;         { the edition's rows below Auto / Reset all }
+    FExtrasVersion: Cardinal;    { their version when last drawn }
 
     FDragging: Boolean;
     FDragKind: TFilterKind;
@@ -166,6 +176,9 @@ type
     function DragTo(AX: Integer; var AFilters: TFilterSettings): Boolean;
     procedure EndDrag;
     property Dragging: Boolean read FDragging;
+    { The edition's rows look different now (uExtensions): draw again.
+      True once per change. }
+    function ExtrasChanged: Boolean;
 
     { The picture, up to date; nil while hidden. }
     function Bitmap: TBGRABitmap;
@@ -191,6 +204,9 @@ const
 
 implementation
 
+uses
+  uTypes;
+
 const
   CloseDelayMs = 600;      { unpinned: mouse away this long closes the panel }
   SnapPos = 0.006;         { drag: this close to neutral (of the bar) snaps;
@@ -212,6 +228,7 @@ begin
   FAvailable := True;
   FFilters := NeutralFilters;
   FHover.Part := fpNone;
+  FHover.Extra := -1;
   FDirty := True;
 end;
 
@@ -230,14 +247,20 @@ begin
   FViewW := Max(0, AWidth);
   FViewH := Max(0, AHeight);
   FScale := AScale;
+  { One line down: the mode text at the top (EDIT ON, ZOOM ...) stays
+    readable (user, Day 27). }
+  FTop := Min(ScaleI(28, FScale), FViewH div 4);
   FWidth := Min(ScaleI(230, FScale), Max(ScaleI(120, FScale), FViewW div 2));
   FHeaderH := ScaleI(26, FScale);
   FHistH := ScaleI(46, FScale);
   FFooterH := ScaleI(36, FScale);
-  { The filters and the Auto / Reset all row. }
+  { The filters, the Auto / Reset all row and the edition's rows (M3b). }
+  FExtraRows := PanelSectionRowCount;
   Avail := Max(0, FViewH - FHeaderH - FHistH - FFooterH);
-  FRowH := EnsureRange(Avail div (FilterRowCount + 1), ScaleI(22, FScale), ScaleI(34, FScale));
-  FHeight := Min(FViewH, FHeaderH + FHistH + (FilterRowCount + 1) * FRowH + FFooterH);
+  FRowH := EnsureRange(Avail div (FilterRowCount + 1 + FExtraRows), ScaleI(22, FScale), ScaleI(34, FScale));
+  { The rows keep their size; the panel only moves down (user, Day 27).
+    A window too low for it: it ends at the bottom. }
+  FHeight := Min(FViewH - FTop, FHeaderH + FHistH + (FilterRowCount + 1 + FExtraRows) * FRowH + FFooterH);
   FDirty := True;
 end;
 
@@ -317,11 +340,12 @@ end;
 
 function TFilterPanel.Top: Integer;
 begin
-  Result := 0;
+  Result := FTop;
 end;
 
 { Panel coordinates. Rows 0 .. FilterRowCount - 1: the filters;
-  FilterRowCount: Auto (left half) and Reset all (right half). }
+  FilterRowCount: Auto (left half) and Reset all (right half); then the
+  edition's rows (FExtraRows). }
 function TFilterPanel.RowRect(ARow: Integer): TRect;
 var
   Y: Integer;
@@ -370,6 +394,7 @@ var
 begin
   Result.Part := fpNone;
   Result.Kind := fkBlack;
+  Result.Extra := -1;
   if not Contains(AX, AY) then
     Exit;
   PX := AX - Left;
@@ -402,6 +427,11 @@ begin
       Result.Part := fpAuto
     else
       Result.Part := fpReset;
+  end
+  else if Row - FilterRowCount - 1 < FExtraRows then
+  begin
+    Result.Part := fpExtra;
+    Result.Extra := Row - FilterRowCount - 1;
   end;
 end;
 
@@ -423,7 +453,7 @@ begin
       Hit.Part := fpRow;
       Hit.Kind := FDragKind;
     end;
-    if (Hit.Part <> FHover.Part) or (Hit.Kind <> FHover.Kind) then
+    if (Hit.Part <> FHover.Part) or (Hit.Kind <> FHover.Kind) or (Hit.Extra <> FHover.Extra) then
     begin
       FHover := Hit;
       FDirty := True;
@@ -533,9 +563,14 @@ function TFilterPanel.Bitmap: TBGRABitmap;
 begin
   if not FVisible then
     Exit(nil);
-  if FDirty or (FBitmap = nil) then
+  if FDirty or (FBitmap = nil) or ((FExtraRows > 0) and (PanelSectionsVersion <> FExtrasVersion)) then
     Redraw;
   Result := FBitmap;
+end;
+
+function TFilterPanel.ExtrasChanged: Boolean;
+begin
+  Result := FVisible and (FExtraRows > 0) and (PanelSectionsVersion <> FExtrasVersion);
 end;
 
 procedure TFilterPanel.DrawRow(AKind: TFilterKind; const R: TRect);
@@ -665,7 +700,8 @@ end;
 
 procedure TFilterPanel.Redraw;
 var
-  Pad, Row, CX, I, Y: Integer;
+  Pad, Row, CX, I, Y, LocalRow: Integer;
+  Section: TPanelSection;
   R, P: TRect;
   Col, Text, Dim, Lit: TBGRAPixel;
   Line: string;
@@ -673,6 +709,7 @@ var
 begin
   FDirty := False;
   Inc(FVersion);
+  FExtrasVersion := PanelSectionsVersion;
   if (FWidth <= 0) or (FHeight <= 0) then
     Exit;
   if FBitmap = nil then
@@ -680,10 +717,14 @@ begin
   else
     FBitmap.SetSize(FWidth, FHeight);
   FBitmap.FontQuality := fqSystem;       { transparent background: no ClearType }
-  FBitmap.Fill(BGRA(12, 12, 16, 205));
+  FBitmap.Fill(BGRA(12, 12, 16, PanelAlpha(205)));
   { A thin line on the right: where the panel ends. }
   FBitmap.DrawLine(FWidth - 1, 0, FWidth - 1, FHeight - 1, BGRA(255, 255, 255, 60), False);
   FBitmap.DrawLine(0, FHeight - 1, FWidth - 1, FHeight - 1, BGRA(255, 255, 255, 60), False);
+  { The top edge too, now that the panel starts below the mode line (it
+    was the window's edge before; user, Day 27). }
+  if FTop > 0 then
+    FBitmap.DrawLine(0, 0, FWidth - 1, 0, BGRA(255, 255, 255, 60), False);
 
   Text := BGRA(235, 235, 235, 255);
   Dim := BGRA(160, 160, 160, 255);
@@ -781,6 +822,24 @@ begin
       R.Top + (R.Height - FBitmap.TextSize(Line).cy) div 2, Line, Col);
   end;
 
+  { The edition's rows (M3b; none in MView), a line above them. }
+  for Row := 0 to FExtraRows - 1 do
+  begin
+    R := RowRect(FilterRowCount + 1 + Row);
+    if R.Bottom > FHeight - FFooterH then
+      Break;
+    if Row = 0 then
+      FBitmap.DrawLine(0, R.Top, FWidth - 1, R.Top, BGRA(255, 255, 255, 60), False);
+    if (FHover.Part = fpExtra) and (FHover.Extra = Row) then
+      FBitmap.FillRect(R, BGRA(255, 255, 255, 38), dmDrawWithTransparency);
+    if PanelSectionAt(Row, Section, LocalRow) then
+      try
+        Section.DrawRow(LocalRow, FBitmap, R, (FHover.Part = fpExtra) and (FHover.Extra = Row), FScale);
+      except
+        { An edition's fault costs its row, not the panel. }
+      end;
+  end;
+
   { Footer: what the part under the mouse does. }
   R := FooterRect;
   FBitmap.DrawLine(0, R.Top, FWidth - 1, R.Top, BGRA(255, 255, 255, 50), False);
@@ -806,6 +865,16 @@ begin
         Line := 'lock: keep the filters' + LineEnding + 'for the next images';
       fpPin:
         Line := 'pin: stay open';
+      fpExtra:
+        begin
+          Line := '';
+          if PanelSectionAt(FHover.Extra, Section, LocalRow) then
+            try
+              Line := Section.Hint(LocalRow);
+            except
+              Line := '';
+            end;
+        end;
     else
       if (FHover.Part = fpPanel) and FHistValid then
       begin

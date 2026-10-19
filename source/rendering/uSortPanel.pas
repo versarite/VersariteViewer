@@ -50,8 +50,19 @@ unit uSortPanel;
     most) in a box to the left of the panel, level with the button. The
     picture then is FPreviewW wider than the panel (Left moves left;
     hit tests use PanelLeft); the box takes no clicks.
+  - Containers (M2c, the microscopy edition only; none in MView): a
+    group on top, above the buttons, one row per container file (.lif) -
+    a grey folder with a star in its kind's colour (amber .lif, cyan
+    stack, violet other), where the numbers used to be. Since Day 25
+    (user) only the container the wheel is in, transient; a Pinned one
+    would have a "..." corner (no owner pins any more). Contents mode (ShowContents): the open container's
+    images instead of the buttons, a "back" row first, each with its
+    thumbnail (OnEntryThumb), the one shown in the view in yellow
+    (SetCurrentEntry, scrolled into sight); the one under the mouse large in the box
+    left of the panel (OnEntryPreview).
   - Hit test: which part is at a point (button, its "..." corner, "+",
-    pin, bottom line, empty panel, outside).
+    pin, bottom line, empty panel, outside; a container, its "...",
+    "back", an image).
   - Edge opening: NoteMouse (every mouse move) and Tick (the viewer's
     50 ms timer) open the panel after the mouse has rested EdgeDelayMs at
     the right edge with no button down; unpinned, it closes again when
@@ -97,12 +108,46 @@ uses
 
 type
 
-  TPanelPart = (ppNone, ppPanel, ppSlot, ppSlotMenu, ppAdd, ppPin, ppFooter);
+  { ppContainer .. ppEntry: the microscopy edition's containers (M2c);
+    never hit in MView (no containers). }
+  TPanelPart = (ppNone, ppPanel, ppSlot, ppSlotMenu, ppAdd, ppPin, ppFooter,
+    ppContainer, ppContainerMenu, ppBack, ppEntry,
+    ppListPrev, ppListNext);   { the header's arrows: other folder lists (Day 27) }
 
   TPanelHit = record
     Part: TPanelPart;
-    Slot: Integer;      { ppSlot / ppSlotMenu: the slot; else -1 }
+    Slot: Integer;      { ppSlot / ppSlotMenu: the slot; ppContainer(Menu): the
+                          container; ppEntry: the entry; else -1 }
   end;
+
+  { The panel shows the sort buttons (and containers), or a container's
+    images (M2c). }
+  TPanelMode = (pmSlots, pmContents);
+
+  { A container file (.lif) in the panel (M2c): drawn like a folder with
+    a star in its kind's colour. }
+  TPanelContainer = record
+    Path: string;
+    Name: string;
+    Kind: Integer;      { 0 = .lif (amber), 1 = stack (cyan), 2 = other (violet) }
+    Pinned: Boolean;    { a "..." corner; unused since Day 25 (containers are transient) }
+  end;
+
+  { An image inside the open container. }
+  TPanelEntry = record
+    Name: string;
+    VirtualName: string;
+    Frames: Integer;      { a stack (> 1): an animation mark on its thumbnail (Day 26) }
+  end;
+
+  { Entry AEntry's thumbnail, at most ASize px square; nil = not there yet
+    (a grey square). The picture stays the owner's. }
+  TEntryThumbEvent = function(AEntry, ASize: Integer): TBGRABitmap of object;
+  { Its large picture for the box left of the panel; nil = none yet. }
+  TEntryPreviewEvent = function(AEntry, AMaxSize: Integer; out ACaption: string): TBGRABitmap of object;
+  { What the file says about entry AEntry (Day 26: the microscope's
+    details), laid over the bottom of its large picture; nil = nothing. }
+  TEntryDetailsEvent = function(AEntry: Integer): TStringArray of object;
 
   { The icon of slot ASlot as an ASize x ASize picture; nil = draw the
     coloured folder. The picture stays the owner's. }
@@ -127,6 +172,7 @@ type
     FViewW, FViewH: Integer;
     FWidth: Integer;
     FHeaderH, FFooterH, FRowH: Integer;
+    FLines: Integer;             { [Sort] PanelLines: rows the panel is laid out for; 0 = elastic }
     FFirstRow: Integer;          { scroll: index of the first row shown }
     FRowsShown: Integer;
     FHover: TPanelHit;
@@ -160,18 +206,38 @@ type
       the left than the panel; 0 = no preview (FBitmap alone). }
     FOut: TBGRABitmap;
     FPreviewW: Integer;
+    { Containers (M2c): a group above the "+" row; and the open one's
+      images (contents mode). Empty in MView. }
+    FContainers: array of TPanelContainer;
+    FMode: TPanelMode;
+    FEntries: array of TPanelEntry;
+    FContentsTitle: string;
+    FCurrentEntry: string;       { the image shown (virtual name): drawn yellow }
+    FOnEntryThumb: TEntryThumbEvent;
+    FOnEntryPreview: TEntryPreviewEvent;
+    FOnEntryDetails: TEntryDetailsEvent;
     procedure ComposePreview;
+    procedure RevealCurrent;
     function SlotMissing(ASlot: Integer): Boolean;
-    procedure DrawBadge(X, Y, W, H: Integer; const ANumber: string);
+    procedure DrawStar(ACX, ACY, ARadius: Single; AColor: TBGRAPixel);
+    procedure DrawContainerRow(AIndex: Integer; const R: TRect; APad, AIconW: Integer;
+      AText, ADim: TBGRAPixel);
+    procedure DrawContentsRow(ARow: Integer; const R: TRect; APad: Integer;
+      AText, ADim: TBGRAPixel);
     function FlashColor: TBGRAPixel;
     function StripMode: Boolean;
     procedure RedrawStrip;
     procedure DrawMark(const R: TRect; AOK: Boolean; AAlpha: Byte);
+    procedure DrawArrow(const R: TRect; ADir: Integer; AColor: TBGRAPixel);
 
-    function RowCount: Integer;  { slots + the "+" row }
+    function RowCount: Integer;  { containers (on top) + the "+" row + slots }
+    procedure SetLines(AValue: Integer);
     function RowRect(ARow: Integer): TRect;
     function MenuRect(const ARow: TRect): TRect;
     function PinRect: TRect;
+    function ArrowRect(ADir: Integer): TRect;
+    function ShowsArrows: Boolean;
+    function AddRows: Integer;
     function FooterRect: TRect;
     procedure Redraw;
     procedure DrawFolder(X, Y, W, H: Integer; AColor: TBGRAPixel; const ANumber: string);
@@ -187,6 +253,10 @@ type
     procedure SetViewSize(AWidth, AHeight: Integer; AScale: Double);
     { The slots changed (a folder, colour or order): redraw. }
     procedure Changed;
+    { Scrolls slot ASlot into sight (a folder just added, Day 27). }
+    procedure RevealSlot(ASlot: Integer);
+    { The first row on top (another folder list, Day 27). }
+    procedure ScrollToTop;
 
     { AHold: opened by the menu or a key, not at the edge: an unpinned
       panel stays open until the mouse has been on it (and then left). }
@@ -231,6 +301,10 @@ type
 
     property Visible: Boolean read FVisible;
     property Pinned: Boolean read FPinned write SetPinned;
+    { [Sort] PanelLines (Day 27): rows laid out for; 0 = elastic (as
+      before). MaxPanelLines: as many as fit at the smallest row. }
+    property Lines: Integer read FLines write SetLines;
+    function MaxPanelLines: Integer;
     property Version: Cardinal read FVersion;
     property EdgeDelayMs: Integer read FEdgeDelayMs write FEdgeDelayMs;
     { How close to the right edge counts as "at the edge" (px at 96 dpi,
@@ -244,9 +318,34 @@ type
     property OnSlotIcon: TSlotIconEvent read FOnSlotIcon write FOnSlotIcon;
     property OnSlotMissing: TSlotMissingEvent read FOnSlotMissing write FOnSlotMissing;
     property OnSlotPreview: TSlotPreviewEvent read FOnSlotPreview write FOnSlotPreview;
+
+    { Containers (M2c). SetContainers: pinned first, then the current
+      folder's; redraws only if the list changed. }
+    procedure SetContainers(const AItems: array of TPanelContainer);
+    function ContainerCount: Integer;
+    function Container(AIndex: Integer): TPanelContainer;
+    { A container's images, instead of the buttons; a "back" row first. }
+    procedure ShowContents(const ATitle: string; const AEntries: array of TPanelEntry);
+    procedure ShowSlots;
+    function EntryCount: Integer;
+    function Entry(AIndex: Integer): TPanelEntry;
+    { A thumbnail arrived: redraw (Bitmap gives a new version). }
+    procedure ThumbsChanged;
+    { The image shown in the view (virtual name; '' = none): its row in
+      the container's list is drawn yellow and scrolled into sight. True
+      if the list shows it and it changed (redraw). }
+    function SetCurrentEntry(const AVirtualName: string): Boolean;
+    property Mode: TPanelMode read FMode;
+    property ContentsTitle: string read FContentsTitle;
+    property OnEntryThumb: TEntryThumbEvent read FOnEntryThumb write FOnEntryThumb;
+    property OnEntryPreview: TEntryPreviewEvent read FOnEntryPreview write FOnEntryPreview;
+    property OnEntryDetails: TEntryDetailsEvent read FOnEntryDetails write FOnEntryDetails;
   end;
 
 implementation
+
+uses
+  uTypes;
 
 const
   CloseDelayMs = 600;      { unpinned: mouse away this long closes the panel }
@@ -283,9 +382,148 @@ begin
   inherited Destroy;
 end;
 
+procedure TSortPanel.SetLines(AValue: Integer);
+begin
+  AValue := Max(0, AValue);
+  if AValue = FLines then
+    Exit;
+  FLines := AValue;
+  Changed;
+end;
+
+function TSortPanel.MaxPanelLines: Integer;
+begin
+  Result := Max(1, Max(0, FViewH - FHeaderH - FFooterH) div Max(1, ScaleI(20, FScale)));
+end;
+
 function TSortPanel.RowCount: Integer;
 begin
-  Result := FFolders.Count + 1;
+  if FMode = pmContents then
+    Result := 1 + Length(FEntries)
+  else
+    Result := FFolders.Count + AddRows + Length(FContainers);
+end;
+
+procedure TSortPanel.SetContainers(const AItems: array of TPanelContainer);
+var
+  I: Integer;
+  Same: Boolean;
+begin
+  Same := Length(AItems) = Length(FContainers);
+  if Same then
+    for I := 0 to High(AItems) do
+      if (AItems[I].Path <> FContainers[I].Path) or (AItems[I].Pinned <> FContainers[I].Pinned)
+        or (AItems[I].Kind <> FContainers[I].Kind) or (AItems[I].Name <> FContainers[I].Name) then
+      begin
+        Same := False;
+        Break;
+      end;
+  if Same then
+    Exit;
+  { The group is on top: when its size changes every row below moves,
+    so the hover is no longer where the mouse is. }
+  Same := Length(AItems) = Length(FContainers);
+  SetLength(FContainers, Length(AItems));
+  for I := 0 to High(AItems) do
+    FContainers[I] := AItems[I];
+  if (not Same) or ((FHover.Part in [ppContainer, ppContainerMenu]) and (FHover.Slot > High(FContainers))) then
+  begin
+    FHover.Part := ppNone;
+    FHover.Slot := -1;
+  end;
+  Changed;
+end;
+
+function TSortPanel.ContainerCount: Integer;
+begin
+  Result := Length(FContainers);
+end;
+
+function TSortPanel.Container(AIndex: Integer): TPanelContainer;
+begin
+  Result := FContainers[AIndex];
+end;
+
+procedure TSortPanel.ShowContents(const ATitle: string; const AEntries: array of TPanelEntry);
+var
+  I: Integer;
+begin
+  { Another list (a stack's frames after its .lif's images, Day 26): from
+    its top. }
+  if (FMode <> pmContents) or (ATitle <> FContentsTitle) then
+    FFirstRow := 0;
+  FMode := pmContents;
+  FContentsTitle := ATitle;
+  SetLength(FEntries, Length(AEntries));
+  for I := 0 to High(AEntries) do
+    FEntries[I] := AEntries[I];
+  FHover.Part := ppNone;
+  FHover.Slot := -1;
+  Changed;
+  RevealCurrent;
+end;
+
+function TSortPanel.SetCurrentEntry(const AVirtualName: string): Boolean;
+begin
+  Result := False;
+  if AVirtualName = FCurrentEntry then
+    Exit;
+  FCurrentEntry := AVirtualName;
+  if FMode <> pmContents then
+    Exit;
+  RevealCurrent;
+  FDirty := True;
+  Result := True;
+end;
+
+{ Contents mode: the current image's row into sight (the layout is
+  fresh: Changed ran). Row 0 is "back", entry I is row I + 1. }
+procedure TSortPanel.RevealCurrent;
+var
+  I, Row: Integer;
+begin
+  if (FMode <> pmContents) or (FCurrentEntry = '') or (FRowsShown <= 0) then
+    Exit;
+  for I := 0 to High(FEntries) do
+    if SameText(FEntries[I].VirtualName, FCurrentEntry) then
+    begin
+      Row := I + 1;
+      if Row < FFirstRow then
+        FFirstRow := Row
+      else if Row >= FFirstRow + FRowsShown then
+        FFirstRow := Row - FRowsShown + 1;
+      FFirstRow := EnsureRange(FFirstRow, 0, Max(0, RowCount - FRowsShown));
+      FDirty := True;
+      Exit;
+    end;
+end;
+
+procedure TSortPanel.ShowSlots;
+begin
+  if FMode = pmSlots then
+    Exit;
+  FMode := pmSlots;
+  FEntries := nil;
+  FContentsTitle := '';
+  FFirstRow := 0;
+  FHover.Part := ppNone;
+  FHover.Slot := -1;
+  Changed;
+end;
+
+function TSortPanel.EntryCount: Integer;
+begin
+  Result := Length(FEntries);
+end;
+
+function TSortPanel.Entry(AIndex: Integer): TPanelEntry;
+begin
+  Result := FEntries[AIndex];
+end;
+
+procedure TSortPanel.ThumbsChanged;
+begin
+  FDirty := True;
 end;
 
 procedure TSortPanel.SetViewSize(AWidth, AHeight: Integer; AScale: Double);
@@ -303,12 +541,25 @@ begin
   MinH := ScaleI(20, FScale);
   MaxH := ScaleI(36, FScale);
   Avail := Max(0, FViewH - FHeaderH - FFooterH);
-  { Elastic: as large as fits, within the limits. }
-  if RowCount > 0 then
-    FRowH := Avail div RowCount
+  if FLines > 0 then
+  begin
+    { [Sort] PanelLines (Day 27, testers: with many folders the rows got
+      too small): the rows fill the panel for that many lines, larger
+      than the elastic rows may be; at most as many as fit at the
+      smallest row (MaxPanelLines); more rows than that: the wheel
+      scrolls. }
+    FRowH := Avail div Max(1, Min(FLines, MaxPanelLines));
+    FRowH := EnsureRange(FRowH, MinH, 3 * MaxH);
+  end
   else
-    FRowH := MaxH;
-  FRowH := EnsureRange(FRowH, MinH, MaxH);
+  begin
+    { Elastic: as large as fits, within the limits. }
+    if RowCount > 0 then
+      FRowH := Avail div RowCount
+    else
+      FRowH := MaxH;
+    FRowH := EnsureRange(FRowH, MinH, MaxH);
+  end;
   FRowsShown := Max(1, Avail div FRowH);
   { More than fit: a line for the "1-12 of 20 (wheel)" hint. }
   if RowCount > FRowsShown then
@@ -321,6 +572,29 @@ procedure TSortPanel.Changed;
 begin
   { The row count may have changed: the same layout rules again. }
   SetViewSize(FViewW, FViewH, FScale);
+end;
+
+procedure TSortPanel.ScrollToTop;
+begin
+  FFirstRow := 0;
+  FHover.Part := ppNone;
+  FHover.Slot := -1;
+  FDirty := True;
+end;
+
+procedure TSortPanel.RevealSlot(ASlot: Integer);
+var
+  Row: Integer;
+begin
+  if (FMode <> pmSlots) or (ASlot < 0) or (FRowsShown <= 0) then
+    Exit;
+  Row := Length(FContainers) + AddRows + ASlot;
+  if Row < FFirstRow then
+    FFirstRow := Row
+  else if Row >= FFirstRow + FRowsShown then
+    FFirstRow := Row - FRowsShown + 1;
+  FFirstRow := EnsureRange(FFirstRow, 0, Max(0, RowCount - FRowsShown));
+  FDirty := True;
 end;
 
 procedure TSortPanel.Show(AHold: Boolean);
@@ -412,6 +686,35 @@ begin
   Result := Rect(FWidth - FHeaderH, 0, FWidth, FHeaderH);
 end;
 
+{ The header's arrows (Day 27): ADir = -1 the left one, 1 the right one,
+  left of the pin. }
+function TSortPanel.ArrowRect(ADir: Integer): TRect;
+var
+  W: Integer;
+begin
+  W := FHeaderH;
+  if ADir > 0 then
+    Result := Rect(FWidth - FHeaderH - W, 0, FWidth - FHeaderH, FHeaderH)
+  else
+    Result := Rect(FWidth - FHeaderH - 2 * W, 0, FWidth - FHeaderH - W, FHeaderH);
+end;
+
+{ The arrows: the folder lists, not a container's images nor Rapid
+  Selection. }
+function TSortPanel.ShowsArrows: Boolean;
+begin
+  Result := (FMode = pmSlots) and not FFolders.Rapid;
+end;
+
+{ The "+ add folder" row: none in Rapid Selection (a fixed list). }
+function TSortPanel.AddRows: Integer;
+begin
+  if FFolders.Rapid then
+    Result := 0
+  else
+    Result := 1;
+end;
+
 function TSortPanel.FooterRect: TRect;
 begin
   Result := Rect(0, FViewH - FFooterH, FWidth, FViewH);
@@ -439,6 +742,16 @@ begin
     Result.Part := ppPin;
     Exit;
   end;
+  if ShowsArrows and PtInRect(ArrowRect(-1), Point(PX, PY)) then
+  begin
+    Result.Part := ppListPrev;
+    Exit;
+  end;
+  if ShowsArrows and PtInRect(ArrowRect(1), Point(PX, PY)) then
+  begin
+    Result.Part := ppListNext;
+    Exit;
+  end;
   if PtInRect(FooterRect, Point(PX, PY)) then
   begin
     Result.Part := ppFooter;
@@ -452,11 +765,35 @@ begin
   R := RowRect(Row);
   if R.Bottom > FViewH - FFooterH then
     Exit;
-  if Row = FFolders.Count then
+  if FMode = pmContents then
+  begin
+    { A container's images (M2c): "back", then the images. }
+    if Row = 0 then
+      Result.Part := ppBack
+    else
+    begin
+      Result.Part := ppEntry;
+      Result.Slot := Row - 1;
+    end;
+    Exit;
+  end;
+  if Row < Length(FContainers) then
+  begin
+    { A container (M2c), on top: its "..." corner only when pinned. }
+    Result.Slot := Row;
+    if FContainers[Result.Slot].Pinned and PtInRect(MenuRect(R), Point(PX, PY)) then
+      Result.Part := ppContainerMenu
+    else
+      Result.Part := ppContainer;
+    Exit;
+  end;
+  { "+ add folder" first (Day 27, testers), then the slots. }
+  Row := Row - Length(FContainers);
+  if (Row = 0) and (AddRows > 0) then
     Result.Part := ppAdd
   else
   begin
-    Result.Slot := Row;
+    Result.Slot := Row - AddRows;
     if PtInRect(MenuRect(R), Point(PX, PY)) then
       Result.Part := ppSlotMenu
     else
@@ -710,24 +1047,44 @@ begin
   Result := Assigned(FOnSlotMissing) and FOnSlotMissing(ASlot);
 end;
 
-{ The slot's number, small, in the lower right corner of an icon. }
-procedure TSortPanel.DrawBadge(X, Y, W, H: Integer; const ANumber: string);
+{ A five-pointed star (a container's mark, M2c, where the slot numbers
+  used to be). }
+procedure TSortPanel.DrawStar(ACX, ACY, ARadius: Single; AColor: TBGRAPixel);
 var
-  TS: TSize;
-  BW, BH: Integer;
+  Pts: array[0..9] of TPointF;
+  I: Integer;
+  A, R: Single;
 begin
-  FBitmap.FontHeight := Max(8, H * 9 div 20);
-  FBitmap.FontStyle := [fsBold];
-  TS := FBitmap.TextSize(ANumber);
-  BW := TS.cx + 4;
-  BH := TS.cy;
-  FBitmap.FillRoundRectAntialias(X + W - BW, Y + H - BH, X + W, Y + H, 3, 3,
-    BGRA(0, 0, 0, 170));
-  FBitmap.TextOut(X + W - BW + 2, Y + H - BH, ANumber, BGRA(255, 255, 255, 235));
-  FBitmap.FontStyle := [];
+  for I := 0 to 9 do
+  begin
+    A := -Pi / 2 + I * Pi / 5;
+    if Odd(I) then
+      R := ARadius * 0.45
+    else
+      R := ARadius;
+    Pts[I] := PointF(ACX + R * Cos(A), ACY + R * Sin(A));
+  end;
+  FBitmap.FillPolyAntialias(Pts, AColor);
+  FBitmap.DrawPolygonAntialias(Pts, BGRA(0, 0, 0, 150), Max(1.0, FScale));
 end;
 
 { A folder: a tab and a body in AColor, the number on it. }
+{ A small triangle pointing left (ADir < 0) or right. }
+procedure TSortPanel.DrawArrow(const R: TRect; ADir: Integer; AColor: TBGRAPixel);
+var
+  CX, CY, H: Single;
+begin
+  CX := (R.Left + R.Right) / 2;
+  CY := (R.Top + R.Bottom) / 2;
+  H := R.Height * 0.22;
+  if ADir < 0 then
+    FBitmap.FillPolyAntialias([PointF(CX + H * 0.6, CY - H), PointF(CX + H * 0.6, CY + H),
+      PointF(CX - H * 0.8, CY)], AColor)
+  else
+    FBitmap.FillPolyAntialias([PointF(CX - H * 0.6, CY - H), PointF(CX - H * 0.6, CY + H),
+      PointF(CX + H * 0.8, CY)], AColor);
+end;
+
 procedure TSortPanel.DrawFolder(X, Y, W, H: Integer; AColor: TBGRAPixel; const ANumber: string);
 var
   TabW, TabH: Integer;
@@ -782,15 +1139,116 @@ begin
   Result := UTF8Copy(AText, 1, N) + '...';
 end;
 
+{ Container AIndex's row: a grey folder with a star in its kind's colour,
+  its name; "..." when pinned. The group is on top: a line below its last row. }
+procedure TSortPanel.DrawContainerRow(AIndex: Integer; const R: TRect; APad, AIconW: Integer;
+  AText, ADim: TBGRAPixel);
+var
+  C: TPanelContainer;
+  H, TabH, TextX, TextRight: Integer;
+  M: TRect;
+  StarCol: TBGRAPixel;
+  Line: string;
+begin
+  C := FContainers[AIndex];
+  if (FHover.Part in [ppContainer, ppContainerMenu]) and (FHover.Slot = AIndex) then
+    FBitmap.FillRect(R, BGRA(255, 255, 255, 38), dmDrawWithTransparency);
+  { The group is on top: a line below its last row. }
+  if AIndex = High(FContainers) then
+    FBitmap.DrawLine(APad, R.Bottom - 1, FWidth - APad, R.Bottom - 1, BGRA(255, 255, 255, 70), False);
+  H := R.Height - APad;
+  TabH := Max(2, H div 6);
+  DrawFolder(APad, R.Top + APad div 2, AIconW, H, BGRA(105, 105, 115, 255), '');
+  case C.Kind of
+    0: StarCol := BGRA(255, 190, 40, 255);     { .lif: amber }
+    1: StarCol := BGRA(60, 210, 230, 255);     { stack: cyan }
+  else
+    StarCol := BGRA(175, 115, 245, 255);       { other: violet }
+  end;
+  DrawStar(APad + AIconW / 2, R.Top + APad div 2 + TabH + (H - TabH) / 2,
+    Min(AIconW, H - TabH) * 0.40, StarCol);
+  M := MenuRect(R);
+  TextX := APad + AIconW + APad;
+  if C.Pinned then
+    TextRight := M.Left - 2
+  else
+    TextRight := R.Right - APad;
+  FBitmap.FontHeight := Max(9, Min(ScaleI(14, FScale), R.Height * 11 div 20));
+  Line := FitText(FBitmap, C.Name, TextRight - TextX);
+  FBitmap.TextOut(TextX, R.Top + (R.Height - FBitmap.TextSize(Line).cy) div 2, Line, AText);
+  if C.Pinned then
+  begin
+    if (FHover.Part = ppContainerMenu) and (FHover.Slot = AIndex) then
+      FBitmap.FillRect(M, BGRA(255, 255, 255, 60), dmDrawWithTransparency);
+    FBitmap.FontHeight := Max(9, R.Height div 2);
+    FBitmap.TextOut(M.Left + (M.Width - FBitmap.TextSize('...').cx) div 2,
+      M.Top + (M.Height - FBitmap.TextSize('...').cy) div 2 - 2, '...', ADim);
+  end;
+end;
+
+{ Contents mode, row ARow: 0 = "back", else an image with its
+  thumbnail (a grey square until it is made). }
+procedure TSortPanel.DrawContentsRow(ARow: Integer; const R: TRect; APad: Integer;
+  AText, ADim: TBGRAPixel);
+var
+  S, X, Y, TextX, M: Integer;
+  Thumb: TBGRABitmap;
+  Line: string;
+begin
+  if ((ARow = 0) and (FHover.Part = ppBack))
+    or ((ARow > 0) and (FHover.Part = ppEntry) and (FHover.Slot = ARow - 1)) then
+    FBitmap.FillRect(R, BGRA(255, 255, 255, 38), dmDrawWithTransparency);
+  FBitmap.FontHeight := Max(9, Min(ScaleI(14, FScale), R.Height * 11 div 20));
+  if ARow = 0 then
+  begin
+    Line := FitText(FBitmap, '<  back', FWidth - 2 * APad);
+    FBitmap.TextOut(APad, R.Top + (R.Height - FBitmap.TextSize(Line).cy) div 2, Line, ADim);
+    FBitmap.DrawLine(APad, R.Bottom - 1, FWidth - APad, R.Bottom - 1, BGRA(255, 255, 255, 50), False);
+    Exit;
+  end;
+  S := R.Height - APad;
+  Thumb := nil;
+  if Assigned(FOnEntryThumb) and (S >= 8) then
+    Thumb := FOnEntryThumb(ARow - 1, S);
+  if Thumb <> nil then
+  begin
+    X := APad + (S - Thumb.Width) div 2;
+    Y := R.Top + APad div 2 + (S - Thumb.Height) div 2;
+    FBitmap.PutImage(X, Y, Thumb, dmDrawWithTransparency);
+  end
+  else
+    FBitmap.FillRect(APad, R.Top + APad div 2, APad + S, R.Top + APad div 2 + S,
+      BGRA(60, 60, 68, 255), dmSet);
+  { A stack: the animation mark (user, Day 25: it can play), a cyan play
+    triangle on a dark square at the thumbnail's lower right corner. }
+  if FEntries[ARow - 1].Frames > 1 then
+  begin
+    M := Max(7, S * 9 div 20);
+    X := APad + S - M;
+    Y := R.Top + APad div 2 + S - M;
+    FBitmap.FillRect(X, Y, X + M, Y + M, BGRA(0, 0, 0, 190), dmDrawWithTransparency);
+    FBitmap.FillPolyAntialias([PointF(X + M * 0.32, Y + M * 0.22), PointF(X + M * 0.32, Y + M * 0.78),
+      PointF(X + M * 0.80, Y + M * 0.50)], BGRA(60, 210, 230, 255));
+  end;
+  TextX := APad + S + APad;
+  Line := FitText(FBitmap, FEntries[ARow - 1].Name, FWidth - TextX - APad);
+  { The image shown in the view: yellow (user, Day 25). }
+  if (FCurrentEntry <> '') and SameText(FEntries[ARow - 1].VirtualName, FCurrentEntry) then
+    FBitmap.TextOut(TextX, R.Top + (R.Height - FBitmap.TextSize(Line).cy) div 2, Line,
+      BGRA(255, 215, 40, 255))
+  else
+    FBitmap.TextOut(TextX, R.Top + (R.Height - FBitmap.TextSize(Line).cy) div 2, Line, AText);
+end;
+
 procedure TSortPanel.Redraw;
 var
-  Row, Pad, IconW, TextX, TextW, Y2: Integer;
+  Row, SlotIndex, Pad, IconW, TextX, TextW, Y2: Integer;
   R, M, P: TRect;
   Slot: TSortSlot;
   C: LongWord;
   Col, Text, Dim: TBGRAPixel;
   Line: string;
-  Lines: TStringArray;
+  FooterLines: TStringArray;
   I, IconS, IconX: Integer;
   Icon: TBGRABitmap;
   Missing: Boolean;
@@ -805,7 +1263,7 @@ begin
   else
     FBitmap.SetSize(FWidth, FViewH);
   FBitmap.FontQuality := fqSystem;       { transparent background: no ClearType }
-  FBitmap.Fill(BGRA(12, 12, 16, 205));
+  FBitmap.Fill(BGRA(12, 12, 16, PanelAlpha(205)));
   { A thin line on the left: where the panel starts. }
   FBitmap.DrawLine(0, 0, 0, FViewH - 1, BGRA(255, 255, 255, 60), False);
 
@@ -815,11 +1273,45 @@ begin
 
   { Header: title and the pin. }
   FBitmap.FontHeight := ScaleI(15, FScale);
-  if FBusy then
-    Line := 'Sort   (working ...)'
+  if FMode = pmContents then
+    Line := FitText(FBitmap, FContentsTitle, FWidth - FHeaderH - Pad)   { the open container }
+  else if FFolders.Rapid then
+    Line := 'Rapid sorting'
   else
+  begin
     Line := 'Sort';
+    { Several lists (Day 27): which one; the empty one shown is new. }
+    if FFolders.Count = 0 then
+    begin
+      if FFolders.ListCount > 1 then
+        Line := 'New list';
+    end
+    else if FFolders.ListCount > 1 then
+      Line := Format('Sort %d/%d', [FFolders.ListIndex + 1, FFolders.ListCount]);
+    if FBusy then
+      Line := Line + '   (working ...)';
+  end;
+  { Not into the arrows or the pin. }
+  if ShowsArrows then
+    Line := FitText(FBitmap, Line, ArrowRect(-1).Left - Pad)
+  else
+    Line := FitText(FBitmap, Line, PinRect.Left - Pad);
   FBitmap.TextOut(Pad, (FHeaderH - FBitmap.TextSize(Line).cy) div 2, Line, Dim);
+  { The arrows: other lists (Day 27, testers). }
+  if ShowsArrows then
+    for I := -1 to 1 do
+    begin
+      if I = 0 then
+        Continue;
+      P := ArrowRect(I);
+      if ((I < 0) and (FHover.Part = ppListPrev)) or ((I > 0) and (FHover.Part = ppListNext)) then
+        FBitmap.FillRect(P, BGRA(255, 255, 255, 40), dmDrawWithTransparency);
+      { Red: this way comes a new, empty list (Day 27, user). }
+      if FFolders.NextIsNew(I) then
+        DrawArrow(P, I, BGRA(235, 70, 60, 255))
+      else
+        DrawArrow(P, I, Dim);
+    end;
   P := PinRect;
   if (FHover.Part = ppPin) then
     FBitmap.FillRect(P, BGRA(255, 255, 255, 40), dmDrawWithTransparency);
@@ -839,23 +1331,39 @@ begin
     R := RowRect(Row);
     if R.Bottom > FViewH - FFooterH then
       Break;
-    if (FHover.Part in [ppSlot, ppSlotMenu]) and (FHover.Slot = Row) then
+    { A container's images (M2c). }
+    if FMode = pmContents then
+    begin
+      DrawContentsRow(Row, R, Pad, Text, Dim);
+      Continue;
+    end;
+    IconW := Round((R.Height - 2 * Pad div 2) * 1.25);
+    { The containers' group, on top (M2c; none in MView): the .lif the
+      wheel is in (user, Day 25: transient). Then "+", then the slots. }
+    if Row < Length(FContainers) then
+    begin
+      DrawContainerRow(Row, R, Pad, IconW, Text, Dim);
+      Continue;
+    end;
+    { "+ add folder" on top of the slots (Day 27, testers). }
+    SlotIndex := Row - Length(FContainers) - AddRows;
+    if (FHover.Part in [ppSlot, ppSlotMenu]) and (FHover.Slot = SlotIndex) then
       FBitmap.FillRect(R, BGRA(255, 255, 255, 38), dmDrawWithTransparency);
     { The confirmation flash, and the frame of a job under way. }
-    if (FFlashStartMs > 0) and (FFlashSlot = Row) then
+    if (SlotIndex >= 0) and (FFlashStartMs > 0) and (FFlashSlot = SlotIndex) then
     begin
       Col := FlashColor;
       Col.alpha := Round(200 * FFlashLevel);
       FBitmap.FillRect(R, Col, dmDrawWithTransparency);
     end;
-    if (Row < FFolders.Count) and (Row <= High(FPending)) and (FPending[Row] > 0) then
+    if (SlotIndex >= 0) and (SlotIndex < FFolders.Count) and (SlotIndex <= High(FPending))
+      and (FPending[SlotIndex] > 0) then
     begin
-      C := SlotColorValue(FFolders.Slot(Row).Color);
+      C := SlotColorValue(FFolders.Slot(SlotIndex).Color);
       FBitmap.RectangleAntialias(R.Left + 1.5, R.Top + 1.5, R.Right - 2.5, R.Bottom - 2.5,
         BGRA(C and $FF, (C shr 8) and $FF, (C shr 16) and $FF, 230), Max(1.5, FScale * 1.5));
     end;
-    IconW := Round((R.Height - 2 * Pad div 2) * 1.25);
-    if Row = FFolders.Count then
+    if SlotIndex = -1 then
     begin
       { "+": add a folder (or drop one here). }
       if FHover.Part = ppAdd then
@@ -867,8 +1375,10 @@ begin
       FBitmap.TextOut(Pad + IconW + Pad, R.Top + (R.Height - FBitmap.TextSize(Line).cy) div 2, Line, Dim);
       Continue;
     end;
-    Slot := FFolders.Slot(Row);
-    Missing := SlotMissing(Row);
+    Slot := FFolders.Slot(SlotIndex);
+    { A missing folder, or a button cut to be pasted elsewhere (1.1):
+      dimmed. }
+    Missing := SlotMissing(SlotIndex) or FFolders.IsCutSlot(SlotIndex);
     C := SlotColorValue(Slot.Color);
     if Missing then
       Col := BGRA(90, 90, 90, 255)
@@ -878,7 +1388,7 @@ begin
     IconS := R.Height - Pad;
     Icon := nil;
     if Assigned(FOnSlotIcon) and (IconS >= 8) then
-      Icon := FOnSlotIcon(Row, IconS);
+      Icon := FOnSlotIcon(SlotIndex, IconS);
     if Icon <> nil then
     begin
       IconX := Pad + (IconW - IconS) div 2;
@@ -889,7 +1399,7 @@ begin
       { No number on an icon (user, Day 24): the picture alone. }
     end
     else
-      DrawFolder(Pad, R.Top + Pad div 2, IconW, R.Height - Pad, Col, IntToStr(Row + 1));
+      DrawFolder(Pad, R.Top + Pad div 2, IconW, R.Height - Pad, Col, FFolders.SlotLabel(SlotIndex));
     M := MenuRect(R);
     TextX := Pad + IconW + Pad;
     TextW := M.Left - TextX - 2;
@@ -901,13 +1411,13 @@ begin
     else
       FBitmap.TextOut(TextX, R.Top + (R.Height - FBitmap.TextSize(Line).cy) div 2, Line, Text);
     { While it flashes: a check mark (or a cross) instead of "...". }
-    if (FFlashStartMs > 0) and (FFlashSlot = Row) then
+    if (FFlashStartMs > 0) and (FFlashSlot = SlotIndex) then
     begin
       DrawMark(M, FFlashOK, Round(255 * FFlashLevel));
       Continue;
     end;
     { The "..." corner. }
-    if (FHover.Part = ppSlotMenu) and (FHover.Slot = Row) then
+    if (FHover.Part = ppSlotMenu) and (FHover.Slot = SlotIndex) then
       FBitmap.FillRect(M, BGRA(255, 255, 255, 60), dmDrawWithTransparency);
     FBitmap.FontHeight := Max(9, R.Height div 2);
     FBitmap.TextOut(M.Left + (M.Width - FBitmap.TextSize('...').cx) div 2,
@@ -927,16 +1437,36 @@ begin
   R := FooterRect;
   FBitmap.DrawLine(0, R.Top, FWidth - 1, R.Top, BGRA(255, 255, 255, 50), False);
   if (FHover.Part in [ppSlot, ppSlotMenu]) and (FHover.Slot >= 0) and (FHover.Slot < FFolders.Count) then
+  begin
     if SlotMissing(FHover.Slot) then
       Line := 'folder not found:' + LineEnding + FFolders.Slot(FHover.Slot).Folder
+    else if FFolders.Rapid then
+      Line := FFolders.Slot(FHover.Slot).Folder
+        + LineEnding + 'key ' + FFolders.SlotLabel(FHover.Slot) + ': move the image here'
+        + LineEnding + 'double-click  left: copy  right: move'
     else
       Line := FFolders.Slot(FHover.Slot).Folder
         + LineEnding + 'double-click  left: copy  right: move'
-        + LineEnding + 'swipe left or right: open the folder'
+        + LineEnding + 'swipe left or right: open the folder';
+  end
   else if FHover.Part = ppAdd then
     Line := 'click: choose a folder' + LineEnding + 'or drop folders here'
+  else if (FHover.Part = ppContainer) and (FHover.Slot >= 0) and (FHover.Slot <= High(FContainers)) then
+    Line := FContainers[FHover.Slot].Path
+      + LineEnding + 'double-click: list its images'
+      + LineEnding + 'swipe or wheel click: open it'
+  else if (FHover.Part = ppEntry) and (FHover.Slot >= 0) and (FHover.Slot <= High(FEntries)) then
+    Line := FEntries[FHover.Slot].Name + LineEnding + 'click: show it'
+  else if FHover.Part = ppBack then
+    Line := 'click: back to the folders'
   else if FHover.Part = ppPin then
     Line := 'pin: stay open'
+  else if FHover.Part = ppListPrev then
+    Line := 'the previous folder list'
+  else if FHover.Part = ppListNext then
+    Line := 'the next folder list' + LineEnding + '(after the last: a new, empty one)'
+  else if (FMode = pmContents) and (FFooterText = '') then
+    Line := Format('%d images', [Length(FEntries)]) + LineEnding + 'click one to show it'
   else
     Line := FFooterText;
   if FHover.Part = ppFooter then
@@ -949,11 +1479,11 @@ begin
     FBitmap.FillRect(R, Col, dmDrawWithTransparency);
   end;
   FBitmap.FontHeight := ScaleI(11, FScale);
-  Lines := TextLines(Line);
+  FooterLines := TextLines(Line);
   Y2 := R.Top + 3;
-  for I := 0 to Min(High(Lines), 2) do
+  for I := 0 to Min(High(FooterLines), 2) do
   begin
-    FBitmap.TextOut(Pad, Y2, FitText(FBitmap, Lines[I], FWidth - 2 * Pad), Dim);
+    FBitmap.TextOut(Pad, Y2, FitText(FBitmap, FooterLines[I], FWidth - 2 * Pad), Dim);
     Inc(Y2, FBitmap.TextSize('Xg').cy);
   end;
 
@@ -967,14 +1497,25 @@ procedure TSortPanel.ComposePreview;
 var
   Slot, Pad, Gap, CapH, MaxS, BoxW, BoxH, BoxY: Integer;
   Pic: TBGRABitmap;
-  Cap: string;
+  Cap, Line: string;
+  Details: TStringArray;
+  I, Shown, LineH, BandH, BandY, PicX: Integer;
 begin
   FPreviewW := 0;
-  if (not Assigned(FOnSlotPreview)) or not (FHover.Part in [ppSlot, ppSlotMenu]) then
-    Exit;
+  { A slot's icon, or (M2c) an image of the open container. }
+  if FHover.Part = ppEntry then
+  begin
+    if (not Assigned(FOnEntryPreview)) or (FHover.Slot < 0) or (FHover.Slot > High(FEntries)) then
+      Exit;
+  end
+  else
+  begin
+    if (not Assigned(FOnSlotPreview)) or not (FHover.Part in [ppSlot, ppSlotMenu]) then
+      Exit;
+    if (FHover.Slot < 0) or (FHover.Slot >= FFolders.Count) then
+      Exit;
+  end;
   Slot := FHover.Slot;
-  if (Slot < 0) or (Slot >= FFolders.Count) then
-    Exit;
   Pad := ScaleI(6, FScale);
   Gap := ScaleI(4, FScale);
   CapH := ScaleI(18, FScale);
@@ -985,11 +1526,20 @@ begin
   if MaxS < ScaleI(96, FScale) then
     Exit;
   Cap := '';
-  Pic := FOnSlotPreview(Slot, MaxS, Cap);
+  if FHover.Part = ppEntry then
+    Pic := FOnEntryPreview(Slot, MaxS, Cap)
+  else
+    Pic := FOnSlotPreview(Slot, MaxS, Cap);
   if (Pic = nil) or (Pic.Width <= 0) or (Pic.Height <= 0) then
     Exit;
+  Details := nil;
+  if (FHover.Part = ppEntry) and Assigned(FOnEntryDetails) then
+    Details := FOnEntryDetails(Slot);
 
   BoxW := Max(Pic.Width, ScaleI(96, FScale)) + 2 * Pad;
+  { Room for the details' lines (they may be wider than the picture). }
+  if Length(Details) > 0 then
+    BoxW := Max(BoxW, Min(ScaleI(340, FScale), FViewW - FWidth - Gap - ScaleI(16, FScale)));
   BoxH := Pic.Height + 2 * Pad;
   if Cap <> '' then
     Inc(BoxH, CapH);
@@ -1008,7 +1558,29 @@ begin
     ScaleI(5, FScale), BGRA(12, 12, 16, 220));
   FOut.RoundRectAntialias(0, BoxY, BoxW - 1, BoxY + BoxH - 1, ScaleI(5, FScale),
     ScaleI(5, FScale), BGRA(255, 255, 255, 60), 1);
-  FOut.PutImage((BoxW - Pic.Width) div 2, BoxY + Pad, Pic, dmDrawWithTransparency);
+  PicX := (BoxW - Pic.Width) div 2;
+  FOut.PutImage(PicX, BoxY + Pad, Pic, dmDrawWithTransparency);
+  { The details over the picture's lower part (user, Day 26), on a dark
+    band across the box: as many lines as fit in the picture's height,
+    the file's order (what matters for looking and measuring first). }
+  if Length(Details) > 0 then
+  begin
+    FOut.FontHeight := Max(9, ScaleI(10, FScale));
+    LineH := FOut.TextSize('Xg').cy;
+    Shown := Min(Length(Details), Max(0, (Pic.Height - Pad) div Max(1, LineH)));
+    if Shown > 0 then
+    begin
+      BandH := Shown * LineH + Pad;
+      BandY := BoxY + Pad + Pic.Height - BandH;
+      FOut.FillRect(Pad div 2, BandY, BoxW - Pad div 2, BoxY + Pad + Pic.Height,
+        BGRA(0, 0, 0, 165), dmDrawWithTransparency);
+      for I := 0 to Shown - 1 do
+      begin
+        Line := FitText(FOut, Details[I], BoxW - 2 * Pad);
+        FOut.TextOut(Pad, BandY + Pad div 2 + I * LineH, Line, BGRA(225, 225, 225, 255));
+      end;
+    end;
+  end;
   if Cap <> '' then
   begin
     FOut.FontHeight := ScaleI(11, FScale);

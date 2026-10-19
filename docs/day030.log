@@ -1,0 +1,59 @@
+Day 30 (2026-10-19) - the rename, the second round for 1.1, docs
+
+The user's answers first:
+- the GitHub repository becomes VersariteViewer;
+- the old name only as "formerly MView" in the readme (the source keeps
+  its unit and project names, the day logs and old specs their history);
+- the bold menu entry: "Choose icon file ..." in the Icon sub-menu.
+
+1. The rename. MView -> VersariteViewer, MView Image Lab -> Versarite
+   Image Lab. uEdition: EditionId / Title / Caption VersariteViewer,
+   EditionOldId MView; SetEdition(Id, OldId, Title, Version, Caption);
+   EditionText puts the edition's names into the help texts. The user
+   renamed the folder and the project files (VersariteViewer.lpi / .lpr,
+   VersariteViewerLab.lpi / .lpr); title and target build\VersariteViewer
+   / build\VersariteImageLab, the Lab's main unit entry, the program
+   names, the form caption and Application.Title set to match. The old settings are taken over at the first
+   start (MView.ini / MViewLab.ini read as the new ini; a notice says
+   so); the old end line is still recognised; Documents\MView deleted
+   files is used on if it exists. Window class names, the scale keyword
+   ("Versarite scale", "MView scale" still read), About box, help texts.
+2. Small fixes: the "Add a key" list anchored above its Add button, key
+   lists sized to the screen (FitDropDown); [View] PanelOpacity (20 ...
+   100, default 80) for all panels (uTypes.PanelAlpha); "Choose icon
+   file ..." bold and deep green (SlotMenuStrongTag).
+3. Copy / move entry (a folder's ... menu): Copy entry, Cut entry, Paste
+   entry after the highlighted line (uSortFolders: CopySlot, PasteSlot,
+   CancelCut, IsCutSlot; a cut entry is dimmed; Back cancels a cut;
+   duplicates and full lists refused).
+4. Total Commander dir preview (right-click menu): Follow -> "folder and
+   cursor"; a folder under the cursor plays its first DirPreviewFiles (3,
+   0 = all) images every DirPreviewDelayMs (1000), looped, in the
+   viewer's order; the info line shows "N images, M subfolders" (new
+   unit uDirPeek, counting on threads of its own). Not testable here (no
+   Total Commander under Wine): the user tests it on Windows.
+5. ZIP / CBZ (new unit uZipContainer, both editions): listed in the side
+   panel like a .lif, natural order, unpacked into memory only;
+   [Navigation] Archives. RAR: later, in the Lab (unrar.dll); CBR: no; a
+   CBZ as a continuous strip: 1.2.
+6. Rotate losslessly (new unit uExifRotate; right-click menu, JPEG):
+   90 right / 90 left / 180 / mirror both ways; only the EXIF
+   orientation tag changes (patched, added to IFD0, or a new APP1); the
+   file keeps its exact date. A true lossless crop: later.
+7. uDirPeek handed its results over with Synchronize, against the rule
+   "threads never wait for the UI". Changed to TThread.Queue; found on
+   the way: FPC drops the queued calls of a thread when it is freed, so
+   a FreeOnTerminate thread's result never arrived. A thread with a
+   result now stays until its result is delivered, which frees it.
+   TestNavigation tests the queued delivery, the newest-request rule and
+   a freed owner.
+8. Docs: the architecture pictures regenerated for 1.1 (62 units, 192
+   uses; a new band for the thumbnail threads, the dir peek and the safe
+   writes), MView_Architecture.md / .docx; the start screen
+   VersariteViewer_welcome.png; a screenshot (a generated sample comic
+   in the side panel) docs\VersariteViewer_screenshot.png in the readme;
+   readme, release notes 1.1, spec v1.4 (VersariteViewer_Developer_
+   Specification_v1.4), From_Hamana_to_VersariteViewer.md.
+
+Tests: TestNavigation 153, TestSort 135, TestExif 38, TestExtensions 71,
+TestCalibrations 42 - all pass. Both editions build for Windows.

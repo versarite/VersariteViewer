@@ -153,6 +153,10 @@ type
     procedure Add(const AJob: TFileJob);
     { A job waiting or running. }
     function Busy: Boolean;
+    { Day 25 (Esc to the settings without waiting): the jobs not started
+      are dropped (as Destroy does); Working: one is being done now. }
+    procedure DropWaiting;
+    function Working: Boolean;
 
     property OnDone: TFileJobDone read FOnDone write FOnDone;
   end;
@@ -528,6 +532,26 @@ begin
     FLock.Release;
   end;
   FWake.SetEvent;
+end;
+
+procedure TFileMover.DropWaiting;
+begin
+  FLock.Acquire;
+  try
+    FJobs := nil;
+  finally
+    FLock.Release;
+  end;
+end;
+
+function TFileMover.Working: Boolean;
+begin
+  FLock.Acquire;
+  try
+    Result := FRunning;
+  finally
+    FLock.Release;
+  end;
 end;
 
 function TFileMover.Busy: Boolean;

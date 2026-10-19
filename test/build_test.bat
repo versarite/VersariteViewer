@@ -1,13 +1,15 @@
 @echo off
-rem Builds and runs the MView tests (TestNavigation.lpr, TestExif.lpr,
-rem TestMouse.lpr, TestSort.lpr, TestFilters.lpr, TestGif.lpi).
+rem Builds and runs the VersariteViewer tests (TestNavigation.lpr, TestExif.lpr,
+rem TestMouse.lpr, TestSort.lpr, TestFilters.lpr, TestGif.lpi,
+rem TestExtensions.lpi).
 rem Double-click this file, or run it from a command prompt.
 rem It uses the Free Pascal compiler that comes with Lazarus, so fpc
 rem does not need to be on the PATH.
 
 setlocal
 set FPC=C:\lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.exe
-rem TestGif needs BGRABitmap, so it is built by lazbuild (packages).
+rem TestGif and TestExtensions need BGRABitmap, so they are built by
+rem lazbuild (packages).
 set LAZBUILD=C:\lazarus\lazbuild.exe
 
 rem Work in the folder this .bat file is in (test\).
@@ -46,9 +48,12 @@ if exist "%LAZBUILD%" (
   echo Building TestGif.lpi with lazbuild ...
   "%LAZBUILD%" -q TestGif.lpi
   if errorlevel 1 goto failed
+  echo Building TestExtensions.lpi with lazbuild ...
+  "%LAZBUILD%" -q TestExtensions.lpi
+  if errorlevel 1 goto failed
   set GIFTEST=1
 ) else (
-  echo lazbuild not found at %LAZBUILD%: TestGif skipped.
+  echo lazbuild not found at %LAZBUILD%: TestGif and TestExtensions skipped.
   echo Edit the LAZBUILD line at the top of this file, or build TestGif.lpi in Lazarus.
 )
 
@@ -64,6 +69,8 @@ echo.
 TestFilters.exe
 echo.
 if "%GIFTEST%"=="1" TestGif.exe
+echo.
+if "%GIFTEST%"=="1" TestExtensions.exe
 echo.
 pause
 exit /b 0

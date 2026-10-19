@@ -34,14 +34,20 @@ program TestNavigation;
   images, and a navigator that only works from those lists
   (ReadsDisk = False, OpenListed, ListedKey).
   File dates: a1_2 = 2020-01-02, a1_3 = a1_10 = 2020-01-01.
+  M2b (Day 25) adds containers (uContainers) in a tree of their own,
+  last, with a fake reader for '.fak' files (one entry per line): before
+  it is registered nothing changes; after it, a .fak is a one-time
+  folder (Day 25): its entries are listed among its folder's images, it
+  is no folder of the tree.
 }
 
 {$mode objfpc}{$H+}
 
 uses
+  {$IFDEF UNIX}cthreads,{$ENDIF}
   SysUtils, Classes, DateUtils,
   uTypes, uNaturalSort, uImageFormats,
-  uDirectoryTree, uDirectoryImages, uNavigator;
+  uDirectoryTree, uDirectoryImages, uNavigator, uContainers, uDirPeek;
 
 type
   { Supplies a TCancelCheck for the cancellation test. }
@@ -166,7 +172,10 @@ begin
   Check('D2 < D10', NaturalCompareText('D2', 'D10') < 0);
   Check('.JPG is supported', IsSupportedImageFile('x.JPG'));
   Check('.tiff is supported', IsSupportedImageFile('x.tiff'));
-  Check('.webp is not (v1 has no decoder)', not IsSupportedImageFile('x.webp'));
+  Check('.webp, .HEIC, .ico, .cr2 are (1.1: Windows'' codecs)', IsSupportedImageFile('x.webp')
+    and IsSupportedImageFile('x.HEIC') and IsSupportedImageFile('x.ico') and IsSupportedImageFile('x.cr2'));
+  Check('  and only through WIC', IsWicOnlyFile('x.avif') and not IsWicOnlyFile('x.png'));
+  Check('  a missing codec is named', Pos('HEIF', CodecHint('x.heic')) > 0);
   Check('.txt is not', not IsSupportedImageFile('x.txt'));
 end;
 
@@ -696,11 +705,255 @@ begin
   end;
 end;
 
+{ ---- Containers (M2b) ---- }
+
+{ A fake container: one entry id per line. }
+function ListFake(const AFile: string; out AEntries: TContainerEntryArray): Boolean;
+var
+  Lines: TStringList;
+  I: Integer;
+begin
+  AEntries := nil;
+  Lines := TStringList.Create;
+  try
+    Lines.LoadFromFile(AFile);
+    SetLength(AEntries, Lines.Count);
+    for I := 0 to Lines.Count - 1 do
+    begin
+      AEntries[I].Id := Lines[I];
+      AEntries[I].Name := Lines[I];
+    end;
+    Result := True;
+  finally
+    Lines.Free;
+  end;
+end;
+
+function DecodeFake(const AFile, AId: string; ACancel: TCancelCheck;
+  out AWidth, AHeight: Integer; out ARGBA: TBytes; out AError: string): Boolean;
+begin
+  AWidth := 0;
+  AHeight := 0;
+  ARGBA := nil;
+  AError := 'fake';
+  Result := False;
+end;
+
+procedure WriteLines(const AFileName: string; const ALines: array of string);
+var
+  Lines: TStringList;
+  I: Integer;
+begin
+  Lines := TStringList.Create;
+  try
+    for I := 0 to High(ALines) do
+      Lines.Add(ALines[I]);
+    Lines.SaveToFile(AFileName);
+  finally
+    Lines.Free;
+  end;
+end;
+
+type
+  TPeekSink = class
+    Count, Images: Integer;
+    Folder: string;
+    procedure Take(const AFolder: string; AImages, AFolders: Integer);
+  end;
+
+procedure TPeekSink.Take(const AFolder: string; AImages, AFolders: Integer);
+begin
+  Inc(Count);
+  Folder := AFolder;
+  Images := AImages;
+end;
+
+{ 1.1: the dir preview's look into a folder. }
+procedure TestDirPeek;
+var
+  Images, Folders: Integer;
+  PeekSink: TPeekSink;
+  Peek: TDirPeek;
+  Start: TDateTime;
+begin
+  WriteLn('uDirPeek');
+  CountFolder(P('A'), Images, Folders);
+  Check('A: no images of its own, two subfolders', (Images = 0) and (Folders = 2),
+    Format('%d %d', [Images, Folders]));
+  CountFolder(P('A/A1'), Images, Folders);
+  Check('A1: three images, no subfolder', (Images = 3) and (Folders = 0),
+    Format('%d %d', [Images, Folders]));
+  CountFolder(P('B'), Images, Folders);
+  Check('B: one image (notes.txt is none)', (Images = 1) and (Folders = 0),
+    Format('%d %d', [Images, Folders]));
+  CountFolder(P('nothing here'), Images, Folders);
+  Check('a folder that is not there: nothing', (Images = 0) and (Folders = 0));
+  { The thread: queued results, the newest request wins, a freed owner
+    gets nothing. }
+  PeekSink := TPeekSink.Create;
+  Peek := TDirPeek.Create;
+  try
+    Peek.OnResult := @PeekSink.Take;
+    Peek.Request(P('B'));
+    Peek.Request(P('A/A1'));
+    Start := Now;
+    while (PeekSink.Count = 0) and (MilliSecondsBetween(Now, Start) < 3000) do
+    begin
+      CheckSynchronize(10);
+    end;
+    Start := Now;
+    while MilliSecondsBetween(Now, Start) < 300 do
+      CheckSynchronize(10);
+    Check('a request: its result comes back (queued)', PeekSink.Count = 1,
+      IntToStr(PeekSink.Count));
+    Check('the newest request wins', (PeekSink.Folder = P('A/A1')) and (PeekSink.Images = 3),
+      PeekSink.Folder);
+    Peek.Request(P('B'));
+  finally
+    Peek.Free;
+  end;
+  Start := Now;
+  while MilliSecondsBetween(Now, Start) < 300 do
+    CheckSynchronize(10);
+  Check('the owner freed: nothing more', PeekSink.Count = 1, IntToStr(PeekSink.Count));
+  PeekSink.Free;
+end;
+
+procedure TestContainers;
+var
+  Base, CRoot, Stack, S2: string;
+  Tree: TDirectoryTree;
+  Nav: TNavigator;
+  List: TDirectoryImages;
+  Key: TImageKey;
+  FileName, Id: string;
+begin
+  WriteLn;
+  WriteLn('-- Containers (M2b, M2c; one-time folders, Day 25) --');
+  { One level below the temp folder: an opened file's tree is its
+    folder's parent (Base), not the whole temp folder. }
+  Base := IncludeTrailingPathDelimiter(GetTempDir(False)) + 'mview_nav_containers';
+  CRoot := Base + PathDelim + 'box';
+  DeleteTree(Base);
+  ForceDirectories(CRoot + PathDelim + 'Z');
+  Stack := CRoot + PathDelim + 'stack.fak';
+  S2 := Stack + '|S2';
+  try
+    with TFileStream.Create(CRoot + PathDelim + 'img.jpg', fmCreate) do Free;
+    with TFileStream.Create(CRoot + PathDelim + 'Z' + PathDelim + 'z.jpg', fmCreate) do Free;
+    WriteLines(Stack, ['S1', 'S2', 'Folder|S3']);
+    WriteLines(CRoot + PathDelim + 'empty.fak', []);
+
+    { No reader (MView): nothing is a container. }
+    Check('no reader: .fak is no container', not IsContainerName(Stack));
+    Tree := TDirectoryTree.Create;
+    try
+      Tree.Build(CRoot, True, nil, True);
+      Check('no reader: the tree is root and Z', Tree.Count = 2, IntToStr(Tree.Count));
+      Check('no reader: root has img.jpg only', (Tree.ImagesOf(CRoot) <> nil)
+        and (Tree.ImagesOf(CRoot).Count = 1) and (Tree.ImagesOf(CRoot).ContainerCount = 0));
+    finally
+      Tree.Free;
+    end;
+    List := TDirectoryImages.Create;
+    try
+      List.Scan(CRoot);
+      Check('no reader: listing has 1 image, no containers', (List.Count = 1) and (List.ContainerCount = 0));
+    finally
+      List.Free;
+    end;
+    Check('names: virtual', IsVirtualName(S2) and not IsVirtualName(Stack));
+    Check('SplitVirtual', SplitVirtual(S2, FileName, Id) and (FileName = Stack) and (Id = 'S2'));
+    Check('ItemDirectory: the folder the container lies in; an ordinary file: its folder',
+      (ItemDirectory(S2) = CRoot) and (ItemDirectory(CRoot + PathDelim + 'img.jpg') = CRoot),
+      ItemDirectory(S2));
+    Check('RealFolderOf: where the container lies', RealFolderOf(S2) = CRoot, RealFolderOf(S2));
+    Check('DisplayItemName', DisplayItemName(S2) = 'stack.fak › S2', DisplayItemName(S2));
+    Check('ItemBaseName', (ItemBaseName(S2) = 'stack_S2') and (ItemBaseName(Stack + '|Folder|S3') = 'stack_Folder_S3'),
+      ItemBaseName(S2));
+    Check('ItemExists: by its container', ItemExists(S2) and not ItemExists(CRoot + PathDelim + 'x.fak|S2'));
+
+    RegisterContainerReader('Fake', '.FAK', @ListFake, @DecodeFake);
+    Check('reader registered: .fak is a container', IsContainerName(Stack) and (ContainerReaderCount = 1));
+    Check('  a virtual name is not', not IsContainerName(S2));
+
+    Tree := TDirectoryTree.Create;
+    try
+      Tree.Build(CRoot, True, nil, True);
+      Check('tree: still root and Z (a container is no folder of the tree)', (Tree.Count = 2)
+        and (Tree.IndexOf(Stack) < 0), IntToStr(Tree.Count));
+      Check('  root: img.jpg and the 3 images of stack.fak', (Tree.ImagesOf(CRoot) <> nil)
+        and (Tree.ImagesOf(CRoot).Count = 4), IntToStr(Tree.ImagesOf(CRoot).Count));
+      Check('  its images are virtual names', Tree.ImagesOf(CRoot).IndexOfFile(S2) >= 0);
+      Check('  the root''s containers: empty.fak, stack.fak',
+        (Tree.ImagesOf(CRoot).ContainerCount = 2)
+        and (Name(Tree.ImagesOf(CRoot).Container(0)) = 'empty.fak')
+        and (Name(Tree.ImagesOf(CRoot).Container(1)) = 'stack.fak'));
+      Check('  next directory after root: Z', SameText(Tree.NextDirectory(CRoot), CRoot + PathDelim + 'Z'));
+      List := TDirectoryImages.Create;
+      try
+        List.Assign(Tree.ImagesOf(CRoot));
+        Check('  Assign copies the containers', List.ContainerCount = 2);
+      finally
+        List.Free;
+      end;
+    finally
+      Tree.Free;
+    end;
+
+    List := TDirectoryImages.Create;
+    try
+      List.Scan(CRoot);
+      Check('folder listing: img.jpg and the 3 images of stack.fak', List.Count = 4, IntToStr(List.Count));
+      Check('  with the container file''s size', List.FileSize(List.IndexOfFile(S2)) > 0);
+      Check('  its containers', (List.ContainerCount = 2) and SameText(List.Container(1), Stack));
+      Check('  FirstOfContainer', (List.FirstOfContainer(Stack) >= 0)
+        and IsVirtualName(List.FileName(List.FirstOfContainer(Stack))));
+    finally
+      List.Free;
+    end;
+
+    Nav := NewNavigator;
+    try
+      Nav.OpenPath(CRoot);
+      Check('open the folder: img.jpg', Name(Nav.CurrentFileName) = 'img.jpg', Nav.CurrentFileName);
+      Check('  4 images (the container''s among them)', Nav.ImageCount = 4, IntToStr(Nav.ImageCount));
+      Check('  FolderContainers: 2', Length(Nav.FolderContainers) = 2,
+        IntToStr(Length(Nav.FolderContainers)));
+      Check('the wheel walks into the container', Nav.NextImage and IsVirtualName(Nav.CurrentFileName),
+        Nav.CurrentFileName);
+      Check('  its folder is the real folder', SameText(Nav.CurrentDirectory, CRoot), Nav.CurrentDirectory);
+      Check('next directory from inside it: Z (passes it like a file)',
+        Nav.NextDirectory and (Name(Nav.CurrentFileName) = 'z.jpg'), Nav.CurrentFileName);
+
+      Nav.OpenPath(Stack);
+      Check('open the container: its folder, on its first image', IsVirtualName(Nav.CurrentFileName)
+        and SameText(ContainerFileOf(Nav.CurrentFileName), Stack)
+        and SameText(Nav.CurrentDirectory, CRoot), Nav.CurrentFileName);
+      Check('  the tree of the folder''s parent, as for a file', SameText(Nav.RootDirectory, Base),
+        Nav.RootDirectory);
+
+      Nav.OpenPath(S2);
+      Check('open an image in it: that image', SameText(Nav.CurrentFileName, S2), Nav.CurrentFileName);
+      Check('ListedKey: the container''s size',
+        Nav.ListedKey(S2, Key) and (Key.FileSize > 0) and SameText(Key.FileName, S2));
+
+      Nav.OpenPath(CRoot, S2);
+      Check('open the folder, resume on an image in a container', SameText(Nav.CurrentFileName, S2),
+        Nav.CurrentFileName);
+    finally
+      Nav.Free;
+    end;
+  finally
+    DeleteTree(Base);
+  end;
+end;
+
 begin
   PassCount := 0;
   FailCount := 0;
 
-  WriteLn('MView navigation test');
+  WriteLn('VersariteViewer navigation test');
   WriteLn('=====================');
 
   BuildTestTree;
@@ -708,6 +961,7 @@ begin
 
   try
     TestNaturalSort;
+    TestDirPeek;      { before the tests that change the tree }
     TestDirectoryTree;
     TestDirectoryImages;
     TestBrowsing;
@@ -718,6 +972,7 @@ begin
     TestNoDiskMode;
     TestClimbUp;
     TestRemoveAndAdd;
+    TestContainers;   { last: it registers a reader }
   finally
     DeleteTree(RootDir);
   end;

@@ -206,8 +206,14 @@ type
     function RemoveFile(const AFileName: string): Boolean;
     procedure AddFile(const AFileName: string; ASize: Int64; AModified: TDateTime);
     function SelectFile(const AFileName: string): Boolean;
+    { The current folder's images in the current order (the preview
+      strip, Day 27). }
+    function CurrentFiles: TStringArray;
 
     procedure SetSortMode(AMode: TSortMode);
+    { The lists sorted again in the same mode (a new shuffled order,
+      Day 27); the current image stays. }
+    procedure Resort;
     { Switches between date (newest first) and file name order. }
     procedure ToggleSortMode;
 
@@ -216,6 +222,10 @@ type
     function ImageCount: Integer;
     { Videos in the current folder (only counted, never shown). }
     function VideoCount: Integer;
+    { The container files (.lif) of the current folder (M2c, the side
+      panel; an image inside a container is in that folder too). Empty
+      in MView. }
+    function FolderContainers: TStringArray;
 
     { Each returns True if the current image changed. }
     function NextImage: Boolean;
@@ -255,7 +265,8 @@ type
 implementation
 
 uses
-  uImageFormats;
+  uImageFormats,
+  uContainers;
 
 constructor TNavigator.Create;
 begin
@@ -307,8 +318,9 @@ begin
   if not FTreeReady then
     Exit;
   Result := FTree.ImagesOf(ADirectory);
-  if (Result <> nil) and (Result.SortMode <> FSortMode) then
-    Result.SortMode := FSortMode;   { sorted when first needed }
+  if Result <> nil then
+    Result.SortMode := FSortMode;   { sorted when first needed; a stale
+                                      shuffle is shuffled again (Day 27) }
 end;
 
 { The image list of ADirectory: the current one, the tree's, a cached
@@ -525,11 +537,12 @@ end;
 procedure TNavigator.OpenPath(const AFileOrDirectory: string; const ASelectFile: string;
   ADeferTree: Boolean);
 var
-  Path, TargetDirectory, TargetFile, SelectPath, SelectDirectory: string;
+  Path, TargetDirectory, TargetFile, SelectPath, SelectDirectory, ContainerOpened: string;
   Idx: Integer;
   OpenedFile: Boolean;
 begin
   ClearListings;
+  ContainerOpened := '';
   Path := FullPath(AFileOrDirectory);
   TargetFile := '';
   OpenedFile := not DirectoryExists(Path);
@@ -543,20 +556,29 @@ begin
     if ASelectFile <> '' then
     begin
       SelectPath := FullPath(ASelectFile);
-      SelectDirectory := ExcludeTrailingPathDelimiter(ExtractFileDir(SelectPath));
-      if FileExists(SelectPath) and IsInside(SelectDirectory, FRootDirectory) then
+      SelectDirectory := ExcludeTrailingPathDelimiter(ItemDirectory(SelectPath));
+      if ItemExists(SelectPath) and IsInside(SelectDirectory, FRootDirectory) then
       begin
         TargetFile := SelectPath;
         TargetDirectory := SelectDirectory;
       end;
     end;
   end
+  else if IsContainerName(Path) and FileExists(Path) then
+  begin
+    { A container (.lif) opened: its folder, on its first image (user,
+      Day 25: a one-time folder, its images among the folder's). }
+    ContainerOpened := Path;
+    TargetDirectory := ExcludeTrailingPathDelimiter(ExtractFileDir(Path));
+    FRootDirectory := ChooseRoot(TargetDirectory, FRecursive);
+  end
   else
   begin
     { A file (or a path that no longer exists: then nothing is found
-      and the viewer shows a message). }
+      and the viewer shows a message). An image inside a container:
+      the container is its folder. }
     TargetFile := Path;
-    TargetDirectory := ExcludeTrailingPathDelimiter(ExtractFileDir(Path));
+    TargetDirectory := ExcludeTrailingPathDelimiter(ItemDirectory(Path));
     FRootDirectory := ChooseRoot(TargetDirectory, FRecursive);
   end;
 
@@ -586,6 +608,12 @@ begin
   if TargetFile <> '' then
   begin
     Idx := FImages.IndexOfFile(TargetFile);
+    if Idx >= 0 then
+      FCurrentIndex := Idx;
+  end
+  else if ContainerOpened <> '' then
+  begin
+    Idx := FImages.FirstOfContainer(ContainerOpened);
     if Idx >= 0 then
       FCurrentIndex := Idx;
   end;
@@ -644,7 +672,7 @@ begin
     tree was listed before that. }
   for I := 0 to High(FJournal) do
   begin
-    List := TreeImages(ExcludeTrailingPathDelimiter(ExtractFileDir(FJournal[I].FileName)));
+    List := TreeImages(ExcludeTrailingPathDelimiter(ItemDirectory(FJournal[I].FileName)));
     if List = nil then
       Continue;
     if FJournal[I].Added then
@@ -690,7 +718,7 @@ begin
   Idx := List.IndexOfFile(AFileName);
   if Idx < 0 then
   begin
-    List := TreeImages(ExcludeTrailingPathDelimiter(ExtractFileDir(AFileName)));
+    List := TreeImages(ExcludeTrailingPathDelimiter(ItemDirectory(AFileName)));
     if List = nil then
       Exit;
     Idx := List.IndexOfFile(AFileName);
@@ -725,7 +753,7 @@ begin
   Old := CurrentFileName;
   if not FTreeReady then
     Journal(False, AFileName, 0, 0);
-  Dir := ExcludeTrailingPathDelimiter(ExtractFileDir(AFileName));
+  Dir := ExcludeTrailingPathDelimiter(ItemDirectory(AFileName));
 
   { The tree's list and cached listings of that folder. }
   List := TreeImages(Dir);
@@ -777,7 +805,7 @@ begin
     Exit;
   if not FTreeReady then
     Journal(True, AFileName, ASize, AModified);
-  Dir := ExcludeTrailingPathDelimiter(ExtractFileDir(AFileName));
+  Dir := ExcludeTrailingPathDelimiter(ItemDirectory(AFileName));
   List := TreeImages(Dir);
   if List <> nil then
     List.AddFile(AFileName, ASize, AModified);
@@ -798,6 +826,16 @@ begin
   end;
 end;
 
+function TNavigator.CurrentFiles: TStringArray;
+var
+  I: Integer;
+begin
+  Result := nil;
+  SetLength(Result, FImages.Count);
+  for I := 0 to FImages.Count - 1 do
+    Result[I] := FImages.FileName(I);
+end;
+
 function TNavigator.SelectFile(const AFileName: string): Boolean;
 var
   Idx: Integer;
@@ -816,6 +854,17 @@ begin
   ClearListings;
   FSortMode := AMode;
   FImages.SortMode := AMode;   { re-sorts the current list }
+  if Current <> '' then
+    FCurrentIndex := FImages.IndexOfFile(Current);
+end;
+
+procedure TNavigator.Resort;
+var
+  Current: string;
+begin
+  Current := CurrentFileName;
+  ClearListings;
+  FImages.Resort;
   if Current <> '' then
     FCurrentIndex := FImages.IndexOfFile(Current);
 end;
@@ -849,6 +898,16 @@ end;
 function TNavigator.VideoCount: Integer;
 begin
   Result := FImages.VideoCount;
+end;
+
+function TNavigator.FolderContainers: TStringArray;
+var
+  I: Integer;
+begin
+  Result := nil;
+  SetLength(Result, FImages.ContainerCount);
+  for I := 0 to FImages.ContainerCount - 1 do
+    Result[I] := FImages.Container(I);
 end;
 
 function TNavigator.CanClimbUp: Boolean;

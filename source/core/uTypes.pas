@@ -66,13 +66,16 @@ type
     Images with the same date are ordered by name.
 
     Default: smDateDescending (newest first).
+    smRandom (Day 27, testers): a shuffled order, the same for every
+    folder until it is chosen again (uDirectoryImages).
   }
 
   TSortMode = (
     smDateDescending,
     smDateAscending,
     smFileNameAscending,
-    smFileNameDescending
+    smFileNameDescending,
+    smRandom
   );
 
   TFitMode = (
@@ -144,14 +147,37 @@ function StringToSortMode(const AText: string; ADefault: TSortMode): TSortMode;
 function WrapScopeToString(AScope: TWrapScope): string;
 function StringToWrapScope(const AText: string; ADefault: TWrapScope): TWrapScope;
 
+var
+  { How solid the panels' background is (1.1, a tester: [View]
+    PanelOpacity, percent): the side panels, the filter panel and the
+    scan bar together; 80 = as before. Set at the start (TMView). }
+  PanelOpacityPercent: Integer = 80;
+
+{ The background alpha of a panel drawn with ABaseAlpha at 80 %. }
+function PanelAlpha(ABaseAlpha: Integer): Byte;
+
 implementation
+
+function PanelAlpha(ABaseAlpha: Integer): Byte;
+var
+  A: Integer;
+begin
+  A := Round(ABaseAlpha * PanelOpacityPercent / 80);
+  if A < 0 then
+    A := 0
+  else if A > 255 then
+    A := 255;
+  Result := A;
+end;
+
 
 const
   SortModeNames: array[TSortMode] of string = (
     'DateDescending',
     'DateAscending',
     'FileNameAscending',
-    'FileNameDescending'
+    'FileNameDescending',
+    'Random'
   );
 
   WrapScopeNames: array[TWrapScope] of string = (

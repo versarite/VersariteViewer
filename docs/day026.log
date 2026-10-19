@@ -1,0 +1,242 @@
+MView Day 26 (2026-10-08)
+=========================
+
+"Confocal" explained (user asked; no change)
+--------------------------------------------
+The box sets which kind of calibration a reference measurement makes:
+ticked - it keeps the image width and zoom, and scales with them on
+other images; unticked - a fixed px per µm. It is the dialog's default;
+images with a scale of their own are not affected.
+
+Three small changes (user, after testing M3b)
+---------------------------------------------
+1. "the measurement should not have a sub line, only the µm value":
+   uMeasureLine's label is the µm only (no "(px)", no "scale: ..."
+   line). Without a scale and while calibrating: px.
+2. "the right click context menu entry 'create copy' for filter and
+   rotate should also burn in the measurement":
+   - uExtensions: burn-in for overlay layers (TOverlayLayer.CanBurnIn /
+     BurnIn, TBurnInMap, BurnInPoint: image px -> copy px through the
+     quick-view scale, the mirror and the turn as RotatedBitmap;
+     OverlayCanBurnIn / OverlayBurnIn). MView: no layers, unchanged.
+   - TMView.ApplyFiltersToCopy: after filters, mirror and turn, the
+     layers draw into the copy; the name gets their part
+     ('_56.32um'); CopyBurnsIn; CanApplyFilters also with a measurement
+     only. Main form: the entry's caption says what goes in ("Apply
+     filters and measurement to a copy", "... filters, rotation and
+     measurement ...").
+   - uMeasureLine: CanBurnIn (a finished line of this image, not a
+     reference measurement), BurnIn (upright, sized for the copy);
+     the drawing shared with the screen (PlaceLabel, DrawMeasure).
+3. The pointer vanished when the left panel's "Scale" list was open and
+   the mouse left it (screenshot): the hide-after-idle timer ran while
+   the list was open (the right-click menu had a guard, the edition's
+   popup didn't). uExtensions.NoteMenuOpen / OnMenuOpen; the main form
+   treats it as its own menu (pointer shown, not hidden, the time in it
+   not counted). Used by the scale list and the reference dialog.
+
+Stacks, step 1: what a stack is (user: "we can move to the stacks")
+-------------------------------------------------------------------
+Of the three steps proposed (1 time vs depth and the cut-off frames;
+2 the animation mark and the frame list on a left double-click; 3 the
+playback on a right double-click), step 1, in uLifFile only:
+- TLifImage: StackKind (none / depth / time), FrameCount (along t if
+  there is time, else z), FakeZ, FrameTimes (s, from all time stamps:
+  one per plane and channel, frame f's at f * stamps / frames),
+  FrameInterval (the median step), Usable (cache).
+- A z with step 0 (Begin = End) and running stamps = time at one plane;
+  the panel line "Time: 12 points, every 2.593 s (filed as 12 z-planes
+  at one depth)" instead of "Stack: 12 z-planes".
+- UsableFrameCount: the last frame is cut off when its step is < 0.8 x
+  the median (no times: nothing left out) and its bottom rows are 0 in all
+  channels, H/16 more than the frame before. Checked against Series009
+  (Python, from the user's file): last step 1.146 s of 2.593, 576 black
+  rows in both channels, 0 in all others -> 11 usable.
+- RenderRGBA(z = -1): the projection of the usable frames only (was:
+  all z). RenderFrameRGBA: one frame. StackSummary: 'z 12 × 0.5 µm',
+  't 11 × 2.6 s'.
+- TestLif: TestStacks (a fake z made there: cut last frame left out, a
+  full last step kept; the small depth stack), Series009 checks.
+The container reader (uLifContainer) is unchanged: its projection now
+leaves the cut frame out by itself.
+
+Stacks, step 2: the mark, the note, the frames' list
+----------------------------------------------------
+(User: test run all passed, 0 failed - step 1 confirmed.)
+- uContainers: TContainerEntry.Frames; RegisterContainerStacks (frames'
+  list + note per reader); ListContainerEntries(virtual name) = a
+  stack's frames; ContainerEntryNote.
+- uLifContainer: ListLif marks stacks; FramesLif (usable frames, ids
+  '<stack>|#t03', names 't 3    5.2 s' / 'z 3    1.00 µm'); NoteLif
+  ('t 11 × 2.6 s (projection)'); DecodeLif renders a frame id;
+  LifSplitFrame; LifIndexOfId takes a frame to its stack (scale);
+  one cached TLifFile under a lock for the list and the notes.
+- uContainerThumbs: a virtual "container" (a stack) works: entry names
+  made with the container file; RGBAToBitmap exported.
+- uSortPanel: TPanelEntry.Frames, the animation mark (cyan play
+  triangle on the thumbnail's corner); a new list starts at its top.
+- uMView: left double-click on a stack entry -> EnterFrames (first
+  click shows it, as before, foot: "double-click: its frames"); back ->
+  the .lif's list; a frame click -> ShowContainerFrame (decoded at once,
+  shown like a crop with its virtual name as key: savable, measurable,
+  yellow in the list); info line + ItemNote.
+- TestLif: TestFrameEntries (LifSplitFrame, list / frames / decode /
+  note through uContainers); build_test.bat: TestLif gets the core and
+  utility paths.
+Next: step 3, right double-click on the stack = play in the view.
+
+The microscope's details on the large preview (user)
+----------------------------------------------------
+"can you overlay the lif data/microscopy details to the magnified
+preview image?" (the picture left of the panel while the mouse is on an
+entry of a .lif's list). uSortPanel: OnEntryDetails; ComposePreview
+lays the lines on a dark band over the picture's lower part (the box
+widened to 340 px for them; as many lines as fit, each cut with "...").
+uMView.PanelEntryDetails: ReadImageMetadata(entry).Lines, one cached.
+A frame shows its stack's details. (Before: the user's screenshot of
+the info line was the stack shown, not a frame - fine as it is.)
+
+MView: the edit-mode frame on a turned image (user)
+---------------------------------------------------
+"if an image is rotated, and then in edit mode a frame is drawn, it is
+rotated with the image. that should not be the case."
+Cause: the selection was a rectangle in the image's own pixels
+(TImageRect), drawn through ImageToScreen - a turned rectangle.
+Fix (both editions):
+- uRenderer: TImageRect.Angle; SelectionAngle (the draw angle beyond
+  the nearest quarter turn - review: quarter turns stay the old path -,
+  its negative when mirrored: M R(a) = R(-a) M keeps upright rectangles
+  upright); SelectionImageCorners (the corners turned back into the
+  image's pixels); SelectionCorners uses them (CPU and GPU draw it).
+- uMView.DragSelection: the anchor and the point in the image's pixels
+  turned by the angle at the drag's start, kept inside the turned
+  image's bounds; Angle 0 = exactly the old path.
+- CropSelection: a turned selection is cut from RotatedBitmap(source,
+  angle) (DecodeFits checked first, hourglass); shown turned by the
+  view's angle less the selection's draw angle (0 unless turned since).
+- RefreshHistogram: a turned selection -> its bounding box in the
+  image's pixels. MakeIconFromImage: its middle.
+Spec v1.3 §9.5 amended.
+
+MView: Esc closes the left panel first (user)
+---------------------------------------------
+"if both side panels are open, esc should close the left panel first. it
+is more reasonable to keep the right panel open all the time, but the
+left one only casually." TMView.GoBack: filter panel, then sort panel,
+then magnifier, edit mode, settings screen. Spec v1.3 (sort panel and
+filter panel) amended.
+User's order, replacing the above: "1 magnifier, 2 left panel, 3 edit
+mode, 4 right panel, 5 edit mode, 6 program close" - read as: magnifier,
+filter panel, edit mode, sort panel, settings screen (its own Esc ends
+the program; the second "edit mode" taken as the settings screen, asked
+in the reply). GoBack and the spec as such.
+
+The left panel says where the µm come from (user)
+-------------------------------------------------
+"lif and stack, the measurement should be based on internal metadata. i
+suppose it is, pse display this in the left panel". It was (ScaleFor:
+the file's own scale first; a stack's frame maps to its stack); the row
+said only "from the file". uCalibrationPanel: "lif metadata  0.1173
+µm/px" inside a container (its extension), "file metadata  ..." for a
+file's own; the hint "measured with the metadata: <value>".
+
+Auto and the frame (user)
+-------------------------
+The user saw the black point move while drawing a frame: Auto for every
+image was on and re-levels from the selection live (as designed, Phase
+H). Explained; user: re-level "on mouse up". TMView: FSelDragging (set
+by DragSelection, cleared by ClearSelection), the release in
+HandleOverlayMouse sets FSelDragDone; the tick skips ApplyAuto while
+dragging and applies it once when the drag is done. The histogram in
+the panel still follows live. Spec v1.3 (Auto) amended.
+
+The scale travels with the image; several measurements; label style (user)
+--------------------------------------------------------------------------
+1. "do it please, important step!" - the in-memory part:
+   - uExtensions: NoteDerivedImage / RegisterDerivedImageHandler
+     (new name, parent, operation, parent size, parent px per new px,
+     turn).
+   - uMView: CropSelection ('crop', factor 1, the selection's turn),
+     ApplyFiltersToCopy ('copy', factor 1, the view's turn),
+     ResizeToShown ('resized', parent / new size) - before ShowScratch.
+   - uImageScale: HandleDerived (the parent's ScaleFor, times the
+     factors, quarter turns swap, oblique: mean; source 'Series009
+     (crop)', a chain carries the parent's source on); ScaleFor asks it
+     first (order 0); at most 200, the oldest go.
+   - uCalibrationPanel: "from Series009 (crop)"; hint "measured with
+     <value>".
+   Saving the scale into the file: next (with the TIFF options).
+2. "multiple measurements ... with the shift key": uMeasureLine keeps a
+   list of finished lines; Shift at a line's first click keeps the
+   earlier ones, without Shift the new line replaces them; all drawn,
+   each with its label, in one picture; burned in all ('_3lines').
+   Shift while following still = horizontal / vertical.
+3. "link the text on the measurement to the transparency setting of the
+   status bar": [View] OverlaySolid (renderer.OverlaySolid): solid black
+   box, or no box and the text outlined; the burn-in the same.
+Review (independent), taken: the derived scale is worked out lazily
+from the parent (TDerivedRecord: parent, size, factors, turn,
+operation; ComputeScale recursive, at most 20 deep) - a frozen value
+would have ignored a calibration chosen later; a reference measurement
+on a crop offers its inherited value; Shift held on from the first
+click doesn't snap (pressed again it does); a cancelled reference
+measurement leaves no line; the outline drawn in 8 directions (a
+second ring for thick text) instead of a full square of offsets.
+
+The saved file carries the scale (user: "please go!")
+------------------------------------------------------
+- uImageFileScale (new, source\utility, plain): MakeRgbTiff (baseline
+  RGB, one strip; with a scale ImageJ's way: description
+  "ImageJ=1.54f\nunit=micron\n", X/YResolution px per µm, unit none);
+  AddPngPixelSize (pHYs after IHDR, CRC-32); ReadImageFileScale /
+  ReadStreamScale (ImageJ TIFF unit micron/um/µm/\u00B5m/nm/mm; PNG
+  pHYs in metres, below 100 µm per px).
+- uImageSaver: SaveBitmapAs (.tif/.tiff -> TIFF, else PNG; with a scale
+  the PNG gets pHYs); TImageSaveThread takes AUmX / AUmY; the result
+  says "(with its scale, 0.1173 µm/px)".
+- uExtensions: RegisterImageScaleQuery / QueryImageScale.
+- uMView: SaveScale (the scale per pixel of the bitmap written: a quick
+  view's is larger), passed by StartSave, SaveCurrentImage, SortScratch;
+  SaveImageAs keeps .tif / .tiff. uMainForm: the dialog offers TIFF.
+- uImageScale: QueryScale registered; the "File scale" metadata reader
+  first (before the .lif guesses).
+- TestCalibrations: TestFileScale; build_test.bat: + utility path.
+Review (independent; the layout checked by porting the writer to Python
+and reading it with Pillow): taken - SaveImageAs had lost its
+"FileName := AFileName" (critical: every Save as wrote ".png"); a PNG's
+scale is its own tEXt chunk "MView scale" (um_per_pixel=x,y; exact), the
+pHYs alone (300 dpi from an image program) is no scale; µ spelled every
+way ImageJ files use; pHYs and rationals clamped to 32 bits; Int64 for
+TIFF offsets; the TIFF choice renames cell.jpg too and asks before
+replacing a renamed file. Noted: the TIFF / scaled PNG are built in
+memory (about twice the image) - fine below ~100 MP.
+
+Intermission: Appose; the Lab in the workflow (user)
+----------------------------------------------------
+"do you consider using appose for communication with fiji?" - not now
+(no attach to a running Fiji, no Pascal side, large environments);
+later possibly an optional add-on for computing in the Lab. User:
+"microscope -> (mview lab <-> fiji) -> inkscape/adobe/corel; once in
+inkscape, no more image manipulation should be necessary" - leads to
+measurements as vectors: an SVG figure export (image embedded as PNG,
+lines, text labels, scale bar, layers, metadata); burning in stays.
+EPS rejected (legacy). Written into the edition's spec as §9c and
+decision 15. Order (user): stack playback, Windows codecs (both
+editions), M3 (scale bar, SVG export), Fiji exchange.
+
+Stacks, step 3: playing (user: "continue with the stack animation")
+------------------------------------------------------------------
+- uAnimation: TBitmapListAnimation (whole pictures + delays, owns
+  them; plays forever; its cursor duplicates a frame).
+- uContainers: TContainerEntry.Time (s since the first frame, -1 =
+  unknown); uLifContainer fills it for a time series's frames.
+- uMView: right double-click on a stack entry (or on a frame in its
+  list) -> PlayStack: ListContainerEntries(stack), then one frame per
+  tick of FPlayTimer (DecodeContainerEntry, RGBAToBitmap; the first
+  frame sets the size and the memory budget: 512 MB, else shrunk by
+  sqrt(budget / bytes), the original size kept); FinishStackLoad: the
+  delays (median step -> speed so a frame lasts ~200 ms, never slower
+  than real time; depth 150 ms), TDecodedImage with the animation,
+  ShowScratch (key = the stack's name: its scale). Again = stop
+  (ShowCurrent); again while reading = cancel. Moving on while reading
+  cancels. BeginClose and Destroy cancel.

@@ -3,7 +3,7 @@ object MainForm: TMainForm
   Height = 794
   Top = 149
   Width = 777
-  Caption = 'MView'
+  Caption = 'VersariteViewer'
   Color = clBlack
   DesignTimePPI = 120
   LCLVersion = '4.6.0.0'

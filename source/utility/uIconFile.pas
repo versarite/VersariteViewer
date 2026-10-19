@@ -32,8 +32,14 @@ unit uIconFile;
     $AARRGGBB, with transparency from the alpha channel or the AND mask.
   - PngImageSize: the size stored in a PNG entry's header (the
     directory says 0 for 256 px).
-  - WriteIconFile: an .ico from PNG pictures (Windows Vista and later
-    read PNG entries of every size, as its own icons use).
+  - IconDibEntry / IconPngEntry: a picture as an icon entry, the
+    old-style 32-bit DIB (with the AND mask) or a PNG that always keeps
+    its alpha channel (colour type 6). Windows reads a PNG entry only as
+    32-bit RGBA; one without alpha (as an opaque picture comes out of the
+    usual PNG writers) it refuses (1.1, user: icons made by MView could
+    not be read).
+  - WriteIconFile: an .ico from such entries (MView: DIB up to 128 px,
+    PNG for 256 px, as Windows' own icons).
 
   Does NOT
   --------
@@ -48,7 +54,7 @@ unit uIconFile;
   Uses (MView units)
   ------------------
   (none)
-  Libraries:      Classes, SysUtils
+  Libraries:      Classes, SysUtils, zstream, crc (paszlib)
 
   Used by
   -------
@@ -86,11 +92,19 @@ function ChooseIconEntry(const AEntries: TIconEntries; ASize: Integer): Integer;
 function DecodeIconDib(const AData: TBytes; const AEntry: TIconEntry;
   out APixels: TIconPixels): Boolean;
 function PngImageSize(const AData: TBytes; AOffset: LongWord; out AWidth, AHeight: Integer): Boolean;
-{ APngs[i]: a complete PNG file of ASizes[i] x ASizes[i] pixels. }
-procedure WriteIconFile(AStream: TStream; const APngs: array of TBytes;
+{ An entry's data from plain pixels (top row first, $AARRGGBB). }
+function IconDibEntry(const APixels: TIconPixels): TBytes;
+function IconPngEntry(const APixels: TIconPixels): TBytes;
+{ AEntries[i]: a DIB or a complete PNG file of ASizes[i] x ASizes[i]
+  pixels. }
+procedure WriteIconFile(AStream: TStream; const AEntries: array of TBytes;
   const ASizes: array of Integer);
 
 implementation
+
+uses
+  zstream,
+  crc;
 
 const
   MaxIconSide = 1024;
@@ -372,14 +386,158 @@ begin
   AStream.WriteBuffer(B, 4);
 end;
 
-procedure WriteIconFile(AStream: TStream; const APngs: array of TBytes;
+procedure PutU32LE(var AData: TBytes; var APos: Integer; AValue: LongWord);
+begin
+  AData[APos] := AValue and $FF;
+  AData[APos + 1] := (AValue shr 8) and $FF;
+  AData[APos + 2] := (AValue shr 16) and $FF;
+  AData[APos + 3] := AValue shr 24;
+  Inc(APos, 4);
+end;
+
+function IconDibEntry(const APixels: TIconPixels): TBytes;
+var
+  W, H, X, Y, Pos, MaskStride, MaskPos: Integer;
+begin
+  Result := nil;
+  W := APixels.Width;
+  H := APixels.Height;
+  if (W <= 0) or (H <= 0) or (Length(APixels.Data) < W * H) then
+    Exit;
+  MaskStride := ((W + 31) div 32) * 4;
+  SetLength(Result, 40 + W * H * 4 + MaskStride * H);
+  FillChar(Result[0], Length(Result), 0);
+  Pos := 0;
+  PutU32LE(Result, Pos, 40);                  { BITMAPINFOHEADER }
+  PutU32LE(Result, Pos, LongWord(W));
+  PutU32LE(Result, Pos, LongWord(H * 2));     { the colour rows and the mask's }
+  Result[Pos] := 1;                           { planes }
+  Inc(Pos, 2);
+  Result[Pos] := 32;                          { bits per pixel }
+  Inc(Pos, 2);
+  PutU32LE(Result, Pos, 0);                   { not compressed }
+  PutU32LE(Result, Pos, LongWord(W * H * 4 + MaskStride * H));
+  Pos := 40;
+  { Rows bottom-up, bytes B G R A. }
+  for Y := H - 1 downto 0 do
+    for X := 0 to W - 1 do
+      PutU32LE(Result, Pos, APixels.Data[Y * W + X]);
+  { The AND mask, for readers without alpha: set = transparent. }
+  for Y := H - 1 downto 0 do
+  begin
+    MaskPos := Pos + (H - 1 - Y) * MaskStride;
+    for X := 0 to W - 1 do
+      if (APixels.Data[Y * W + X] shr 24) = 0 then
+        Result[MaskPos + X div 8] := Result[MaskPos + X div 8] or ($80 shr (X mod 8));
+  end;
+end;
+
+procedure PutBigU32(AStream: TStream; AValue: LongWord);
+var
+  B: array[0..3] of Byte;
+begin
+  B[0] := AValue shr 24;
+  B[1] := (AValue shr 16) and $FF;
+  B[2] := (AValue shr 8) and $FF;
+  B[3] := AValue and $FF;
+  AStream.WriteBuffer(B, 4);
+end;
+
+{ A PNG chunk: length, type, data, CRC of type and data. }
+procedure PutChunk(AStream: TStream; const AType: AnsiString; const AData: TBytes);
+var
+  Sum: LongWord;
+begin
+  PutBigU32(AStream, Length(AData));
+  AStream.WriteBuffer(AType[1], 4);
+  Sum := crc32(0, nil, 0);
+  Sum := crc32(Sum, PByte(@AType[1]), 4);
+  if Length(AData) > 0 then
+  begin
+    AStream.WriteBuffer(AData[0], Length(AData));
+    Sum := crc32(Sum, PByte(@AData[0]), Length(AData));
+  end;
+  PutBigU32(AStream, Sum);
+end;
+
+function IconPngEntry(const APixels: TIconPixels): TBytes;
+const
+  Signature: array[0..7] of Byte = ($89, $50, $4E, $47, $0D, $0A, $1A, $0A);
+var
+  W, H, X, Y, Pos: Integer;
+  C: LongWord;
+  Raw, Header: TBytes;
+  Packer: TCompressionStream;
+  Squeezed, Png: TMemoryStream;
+begin
+  Result := nil;
+  W := APixels.Width;
+  H := APixels.Height;
+  if (W <= 0) or (H <= 0) or (Length(APixels.Data) < W * H) then
+    Exit;
+  { Each row: filter 0, then R G B A. }
+  SetLength(Raw, H * (1 + W * 4));
+  Pos := 0;
+  for Y := 0 to H - 1 do
+  begin
+    Raw[Pos] := 0;
+    Inc(Pos);
+    for X := 0 to W - 1 do
+    begin
+      C := APixels.Data[Y * W + X];
+      Raw[Pos] := (C shr 16) and $FF;
+      Raw[Pos + 1] := (C shr 8) and $FF;
+      Raw[Pos + 2] := C and $FF;
+      Raw[Pos + 3] := C shr 24;
+      Inc(Pos, 4);
+    end;
+  end;
+  Squeezed := TMemoryStream.Create;
+  Png := TMemoryStream.Create;
+  try
+    Packer := TCompressionStream.Create(clMax, Squeezed);
+    try
+      Packer.WriteBuffer(Raw[0], Length(Raw));
+    finally
+      Packer.Free;               { ends the zlib stream }
+    end;
+    SetLength(Header, 13);
+    Header[0] := W shr 24;
+    Header[1] := (W shr 16) and $FF;
+    Header[2] := (W shr 8) and $FF;
+    Header[3] := W and $FF;
+    Header[4] := H shr 24;
+    Header[5] := (H shr 16) and $FF;
+    Header[6] := (H shr 8) and $FF;
+    Header[7] := H and $FF;
+    Header[8] := 8;              { bits per sample }
+    Header[9] := 6;              { RGBA }
+    Header[10] := 0;             { deflate }
+    Header[11] := 0;             { filter method 0 }
+    Header[12] := 0;             { not interlaced }
+    Png.WriteBuffer(Signature, 8);
+    PutChunk(Png, 'IHDR', Header);
+    SetLength(Raw, Squeezed.Size);
+    if Squeezed.Size > 0 then
+      Move(Squeezed.Memory^, Raw[0], Squeezed.Size);
+    PutChunk(Png, 'IDAT', Raw);
+    PutChunk(Png, 'IEND', nil);
+    SetLength(Result, Png.Size);
+    Move(Png.Memory^, Result[0], Png.Size);
+  finally
+    Png.Free;
+    Squeezed.Free;
+  end;
+end;
+
+procedure WriteIconFile(AStream: TStream; const AEntries: array of TBytes;
   const ASizes: array of Integer);
 var
   I, Count: Integer;
   Offset: LongWord;
   Side: Byte;
 begin
-  Count := Length(APngs);
+  Count := Length(AEntries);
   if Length(ASizes) < Count then
     Count := Length(ASizes);
   WriteU16(AStream, 0);        { reserved }
@@ -398,13 +556,13 @@ begin
     AStream.WriteByte(0);      { reserved }
     WriteU16(AStream, 1);      { planes }
     WriteU16(AStream, 32);     { bits per pixel }
-    WriteU32(AStream, Length(APngs[I]));
+    WriteU32(AStream, Length(AEntries[I]));
     WriteU32(AStream, Offset);
-    Inc(Offset, Length(APngs[I]));
+    Inc(Offset, Length(AEntries[I]));
   end;
   for I := 0 to Count - 1 do
-    if Length(APngs[I]) > 0 then
-      AStream.WriteBuffer(APngs[I][0], Length(APngs[I]));
+    if Length(AEntries[I]) > 0 then
+      AStream.WriteBuffer(AEntries[I][0], Length(AEntries[I]));
 end;
 
 end.

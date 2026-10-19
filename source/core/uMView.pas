@@ -122,6 +122,8 @@ unit uMView;
                   uIOGate, uMemoryGuard, uImageSaver, uStopwatch,
                   uSortFolders, uSortPanel, uFileMover, uFilters,
                   uFilterImage, uFilterPanel, uTCFollow, uImageFormats
+  implementation: uMouseEngine, uIconFile, uTotalCommander, uExtensions
+                  (the edition's layers: repaint, mouse)
   Libraries:      Classes, SysUtils, Math, Controls, ExtCtrls,
                   Graphics, Clipbrd, BGRABitmap, BGRABitmapTypes,
                   Forms (implementation: Screen, for the DPI)
@@ -231,6 +233,7 @@ uses
   Math,
   uTypes,
   uCommands,
+  uExifRotate,
   uConfig,
   uDirectoryTree,
   uNavigator,
@@ -255,12 +258,19 @@ uses
   uStopwatch,
   uSortFolders,
   uSortPanel,
+  uPreviewStrip,
+  uFolderThumbs,
   uSortIcons,
+  uContainers,
+  uContainerThumbs,
+  uDirectoryImages,
   uFileMover,
   uFilters,
   uFilterImage,
   uFilterPanel,
   uTCFollow,
+  uDirPeek,
+  uExifOrientation,
   uImageFormats;
 
 type
@@ -306,6 +316,11 @@ type
     FAbandonedScanners: TFPList; { stuck scanners, never freed }
     FScannerReplacements: Integer;
     FScannerNoteShown: Boolean;
+    { A damaged ini was restored (1.1): said once the first image is up
+      (FIniNoteAtMs), so the start's own messages don't cover it. }
+    FIniNote: string;
+    FIniNoteWarns: Boolean;
+    FIniNoteAtMs: Double;
     FLastStuckCheckMs: Double;
     FPendingFile: string;        { requested, not yet delivered }
     FPreviewWidth: Integer;      { screen size, for the worker's copy }
@@ -344,6 +359,7 @@ type
     FPasteSavedAs: string;
     FSavingPaste: Boolean;
     FScratchTitle: string;       { 'Clipboard image', 'Cropped from x.jpg' }
+    FCopyWanted: string;         { copy this file once its full image is there (Day 25) }
     FScratchPrefix: string;      { file name start when saved }
     FSaveAsDir: string;          { "Save image as": the folder last chosen (session) }
 
@@ -353,6 +369,11 @@ type
     FEditMode: Boolean;
     FSelAnchorX, FSelAnchorY: Double;
     FSelAnchorValid: Boolean;
+    FSelAngle: Double;           { the selection's turn (Day 26), from its start }
+    { A selection being dragged, and its drag just ended (Day 26, user:
+      Auto for every image re-levels on the mouse up, not live). }
+    FSelDragging: Boolean;
+    FSelDragDone: Boolean;
 
     { Start-up measurement (startup.csv). }
     FStartupWindowMs: Double;
@@ -390,6 +411,13 @@ type
       (made at the first copy / move / delete: nothing at start-up), the
       undo list (newest last) and the moves under way. }
     FPanel: TSortPanel;
+    { The preview strip (Day 27, testers) and its thumbnails' thread;
+      FStripKey: the folder / count the strip's list was made from;
+      FStripPress: the file pressed on (-1 = none). }
+    FStrip: TPreviewStrip;
+    FStripThumbs: TFolderThumbs;
+    FStripKey: string;
+    FStripPress: Integer;
     FMover: TFileMover;
     FUndo: array of TUndoEntry;
     FNextUndoId: Integer;
@@ -424,6 +452,37 @@ type
     FClimbGeneration: Cardinal;
     FClimbSinceMs: Double;
     FPanelPressButton: TOverlayButton;
+    { The layer (uExtensions' TOverlayLayer) that took a button press: it
+      alone gets the release, wherever it is (M0). }
+    FLayerCapture: TObject;
+    { Containers in the side panel (M2c; the microscopy edition only):
+      the one the wheel is in (transient, Day 25; '' = none), the
+      thumbnail maker and its results (virtual name -> TThumbPair). }
+    FPanelContainer: string;
+    FThumbs: TContainerThumbs;
+    FThumbCache: TStringList;
+    { The stack whose frames the panel lists (Day 26; '' = the .lif's
+      images or the buttons), and the info line's note (one cached). }
+    FFramesOf: string;
+    FNoteName: string;
+    FNoteText: string;
+    { The details over an entry's large picture (one kept). }
+    FDetailsName: string;
+    FDetailsLines: TStringArray;
+    { A stack played (Day 26, user: right double-click): its frames read
+      one per timer tick (the window stays alive), then shown as an
+      animation like a crop. FPlayStack: being read; FPlayingStack: on
+      screen. }
+    FPlayStack: string;
+    FPlayingStack: string;
+    FPlayStartCurrent: string;    { the navigator's image when reading began }
+    FPlayNames: TStringArray;
+    FPlayTimes: array of Double;
+    FPlayFrames: array of TBGRABitmap;
+    FPlayIndex: Integer;
+    FPlayFullW, FPlayFullH: Integer;
+    FPlayScale: Double;
+    FPlayTimer: TTimer;
     FPanelViewW, FPanelViewH: Integer;
     FPanelScale: Double;
     FOnSortMenu: TSortMenuEvent;
@@ -441,6 +500,12 @@ type
     FFilterFile: string;
     FKeepFilters: Boolean;
     FFilterPress: Boolean;
+    FFilterExtraPress: Integer;   { the edition's row pressed in the filter panel; -1 none }
+    { Esc to the settings (Day 25): BeginClose saved the settings (the
+      destructor doesn't again: the settings screen may have written
+      them since) and released the read gate once the workers were back. }
+    FSettingsSaved: Boolean;
+    FGateReleased: Boolean;
     { Step 2: Auto for every image (double-click on Auto), and the
       histogram of what is on screen (or of the edit-mode selection),
       made again only when that changes (FHistKey). }
@@ -468,6 +533,17 @@ type
     { A folder being opened for it: the image its cursor moves to
       meanwhile is shown when the folder is ready (not opened again). }
     FFollowOpening: Boolean;
+    { Total Commander dir preview (1.1, testers): on; the follow mode
+      before it was switched on; the folder under the cursor being
+      played (''), its next step, which of its first images is shown,
+      its counts for the info line. }
+    FDirPreview: Boolean;
+    FDirPrevFollow: Integer;
+    FDirFolder: string;
+    FDirNextMs: Double;
+    FDirIndex: Integer;
+    FDirCounts: string;
+    FDirPeek: TDirPeek;
     FFollowWanted: string;
     { Total Commander answered the last poll: MView follows it now
       ("[TC]" in the info line; subfolders off). }
@@ -475,6 +551,13 @@ type
     { A notice flashing in the middle of the view (FlashNotice); 0 =
       none. }
     FNoticeStartMs: Double;
+    { A hint notice (Day 27): steady, no flashes, FNoticeLastMs long. }
+    FNoticeSteady: Boolean;
+    FNoticeLastMs: Double;
+    FDiskCheckMs: Double;
+    FDiskWarnMs: Double;
+    { Rapid Selection (Day 27): the pin before it was switched on. }
+    FRapidPrevPinned: Boolean;
     { The magnifier (Phase H, G6): its state is the renderer's (Lens);
       a left drag in progress (magnification sideways, size up / down)
       starts from these. }
@@ -489,7 +572,13 @@ type
     procedure SaveImageOnly;
     function ImageToSave: IDecodedImage;
     procedure StartSave(const AImage: IDecodedImage; const AFileName, AFallbackDir: string);
+    procedure SaveScale(const AImage: IDecodedImage; out AUmX, AUmY: Double);
     procedure PasteFromClipboard;
+    { Copy image (Day 25, a user's wish): the image at its own size
+      (not the screen's) to the clipboard; a JPEG shown at screen size
+      is read in full first. }
+    procedure CopyImage(const AImage: IDecodedImage);
+    procedure CopyToClipboard;
     procedure ShowScratch(const AImage: IDecodedImage; const ATitle, APrefix: string);
     procedure SetEditMode(AOn: Boolean);
     procedure ClearSelection;
@@ -502,7 +591,22 @@ type
     function TCFolderLock: Boolean;
     { A short notice in the middle of the view, flashing twice, then
       steady; gone after NoticeMs. }
-    procedure FlashNotice(const AText: string);
+    procedure FlashNotice(const AText: string; AStyle: Integer = 0);
+    { The panel's hints (a new folder list, Rapid selection; Day 27): only
+      with [Sort] ShowDirectoryHint=1; steady for 3 s, no flashes. }
+    procedure DirectoryHint(const AText: string);
+    { Day 27 (testers): a drive in use (the image's, the sort folders',
+      the deleted-files and the Documents folder's) with less than
+      DiskLowBytes free: a red notice, again every DiskWarnEveryMs. }
+    procedure CheckDiskSpace;
+    procedure CycleSortList(ADir: Integer);
+    procedure SetPreviewStrip(AShow, AByEdge: Boolean);
+    procedure SyncStrip(AForce: Boolean = False);
+    procedure UpdateStrip(ARequest: Boolean = True);
+    procedure HandleStripThumb(const AFileName: string; ABitmap: TBGRABitmap);
+    function HandleStripMouse(AKind: TOverlayMouseKind; AButton: TOverlayButton;
+      AX, AY, AWheel: Integer): Boolean;
+    procedure RapidKey(ADigit: Integer);
     procedure TCFolderLocked;
     procedure SetSort(AMode: TSortMode);
     procedure ShowZone(AZone: Integer);
@@ -555,9 +659,30 @@ type
     { Icons (stage 2). }
     procedure RequestIcons(AForce: Boolean);
     procedure HandleIconsChanged(Sender: TObject);
+    { The edition's overlay layers (uExtensions, M0). }
+    procedure HandleOverlayLayerChanged(Sender: TObject);
+    function HandleLayerMouse(AKind: TOverlayMouseKind; AButton: TOverlayButton;
+      AX, AY, AWheel: Integer): Boolean;
     function PanelSlotIcon(ASlot, ASize: Integer): TBGRABitmap;
     function PanelSlotPreview(ASlot, AMaxSize: Integer; out ACaption: string): TBGRABitmap;
     function PanelSlotMissing(ASlot: Integer): Boolean;
+    { Containers in the side panel (M2c). }
+    procedure RefreshPanelContainers;
+    procedure EnterContainer(AIndex: Integer);
+    procedure EnterFrames(const AStack: string);
+    procedure ShowContainerFrame(AEntry: Integer);
+    function ItemNote(const AName: string): string;
+    procedure PlayStack(const AStack: string);
+    procedure CancelStackLoad;
+    procedure HandlePlayTimer(Sender: TObject);
+    procedure FinishStackLoad;
+    procedure LeaveContainer;
+    procedure OpenContainerInView(AIndex: Integer);
+    procedure HandleThumbsListed(const AContainer: string; const AEntries: TContainerEntryArray);
+    procedure HandleThumbReady(const AVirtualName: string; ASmall, ALarge: TBGRABitmap);
+    function PanelEntryThumb(AEntry, ASize: Integer): TBGRABitmap;
+    function PanelEntryPreview(AEntry, AMaxSize: Integer; out ACaption: string): TBGRABitmap;
+    function PanelEntryDetails(AEntry: Integer): TStringArray;
     procedure HandleIconWritten(const AResult: TFileJobResult);
     { Filters (Phase H). }
     procedure UpdateFilterPanel;
@@ -568,6 +693,11 @@ type
     function RefreshHistogram: Boolean;
     procedure ApplyAuto(AReport: Boolean);
     procedure PollTotalCommander;
+    procedure StartDirPreview(const AFolder: string);
+    procedure StopDirPreview;
+    procedure StepDirPreview;
+    function DirPreviewQuick: Boolean;
+    procedure HandleDirPeek(const AFolder: string; AImages, AFolders: Integer);
     function HandleLensMouse(AKind: TOverlayMouseKind; AButton: TOverlayButton;
       AX, AY, AWheel: Integer; AButtonDown: Boolean): Boolean;
     procedure SetLens(const ALens: TLensState);
@@ -584,6 +714,10 @@ type
     destructor Destroy; override;
 
     procedure Initialize;
+    { The order of the images (Day 27, testers: the right-click menu);
+      Random again shuffles anew. }
+    procedure SetSortOrder(AMode: TSortMode);
+    function SortOrder: TSortMode;
     { The drawing surface and its renderer, chosen by the form. TMView
       takes over the renderer (and frees the default CPU one). }
     procedure AttachView(ASurface: TWinControl; ARenderer: TRenderer);
@@ -615,6 +749,16 @@ type
     { Stops the worker and scanner threads (spec §5.8). Called by the
       destructor; the form may call it earlier. Safe to call twice. }
     procedure Shutdown;
+    { Esc to the settings (user, Day 25: "put everything into the
+      background"): the settings saved now, every thread told to stop,
+      nothing delivered to the viewer any more - without waiting. The
+      form shows the settings at once and frees the viewer when
+      CloseFinished (its destructor then waits for nothing). }
+    procedure BeginClose;
+    function CloseFinished: Boolean;
+    { The current folder on disk: the navigator's, or, inside a container
+      (.lif, M2b), the folder the container lies in. }
+    function FolderOnDisk: string;
 
     property Config: TConfig read FConfig;
     property Navigator: TNavigator read FNavigator;
@@ -625,6 +769,11 @@ type
       selection"). }
     function CanCrop: Boolean;
     property EditMode: Boolean read FEditMode;
+    { Lossless rotation (1.1, user): the JPEG on screen turned or mirrored
+      by its EXIF orientation tag (uExifRotate); the pixels stay as they
+      are, the file keeps its date. }
+    function CanRotateLossless: Boolean;
+    procedure RotateLossless(AOp: TOrientOp);
 
     { Start-up times from the main form, in ms since the process
       started: window created, drawing surface ready; and how long the
@@ -665,10 +814,27 @@ type
     { The panel opened by the menu or a key (stays until the mouse has
       been on it), or closed. }
     procedure ShowSortPanel(AShow: Boolean);
+    { Rapid Selection (Day 27, testers): ten fixed folders Selection1 ..
+      Selection0 in [Sort] DefaultImageFolder, the panel open and pinned;
+      keys 1 .. 0 move the image there. Off: the list and pin before. }
+    procedure SetRapidSelection(AOn: Boolean);
+    function RapidSelection: Boolean;
+    { The scan bar is open (the menu ticks it, Day 27). }
+    function PreviewStripVisible: Boolean;
+    { Opened from the menu / a key: stays when the mouse leaves. }
+    function PreviewStripPinned: Boolean;
+    { A short line in the info bar for ADurationMs (the form's slot
+      menu, Day 27). }
+    procedure StatusNote(const AText: string; ADurationMs: Double);
     function SortPanelVisible: Boolean;
     { The slots changed (the form's folder menu, a drop): save [Sort]
       and redraw the panel. }
-    procedure SortFoldersChanged;
+    { ARevealSlot: a slot to scroll into sight (one just added). }
+    procedure SortFoldersChanged(ARevealSlot: Integer = -1);
+    { A container file (.lif) dropped on the side panel: opened in the
+      view (its first image), so it shows on top of the panel while the
+      wheel is in it. Never kept (Day 25, user: containers are transient). }
+    procedure OpenDroppedContainer(const AFileName: string);
     { The part of the panel at a point of the view (a drop). }
     function SortPanelHit(AX, AY: Integer): TPanelHit;
     { The window lost the focus / the mouse left: no hover, no edge timer. }
@@ -712,7 +878,9 @@ type
     procedure SetFilters(const AFilters: TFilterSettings);
     property Filters: TFilterSettings read FFilters;
     { "Lock filters": they stay for the next images. }
-    procedure SetFiltersLocked(AValue: Boolean);
+    { ASource: who asked ('panel click', 'menu', 'mouse profile'); kept
+      for debugging, not shown. }
+    procedure SetFiltersLocked(AValue: Boolean; const ASource: string = '');
     property FiltersLocked: Boolean read FFiltersLocked;
     { The filter panel opened by the menu (stays until the mouse has been
       on it), or closed. }
@@ -727,6 +895,9 @@ type
     function CanApplyFilters: Boolean;
     { The view is turned (the copy of "Apply filters to a copy" takes it). }
     function ViewRotated: Boolean;
+    { An edition's layer goes into the copy too (Day 26: the measuring
+      line, uExtensions' burn-in). }
+    function CopyBurnsIn: Boolean;
     procedure ApplyFiltersToCopy;
     { "Resize to the size shown" (user, Day 22: copy / move / save always
       wrote the original size): a new image (like Crop) at the size it has
@@ -741,6 +912,11 @@ type
       cursor (MView as its viewer). Saved at once. }
     procedure SetFollowMode(AMode: Integer);
     property FollowMode: Integer read FFollowMode;
+    { Total Commander dir preview (1.1): with its cursor on a folder, the
+      folder's first images play (Follow switched to "file under cursor"
+      while it is on; back as it was when off). }
+    procedure SetDirPreview(AOn: Boolean);
+    property DirPreview: Boolean read FDirPreview;
 
     { The magnifier (Phase H, G6; user, Day 21 / 23): a round lens that
       follows the mouse; left drag sideways = magnification (relative to
@@ -757,10 +933,15 @@ implementation
 
 uses
   Forms,
-  FPWritePNG,
   uMouseEngine,
   uIconFile,
-  uTotalCommander;
+  uTotalCommander,
+  uExtensions,
+  uImageScaling,
+  uClipboardImage,
+  uSafeFile,
+  uEdition,
+  uZipContainer;      { ZIP / CBZ as containers (1.1): registers itself }
 
 const
   { Upper limit for skipping undecodable files in one go (only used
@@ -795,13 +976,22 @@ const
 
   { A notice in the middle (FlashNotice): this long, flashing at first. }
   NoticeMs = 1800;
+  DirectoryHintMs = 3000;
+  { A drive almost full (Day 27, testers): below this, checked so often,
+    the warning again so often. }
+  DiskLowBytes = Int64(100) * 1024 * 1024;
+  DiskCheckEveryMs = 5000;
+  DiskWarnEveryMs = 20000;
 
   { Sort panel: a swipe left or right over a button opens its folder; at
     least this far (px at 96 dpi). }
-  SwipePx = 40;
+  SwipePx = 20;
+
+  { A restored ini (1.1): the notice stays this long. }
+  IniNoteMs = 8000;
 
   NoStartMessage =
-    'No image or folder given.   Start MView with:   MView.exe <image file or folder>';
+    'No image or folder given.   Start VersariteViewer with:   VersariteViewer.exe <image file or folder>';
 
 constructor TMView.Create;
 begin
@@ -835,12 +1025,19 @@ end;
 destructor TMView.Destroy;
 begin
   { Settings first: if a worker hangs in the shutdown below, the
-    watchdog may end the process (uWatchdog), and they are saved. }
-  FConfig.ShowInfo := FRenderer.ShowInfo;
-  FConfig.ShowDiagnostics := FRenderer.ShowDiagnostics;
-  KeepLensSettings;
-  FConfig.SortMode := FNavigator.SortMode;
-  FConfig.Save;
+    watchdog may end the process (uWatchdog), and they are saved. Not
+    again after BeginClose: the settings screen may have saved since. }
+  if not FSettingsSaved then
+  begin
+    FConfig.ShowInfo := FRenderer.ShowInfo;
+    FConfig.ShowDiagnostics := FRenderer.ShowDiagnostics;
+    KeepLensSettings;
+    FConfig.SortMode := FNavigator.SortMode;
+    FConfig.Save;
+  end;
+
+  { No layer repaints a viewer that is going. }
+  OnOverlayChanged := nil;
 
   Shutdown;
 
@@ -849,6 +1046,8 @@ begin
     they may still use, the scheduler, is not freed). }
   FCurrentImage := nil;
   FAnimTimer.Free;
+  CancelStackLoad;
+  FPlayTimer.Free;
   FScanner.Free;
   FAbandonedScanners.Free;
   FCache.Free;
@@ -862,12 +1061,71 @@ begin
   FNoRoom.Free;
   FNoPreview.Free;
   FMouseProfile.Free;
+  FThumbs.Free;
+  FThumbCache.Free;
+  FStripThumbs.Free;
+  FStrip.Free;
   FPanel.Free;
   FFilterPanel.Free;
   FFollower.Free;
+  FDirPeek.Free;
   FIcons.Free;
   FConfig.Free;
   inherited Destroy;
+end;
+
+procedure TMView.BeginClose;
+begin
+  if not FSettingsSaved then
+  begin
+    FConfig.ShowInfo := FRenderer.ShowInfo;
+    FConfig.ShowDiagnostics := FRenderer.ShowDiagnostics;
+    KeepLensSettings;
+    FConfig.SortMode := FNavigator.SortMode;
+    FConfig.Save;
+    FSettingsSaved := True;
+  end;
+  { No layer repaints a viewer that is going. }
+  OnOverlayChanged := nil;
+  StopAnimation;
+  CancelStackLoad;
+  if Assigned(FIcons) then
+    FIcons.OnChanged := nil;
+  { A copy or move under way is finished; those not started are dropped. }
+  if Assigned(FMover) then
+  begin
+    FMover.OnDone := nil;
+    FMover.DropWaiting;
+  end;
+  if Assigned(FScanner) then
+    FScanner.BeginShutdown;
+  if Assigned(FScheduler) then
+    FScheduler.BeginShutdown;
+  if Assigned(FThumbs) then
+    FThumbs.BeginShutdown;
+end;
+
+function TMView.CloseFinished: Boolean;
+begin
+  Result := False;
+  if Assigned(FSaveThread) and not FSaveThread.Finished then
+    Exit;
+  if Assigned(FMover) and FMover.Working then
+    Exit;
+  if Assigned(FScheduler) and not FScheduler.WorkersStopped then
+    Exit;
+  { The workers are back: no read can be under way; don't let the
+    scanner wait at the gate (as Shutdown does). }
+  if not FGateReleased then
+  begin
+    IOGate.Release;
+    FGateReleased := True;
+  end;
+  if Assigned(FScanner) and not FScanner.Finished then
+    Exit;
+  if Assigned(FThumbs) and not FThumbs.Stopped then
+    Exit;
+  Result := True;
 end;
 
 procedure TMView.Shutdown;
@@ -910,8 +1168,9 @@ begin
   if Assigned(FScanner) then
   begin
     { A scanner that hasn't come back from the disk for a second may
-      be stuck: don't wait for it. }
-    if FScanner.LastAliveAgeMs > 1000 then
+      be stuck: don't wait for it. (One that has finished - after
+      BeginClose - is simply waited for: it isn't stuck.) }
+    if (not FScanner.Finished) and (FScanner.LastAliveAgeMs > 1000) then
     begin
       FScanner.Abandon;
       FAbandonedScanners.Add(FScanner);
@@ -985,10 +1244,18 @@ begin
   FNavigator.ReadsDisk := False;
   FScanner := CreateScanner;
 
+  { The preview strip (Day 27): drawn only when it is open. }
+  FStrip := TPreviewStrip.Create;
+  FStripThumbs := TFolderThumbs.Create;
+  FDirPeek := TDirPeek.Create;
+  FDirPeek.OnResult := @HandleDirPeek;
+  FStripThumbs.OnThumb := @HandleStripThumb;
+  FStripPress := -1;
   { The sort panel (Phase G): drawn only when it is open. }
   FPanel := TSortPanel.Create(FConfig.SortFolders);
   FPanel.EdgeDelayMs := FConfig.SortEdgeDelayMs;
   FPanel.EdgeWidth := FConfig.SortEdgeWidth;
+  FPanel.Lines := FConfig.SortPanelLines;
   FPanel.Pinned := FConfig.SortPinned;
   FPanel.FooterText := 'double-click:' + LineEnding + 'left = copy,  right = move';
   FPanelPress.Part := ppNone;
@@ -1002,6 +1269,11 @@ begin
   FPanel.OnSlotIcon := @PanelSlotIcon;
   FPanel.OnSlotPreview := @PanelSlotPreview;
   FPanel.OnSlotMissing := @PanelSlotMissing;
+  FPanel.OnEntryThumb := @PanelEntryThumb;
+  FPanel.OnEntryPreview := @PanelEntryPreview;
+  FPanel.OnEntryDetails := @PanelEntryDetails;
+  { The edition's overlay layers repaint the view (uExtensions, M0). }
+  OnOverlayChanged := @HandleOverlayLayerChanged;
   if FPanel.Pinned then
     FPanel.Show;
 
@@ -1013,11 +1285,18 @@ begin
   FFilterPanel.Pinned := FConfig.FilterPinned;
   if FFilterPanel.Pinned then
     FFilterPanel.Show;
+  PanelOpacityPercent := FConfig.PanelOpacity;
+  ArchivesEnabled := FConfig.Archives;
   FFollowMode := FConfig.FollowTotalCommander;
   UpdateFollowBadge;    { there from the start, see-through until it follows }
   { [Filters] AutoFilter: Auto for every image from the start. }
   FAutoOn := FConfig.AutoFilter;
   FFilterPanel.AutoOn := FAutoOn;
+  { A damaged ini was restored (1.1): said once, a moment after the
+    start (PumpDeliveries). }
+  FIniNoteWarns := IniNoteWarns;
+  FIniNote := TakeIniNote;
+  FIniNoteAtMs := NowMs + 1500;
 end;
 
 procedure TMView.AttachView(ASurface: TWinControl; ARenderer: TRenderer);
@@ -1229,7 +1508,7 @@ begin
       { A folder of videos only: say so, not just "nothing" (Day 24). }
       if FNavigator.VideoCount > 0 then
         FRenderer.SetMessage('No images found in   ' + FNavigator.RootDirectory
-          + '   -   ' + VideoCountText(FNavigator.VideoCount) + ' (MView shows images only)')
+          + '   -   ' + VideoCountText(FNavigator.VideoCount) + ' (' + EditionTitle + ' shows images only)')
       else
         FRenderer.SetMessage('No images found in   ' + FNavigator.RootDirectory);
     end
@@ -1629,6 +1908,15 @@ begin
   end;
 end;
 
+{ True if AImage holds the original's pixels (not a screen-size decode). }
+function IsFullSize(const AImage: IDecodedImage): Boolean;
+begin
+  Result := (AImage <> nil) and not AImage.IsError
+    and ((AImage.Quality = qlFull)
+      or ((AImage.FullWidth <= 0) or (AImage.Bitmap = nil))
+      or ((AImage.Bitmap.Width >= AImage.FullWidth) and (AImage.Bitmap.Height >= AImage.FullHeight)));
+end;
+
 { UI thread, called by the scheduler when a decode has finished. }
 procedure TMView.HandleImageReady(const AImage: IDecodedImage);
 var
@@ -1689,6 +1977,24 @@ begin
     else
       UpdateInfo;                            { "loading" may be over }
     { else: a late, smaller version of what is shown; cache only }
+  end;
+
+  { Copy image waited for the full picture (Day 25): only for the image
+    still shown. }
+  if (FCopyWanted <> '') and SameText(AImage.Key.FileName, FCopyWanted) then
+  begin
+    if not SameText(FCopyWanted, FNavigator.CurrentFileName) then
+      FCopyWanted := ''
+    else if AImage.IsError then
+    begin
+      FCopyWanted := '';
+      ShowStatus('could not copy: ' + AImage.ErrorMessage, 5000);
+    end
+    else if IsFullSize(AImage) then
+    begin
+      FCopyWanted := '';
+      CopyImage(AImage);
+    end;
   end;
 
   { The cache changed: the next thing to decode may be different
@@ -2001,6 +2307,12 @@ begin
         Exit;
       end;
 
+    cmdCopyImage:
+      begin
+        CopyToClipboard;
+        Exit;
+      end;
+
     cmdSaveImage:
       SaveImageOnly;
 
@@ -2061,7 +2373,11 @@ begin
     cmdFilterPanel:
       ShowFilterPanel(not FilterPanelVisible);
     cmdLockFilters:
-      SetFiltersLocked(not FFiltersLocked);
+      { Value 1: the right-click menu; else the mouse profile / a key. }
+      if AArgs.Value = 1 then
+        SetFiltersLocked(not FFiltersLocked, 'menu')
+      else
+        SetFiltersLocked(not FFiltersLocked, 'mouse profile');
     cmdResetFilters:
       UserFilters(NeutralFilters);
     cmdAutoLevels:
@@ -2074,6 +2390,21 @@ begin
       ResizeToShown;
     cmdMagnifier:
       SetMagnifier(not MagnifierOn);
+    cmdRapidSelection:
+      SetRapidSelection(not RapidSelection);
+    cmdRapidKey:
+      RapidKey(Round(AArgs.Value));
+    { Value 1: the mouse rests at the top edge (opens, closes again when
+      the mouse leaves); 0 (the menu, a key): pinned on / off (1.1, user:
+      it stays until switched off; one opened at the edge becomes
+      pinned). }
+    cmdPreviewStrip:
+      if Round(AArgs.Value) = 1 then
+        SetPreviewStrip(True, True)
+      else if FStrip.Visible and not FStrip.Pinned then
+        FStrip.Pinned := True
+      else
+        SetPreviewStrip(not FStrip.Visible, False);
 
     cmdExit:
       begin
@@ -2120,9 +2451,33 @@ procedure TMView.UpdateInfo;
 var
   Text, FileName, Part: string;
   Items: TInfoItems;
-  I: Integer;
+  I, ShownW, ShownH: Integer;
   Paste: Boolean;
 begin
+  { The preview strip follows the image shown (Day 27). }
+  if Assigned(FStrip) and FStrip.Visible then
+  begin
+    SyncStrip;
+    UpdateStrip;
+  end;
+  RefreshPanelContainers;    { M2c: the .lif the wheel is in; nothing in MView }
+  { The image shown, for the edition's panel rows and menu tests (M3b);
+    its rows drawn again when they changed. }
+  if Assigned(FCurrentImage) and not FCurrentImage.IsError then
+  begin
+    ShownW := FCurrentImage.FullWidth;
+    ShownH := FCurrentImage.FullHeight;
+    if (ShownW <= 0) or (ShownH <= 0) then
+    begin
+      ShownW := FCurrentImage.Width;
+      ShownH := FCurrentImage.Height;
+    end;
+    SetShownImage(FCurrentImage.Key.FileName, ShownW, ShownH);
+  end
+  else
+    SetShownImage('', 0, 0);
+  if (FFilterPanel <> nil) and FFilterPanel.ExtrasChanged then
+    UpdateFilterPanel;
   Paste := FShowingPaste and Assigned(FCurrentImage);
   { Nothing open (and no pasted image): no line. }
   if (not Paste) and not FNavigator.HasCurrentImage then
@@ -2145,7 +2500,12 @@ begin
         if Paste then
           Part := FScratchTitle
         else
-          Part := ExtractFileName(FileName);
+        begin
+          Part := DisplayItemName(FileName);      { 'sample.lif › Series009' inside a .lif }
+          { A stack's note (Day 26): 't 11 × 2.6 s (projection)'. }
+          if ItemNote(FileName) <> '' then
+            Part := Part + '   ' + ItemNote(FileName);
+        end;
       iiDimensions:
         if Paste then
           Part := Format('%d x %d', [FCurrentImage.Width, FCurrentImage.Height])
@@ -2154,10 +2514,15 @@ begin
           Part := Format('%d x %d', [ImageWidth(FCurrentImage), ImageHeight(FCurrentImage)]);
       iiFolder:
         if not Paste then
-          Part := ExtractFileDir(FileName);
+          Part := RealFolderOf(FileName);
       iiPosition:
         if not Paste then
+        begin
           Part := Format('%d / %d', [FNavigator.CurrentIndex + 1, FNavigator.ImageCount]);
+          { The dir preview's folder: its counts (1.1). }
+          if (FDirFolder <> '') and (FDirCounts <> '') then
+            Part := Part + '   (' + FDirCounts + ')';
+        end;
       iiVideos:
         { Videos in this folder: counted, never shown (user, Day 24). }
         if (not Paste) and (FNavigator.VideoCount > 0) then
@@ -2165,10 +2530,15 @@ begin
       iiSorting:
         if not Paste then
         begin
-          if FNavigator.SortMode in [smFileNameAscending, smFileNameDescending] then
-            Part := 'by name'
+          { Day 27: all five orders named. }
+          case FNavigator.SortMode of
+            smFileNameAscending: Part := 'by name';
+            smFileNameDescending: Part := 'by name (Z-A)';
+            smDateAscending: Part := 'by date (oldest first)';
+            smRandom: Part := 'random';
           else
             Part := 'by date';
+          end;
         end;
       iiZoom:
         Part := InfoZoomMarker;
@@ -2366,7 +2736,7 @@ begin
       try
         Lines.Text := DefaultProfileText;
         try
-          Lines.SaveToFile(FileName);
+          WriteTextFileSafe(FileName, Lines.Text);
         except
           { read-only folder: the built-in profile is used }
         end;
@@ -2386,8 +2756,28 @@ begin
   end;
 end;
 
+procedure TMView.SetSortOrder(AMode: TSortMode);
+begin
+  SetSort(AMode);
+end;
+
+function TMView.SortOrder: TSortMode;
+begin
+  Result := FNavigator.SortMode;
+end;
+
 procedure TMView.SetSort(AMode: TSortMode);
 begin
+  { Random again: a new shuffle (Day 27). }
+  if (AMode = smRandom) and (FNavigator.SortMode = smRandom) then
+  begin
+    NewRandomSortOrder;
+    FNavigator.Resort;
+    UpdateWanted;
+    UpdateInfo;
+    ShowStatus('shuffled again', 2000);
+    Exit;
+  end;
   if FNavigator.SortMode = AMode then
     Exit;
   FNavigator.SetSortMode(AMode);
@@ -2408,20 +2798,148 @@ begin
   FlashNotice('TC connection: directory change disabled!');
 end;
 
-procedure TMView.FlashNotice(const AText: string);
+procedure TMView.FlashNotice(const AText: string; AStyle: Integer);
 var
   Style: Integer;
 begin
   { In the TC label's colour: light blue (its folder) or amber (also its
-    cursor). }
-  if FFollowMode = 1 then
+    cursor); AStyle 3: red (a warning). }
+  if AStyle <> 0 then
+    Style := AStyle
+  else if FFollowMode = 1 then
     Style := 1
   else
     Style := 2;
   FRenderer.SetNotice(AText, Style);
   FRenderer.NoticeOn := True;
   FNoticeStartMs := Max(1.0, NowMs);
+  FNoticeSteady := False;
+  FNoticeLastMs := NoticeMs;
   Refresh;
+end;
+
+procedure TMView.DirectoryHint(const AText: string);
+begin
+  if not FConfig.ShowDirectoryHint then
+    Exit;
+  FlashNotice(AText);
+  FNoticeSteady := True;
+  FNoticeLastMs := DirectoryHintMs;
+end;
+
+{$IFDEF WINDOWS}
+function MViewGetDriveTypeW(lpRootPathName: PWideChar): LongWord; stdcall;
+  external 'kernel32.dll' name 'GetDriveTypeW';
+function MViewGetDiskFreeSpaceExW(lpDirectoryName: PWideChar; out FreeToCaller, Total,
+  TotalFree: QWord): LongBool; stdcall; external 'kernel32.dll' name 'GetDiskFreeSpaceExW';
+function MViewSetErrorMode(uMode: LongWord): LongWord; stdcall;
+  external 'kernel32.dll' name 'SetErrorMode';
+{$ENDIF}
+
+{ The bytes free on AFolder's drive for this user; -1 = unknown, or not a
+  local drive (a network drive is never asked: it may hang). ADrive: its
+  name ("D:"). }
+function LocalFreeBytes(const AFolder: string; out ADrive: string): Int64;
+{$IFDEF WINDOWS}
+const
+  DRIVE_REMOVABLE = 2;
+  DRIVE_FIXED = 3;
+  SEM_FAILCRITICALERRORS = $0001;
+  SEM_NOOPENFILEERRORBOX = $8000;
+var
+  Root: UnicodeString;
+  Kind, OldMode: LongWord;
+  FreeToCaller, Total, TotalFree: QWord;
+{$ENDIF}
+begin
+  Result := -1;
+  ADrive := ExtractFileDrive(AFolder);
+  {$IFDEF WINDOWS}
+  if (Length(ADrive) <> 2) or (ADrive[2] <> ':') then
+    Exit;                       { a UNC path: a network share }
+  Root := UnicodeString(ADrive + '\');
+  Kind := MViewGetDriveTypeW(PWideChar(Root));
+  if (Kind <> DRIVE_FIXED) and (Kind <> DRIVE_REMOVABLE) then
+    Exit;
+  { An empty card reader must not bring up Windows' "no disk" box. }
+  OldMode := MViewSetErrorMode(SEM_FAILCRITICALERRORS or SEM_NOOPENFILEERRORBOX);
+  try
+    if MViewGetDiskFreeSpaceExW(PWideChar(Root), FreeToCaller, Total, TotalFree) then
+      Result := Int64(FreeToCaller);
+  finally
+    MViewSetErrorMode(OldMode);
+  end;
+  {$ENDIF}
+end;
+
+procedure TMView.CheckDiskSpace;
+var
+  Folders: TStringList;
+  I: Integer;
+  Drive, WorstDrive: string;
+  FreeB, Worst: Int64;
+begin
+  Folders := TStringList.Create;
+  try
+    Folders.Sorted := True;
+    Folders.Duplicates := dupIgnore;
+    Folders.CaseSensitive := False;
+    { Each drive once. }
+    if FNavigator.HasCurrentImage then
+      Folders.Add(ExtractFileDrive(RealFolderOf(FNavigator.CurrentFileName)));
+    for I := 0 to FConfig.SortFolders.Count - 1 do
+      Folders.Add(ExtractFileDrive(FConfig.SortFolders.Slot(I).Folder));
+    Folders.Add(ExtractFileDrive(FConfig.DeletedFilesFolder));
+    Folders.Add(ExtractFileDrive(UserDocumentsDirectory));
+    Worst := -1;
+    WorstDrive := '';
+    for I := 0 to Folders.Count - 1 do
+    begin
+      if Folders[I] = '' then
+        Continue;
+      FreeB := LocalFreeBytes(Folders[I] + '\', Drive);
+      if (FreeB >= 0) and (FreeB < DiskLowBytes) and ((Worst < 0) or (FreeB < Worst)) then
+      begin
+        Worst := FreeB;
+        WorstDrive := Drive;
+      end;
+    end;
+  finally
+    Folders.Free;
+  end;
+  if Worst < 0 then
+  begin
+    FDiskWarnMs := 0;
+    Exit;
+  end;
+  if (FDiskWarnMs = 0) or (NowMs - FDiskWarnMs >= DiskWarnEveryMs) then
+  begin
+    FDiskWarnMs := Max(1.0, NowMs);
+    FlashNotice(Format('Drive %s is almost full: %d MB free', [WorstDrive, Worst div (1024 * 1024)]), 3);
+    ShowStatus(Format('drive %s is almost full (%d MB free): copying, moving and saving may fail',
+      [WorstDrive, Worst div (1024 * 1024)]), 10000);
+  end;
+end;
+
+{ An image (or, in the microscopy edition, a container) directly in
+  AFolder - not in its subfolders. Stops at the first one. }
+function FolderHasImages(const AFolder: string): Boolean;
+var
+  SearchRec: TSearchRec;
+begin
+  Result := False;
+  if FindFirst(IncludeTrailingPathDelimiter(AFolder) + '*', faAnyFile, SearchRec) <> 0 then
+    Exit;
+  try
+    repeat
+      if (SearchRec.Attr and faDirectory) <> 0 then
+        Continue;
+      if IsSupportedImageFile(SearchRec.Name) or IsContainerName(SearchRec.Name) then
+        Exit(True);
+    until FindNext(SearchRec) <> 0;
+  finally
+    FindClose(SearchRec);
+  end;
 end;
 
 procedure TMView.ParentFolder;
@@ -2442,8 +2960,21 @@ begin
     ShowStatus('already at the top: ' + Root, 3000);
     Exit;
   end;
-  ShowStatus('browsing from ' + Parent, 4000);
-  OpenMedia(Parent, FNavigator.CurrentFileName, True);
+  { Day 25 (user: the old "widen the tree, keep the image" was not
+    intuitive): up into the parent folder, on its own first image
+    (siblings are skipped). A parent without images of its own: said so;
+    the browsing still starts there (the next gesture up climbs on), the
+    image stays. }
+  if FolderHasImages(Parent) then
+  begin
+    ShowStatus('up to ' + Parent, 3000);
+    OpenMedia(Parent, '', True);
+  end
+  else
+  begin
+    ShowStatus('no images in ' + Parent + '   (browsing from there; the image stays)', 4000);
+    OpenMedia(Parent, FNavigator.CurrentFileName, True);
+  end;
 end;
 
 procedure TMView.ShowZone(AZone: Integer);
@@ -2557,6 +3088,10 @@ end;
   the next step; "Save image" writes it. }
 procedure TMView.ShowScratch(const AImage: IDecodedImage; const ATitle, APrefix: string);
 begin
+  { Something else shown (a paste, a crop, a frame): a stack still being
+    read for playing is not played any more (Day 26). }
+  if FPlayStack <> '' then
+    CancelStackLoad;
   FShowingPaste := True;
   FScratchTitle := ATitle;
   FScratchPrefix := APrefix;
@@ -2567,6 +3102,72 @@ begin
   FPendingFile := '';
   FCommandMs := 0;
   Display(AImage);
+end;
+
+function TMView.CanRotateLossless: Boolean;
+var
+  Ext: string;
+begin
+  Result := False;
+  if not FNavigator.HasCurrentImage or FShowingPaste then
+    Exit;
+  if IsVirtualName(FNavigator.CurrentFileName) then
+    Exit;
+  Ext := LowerCase(ExtractFileExt(FNavigator.CurrentFileName));
+  Result := (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.jpe') or (Ext = '.jfif');
+end;
+
+procedure TMView.RotateLossless(AOp: TOrientOp);
+var
+  FileName, Text, Why: string;
+  Data: TBytes;
+  Old, New: Integer;
+  Age: Int64;
+  HasAge: Boolean;
+begin
+  if not CanRotateLossless then
+  begin
+    ShowStatus('turn losslessly: JPEG files only', 4000);
+    Exit;
+  end;
+  FileName := FNavigator.CurrentFileName;
+  if not ReadTextFile(FileName, Text) or (Text = '') then
+  begin
+    ShowStatus('turn losslessly: ' + ExtractFileName(FileName) + ' could not be read', 5000);
+    Exit;
+  end;
+  SetLength(Data, Length(Text));
+  Move(Text[1], Data[0], Length(Text));
+  Old := ReadExifOrientation(@Data[0], Length(Data));
+  New := OrientationAfter(Old, AOp);
+  if not SetJpegOrientation(Data, New, Why) then
+  begin
+    ShowStatus('not turned: ' + Why, 5000);
+    Exit;
+  end;
+  { Its date stays (sorting by date keeps its place). }
+  HasAge := GetFileWriteTime(FileName, Age);
+  SetLength(Text, Length(Data));
+  if Length(Data) > 0 then
+    Move(Data[0], Text[1], Length(Data));
+  if not WriteTextFileSafely(FileName, Text, Why) then
+  begin
+    ShowStatus('not turned: ' + Why, 6000);
+    Exit;
+  end;
+  if HasAge then
+    SetFileWriteTime(FileName, Age);
+  StopAnimation;
+  FCache.DropFile(FileName);
+  FStripThumbs.Forget;
+  { The same file again: shown as a new one (a result of the same
+    quality as the one on screen would only go to the cache). }
+  FCurrentImage := nil;
+  ShowCurrent;
+  if FConfig.AutoRotate then
+    ShowStatus('turned losslessly (the file''s orientation tag; the pixels are unchanged)', 3000)
+  else
+    ShowStatus('turned losslessly - but [View] AutoRotate=0: shown unturned here', 6000);
 end;
 
 function TMView.CanCrop: Boolean;
@@ -2594,6 +3195,8 @@ var
   Sel: TImageRect;
 begin
   FSelAnchorValid := False;
+  FSelDragging := False;
+  FSelDragDone := False;
   Sel := FRenderer.Selection;
   if not Sel.Active then
     Exit;
@@ -2602,10 +3205,13 @@ begin
 end;
 
 { AX, AY: surface pixels. The selection runs from where the drag
-  started to where it is, in original image pixels, inside the image. }
+  started to where it is, in original image pixels, inside the image.
+  On a turned image (Day 26, user) it is upright on the screen: its
+  rectangle lies in the image's pixels turned by the selection's angle
+  (TImageRect), inside the turned image's bounds. }
 procedure TMView.DragSelection(AX, AY: Double; AStart: Boolean);
 var
-  IX, IY, W, H: Double;
+  IX, IY, W, H, TX, TY, Rad, C, S, HalfW, HalfH: Double;
   Sel: TImageRect;
 begin
   if (FCurrentImage = nil) or FCurrentImage.IsError then
@@ -2619,20 +3225,42 @@ begin
     W := FCurrentImage.Width;
     H := FCurrentImage.Height;
   end;
-  IX := EnsureRange(IX, 0.0, W);
-  IY := EnsureRange(IY, 0.0, H);
+  FSelDragging := True;
+  if AStart or not FSelAnchorValid then
+    FSelAngle := FRenderer.SelectionAngle;
+  if Abs(FSelAngle) < 1e-9 then
+  begin
+    { Not turned: the image's own pixels, as always. }
+    TX := EnsureRange(IX, 0.0, W);
+    TY := EnsureRange(IY, 0.0, H);
+  end
+  else
+  begin
+    { Turned clockwise about the middle; kept inside the turned image's
+      bounds (an oblique turn's corners are black in a crop). }
+    Rad := DegToRad(FSelAngle);
+    C := Cos(Rad);
+    S := Sin(Rad);
+    TX := W / 2 + (IX - W / 2) * C - (IY - H / 2) * S;
+    TY := H / 2 + (IX - W / 2) * S + (IY - H / 2) * C;
+    HalfW := (Abs(W * C) + Abs(H * S)) / 2;
+    HalfH := (Abs(W * S) + Abs(H * C)) / 2;
+    TX := EnsureRange(TX, W / 2 - HalfW, W / 2 + HalfW);
+    TY := EnsureRange(TY, H / 2 - HalfH, H / 2 + HalfH);
+  end;
   if AStart or not FSelAnchorValid then
   begin
-    FSelAnchorX := IX;
-    FSelAnchorY := IY;
+    FSelAnchorX := TX;
+    FSelAnchorY := TY;
     FSelAnchorValid := True;
     if AStart then
       Exit;
   end;
-  Sel.X0 := Min(FSelAnchorX, IX);
-  Sel.X1 := Max(FSelAnchorX, IX);
-  Sel.Y0 := Min(FSelAnchorY, IY);
-  Sel.Y1 := Max(FSelAnchorY, IY);
+  Sel.X0 := Min(FSelAnchorX, TX);
+  Sel.X1 := Max(FSelAnchorX, TX);
+  Sel.Y0 := Min(FSelAnchorY, TY);
+  Sel.Y1 := Max(FSelAnchorY, TY);
+  Sel.Angle := FSelAngle;
   Sel.Active := (Sel.X1 - Sel.X0 >= 1) and (Sel.Y1 - Sel.Y0 >= 1);
   FRenderer.Selection := Sel;
 end;
@@ -2646,9 +3274,11 @@ var
   Src, Bmp: TBGRABitmap;
   Sel: TImageRect;
   FullW, FullH, BX0, BY0, BX1, BY1, W, H, Row: Integer;
-  FX, FY, Angle: Double;
+  FX, FY, Angle, Rad, OffX, OffY, SelDeg: Double;
   Key: TImageKey;
   Reason, SourceName, Note: string;
+  Turned: TBGRABitmap;
+  OldCursor: TCursor;
 begin
   if not CanCrop then
   begin
@@ -2690,27 +3320,62 @@ begin
     view). }
   FX := Src.Width / FullW;
   FY := Src.Height / FullH;
-  BX0 := EnsureRange(Floor(Sel.X0 * FX), 0, Src.Width - 1);
-  BY0 := EnsureRange(Floor(Sel.Y0 * FY), 0, Src.Height - 1);
-  BX1 := EnsureRange(Ceil(Sel.X1 * FX), BX0 + 1, Src.Width);
-  BY1 := EnsureRange(Ceil(Sel.Y1 * FY), BY0 + 1, Src.Height);
-  W := BX1 - BX0;
-  H := BY1 - BY0;
-  if not DecodeFits(W, H, 0, Reason) then
+  Turned := nil;
+  { A selection upright on a turned image (Day 26): cut from the image
+    turned as it was then (as "Apply filters to a copy" turns it; an
+    oblique turn's corners are black). Its pixels: the selection's. }
+  if Abs(Sel.Angle) >= 1e-9 then
   begin
-    ShowStatus('crop: ' + Reason, 6000);
-    Exit;
+    Rad := DegToRad(Sel.Angle);
+    if not DecodeFits(Ceil(Abs(Src.Width * Cos(Rad)) + Abs(Src.Height * Sin(Rad))),
+      Ceil(Abs(Src.Width * Sin(Rad)) + Abs(Src.Height * Cos(Rad))), 0, Reason) then
+    begin
+      ShowStatus('crop: ' + Reason, 6000);
+      Exit;
+    end;
+    OldCursor := Screen.Cursor;
+    Screen.Cursor := crHourGlass;
+    try
+      Turned := RotatedBitmap(Src, Sel.Angle, BGRABlack);
+    finally
+      Screen.Cursor := OldCursor;
+    end;
+    { The selection's pixels (turned about the middle) in the turned
+      bitmap (its middle the source's). }
+    OffX := Turned.Width / 2 - FullW / 2 * FX;
+    OffY := Turned.Height / 2 - FullH / 2 * FY;
+    Src := Turned;
+  end
+  else
+  begin
+    OffX := 0;
+    OffY := 0;
   end;
+  try
+    BX0 := EnsureRange(Floor(Sel.X0 * FX + OffX), 0, Src.Width - 1);
+    BY0 := EnsureRange(Floor(Sel.Y0 * FY + OffY), 0, Src.Height - 1);
+    BX1 := EnsureRange(Ceil(Sel.X1 * FX + OffX), BX0 + 1, Src.Width);
+    BY1 := EnsureRange(Ceil(Sel.Y1 * FY + OffY), BY0 + 1, Src.Height);
+    W := BX1 - BX0;
+    H := BY1 - BY0;
+    if not DecodeFits(W, H, 0, Reason) then
+    begin
+      ShowStatus('crop: ' + Reason, 6000);
+      Exit;
+    end;
 
-  Bmp := TBGRABitmap.Create(W, H);
-  for Row := 0 to H - 1 do
-    Move((Src.ScanLine[BY0 + Row] + BX0)^, Bmp.ScanLine[Row]^, W * SizeOf(TBGRAPixel));
-  Bmp.InvalidateBitmap;
+    Bmp := TBGRABitmap.Create(W, H);
+    for Row := 0 to H - 1 do
+      Move((Src.ScanLine[BY0 + Row] + BX0)^, Bmp.ScanLine[Row]^, W * SizeOf(TBGRAPixel));
+    Bmp.InvalidateBitmap;
+  finally
+    Turned.Free;
+  end;
 
   if FShowingPaste then
     SourceName := FScratchPrefix
   else
-    SourceName := ChangeFileExt(ExtractFileName(FCurrentImage.Key.FileName), '');
+    SourceName := ItemBaseName(FCurrentImage.Key.FileName);
   Key.FileName := SourceName + '_crop';
   Key.FileSize := 0;
   Key.FileTime := Now;
@@ -2722,7 +3387,18 @@ begin
   Note := '';
   if Img.Quality < qlFull then
     Note := '  (from the quick view: the full image wasn''t loaded yet)';
-  Angle := FRenderer.View.Angle;
+  { The crop has the selection's turn in its pixels (Day 26): shown
+    turned by the rest - the view's angle less the one it was drawn at
+    (none, unless the view was turned after selecting). The selection's
+    angle is the draw angle's negative when mirrored. Not turned: the
+    view's angle, as always. }
+  SelDeg := Sel.Angle;
+  if FFilters.Mirror then
+    SelDeg := -SelDeg;
+  Angle := FRenderer.View.Angle - SelDeg;
+  { Its scale is the parent's (Day 26, user; the edition keeps it). }
+  NoteDerivedImage(Key.FileName, FCurrentImage.Key.FileName, 'crop', FullW, FullH, 1, 1,
+    Sel.Angle);
   { The same image, closer: the filters stay (Phase H). }
   FKeepFilters := True;
   try
@@ -2737,20 +3413,34 @@ begin
   Refresh;
 end;
 
-{ Esc (Back), hard-wired (user, 2026-09-27): an open sort panel closes
-  first (Phase G), then the filter panel (Phase H), then edit mode ends;
-  otherwise back to the settings editor (the start screen). Only there
-  does Esc end MView. (A zoom / rotate mode is ended by the engine.) }
+{ Esc (Back), hard-wired (user, 2026-09-27; order Day 26, user): the
+  magnifier goes, then an open filter panel closes, then edit mode ends,
+  then an open sort panel closes; otherwise back to the settings editor
+  (the start screen). Only there does Esc end MView. (A zoom / rotate
+  mode is ended by the engine.) }
 procedure TMView.GoBack;
 begin
-  if Assigned(FPanel) and FPanel.Visible then
-    ShowSortPanel(False)
-  else if Assigned(FFilterPanel) and FFilterPanel.Visible then
-    ShowFilterPanel(False)
+  { The order (Day 26, user): the magnifier, the filter panel (open only
+    now and then), edit mode, the sort panel (open most of the time),
+    then the settings screen (where Esc ends the program). The preview
+    strip (Day 27) is gone in a second anyway: before all of them. A cut
+    button (1.1) is cancelled first of all. }
+  if FConfig.SortFolders.ClipIsCut then
+  begin
+    FConfig.SortFolders.CancelCut;
+    SortFoldersChanged;
+    ShowNote('cut cancelled', 2000);
+  end
+  else if Assigned(FStrip) and FStrip.Visible then
+    SetPreviewStrip(False, False)
   else if MagnifierOn then
     SetMagnifier(False)
+  else if Assigned(FFilterPanel) and FFilterPanel.Visible then
+    ShowFilterPanel(False)
   else if FEditMode then
     SetEditMode(False)
+  else if Assigned(FPanel) and FPanel.Visible then
+    ShowSortPanel(False)
   else if Assigned(FOnSettingsRequest) then
     FOnSettingsRequest(Self)
   else if Assigned(FOnExitRequest) then
@@ -2787,6 +3477,51 @@ end;
 
 { The best version in memory of what is shown: the full image if it is
   there; a pasted or cropped image as it is. nil: nothing to save. }
+procedure TMView.CopyToClipboard;
+var
+  Img: IDecodedImage;
+begin
+  Img := ImageToSave;
+  if (Img = nil) or (Img.Bitmap = nil) then
+  begin
+    ShowStatus('nothing to copy', 3000);
+    Exit;
+  end;
+  { A pasted or cropped image as it is; a file at its own resolution:
+    read in full first if only the screen's size is there. }
+  if (not FShowingPaste) and not IsFullSize(Img) then
+  begin
+    FCopyWanted := FNavigator.CurrentFileName;
+    ShowStatus('copying: reading the full image ...', 0);
+    AllowFull;
+    Exit;
+  end;
+  FCopyWanted := '';
+  CopyImage(Img);
+end;
+
+procedure TMView.CopyImage(const AImage: IDecodedImage);
+var
+  Window: THandle;
+  Reason: string;
+begin
+  { A standard Windows bitmap (CF_DIB), not the LCL's Clipboard.Assign:
+    other programs didn't take that (user, Day 25). }
+  Window := 0;
+  if Assigned(Application.MainForm) then
+    Window := Application.MainForm.Handle;
+  try
+    if CopyBitmapToClipboard(AImage.Bitmap, Window, Reason) then
+      ShowStatus(Format('copied to the clipboard: %d x %d', [AImage.Bitmap.Width,
+        AImage.Bitmap.Height]), 3000)
+    else
+      ShowStatus('could not copy: ' + Reason, 5000);
+  except
+    on E: Exception do
+      ShowStatus('could not copy: ' + E.Message, 5000);
+  end;
+end;
+
 function TMView.ImageToSave: IDecodedImage;
 begin
   Result := nil;
@@ -2801,10 +3536,39 @@ end;
 
 { AFallbackDir: where the file goes if its folder can't be used; '' =
   nowhere (Save as: the user chose that folder, so say it failed). }
+{ AImage's scale for its file (Day 26: a saved crop keeps its µm): µm
+  per pixel of its bitmap (a quick view is smaller than the original);
+  0 = none. }
+procedure TMView.SaveScale(const AImage: IDecodedImage; out AUmX, AUmY: Double);
+var
+  FullW, FullH: Integer;
+begin
+  AUmX := 0;
+  AUmY := 0;
+  if (AImage = nil) or AImage.IsError or (AImage.Bitmap = nil) or (AImage.Bitmap.Width <= 0)
+    or (AImage.Bitmap.Height <= 0) then
+    Exit;
+  FullW := AImage.FullWidth;
+  FullH := AImage.FullHeight;
+  if (FullW <= 0) or (FullH <= 0) then
+  begin
+    FullW := AImage.Bitmap.Width;
+    FullH := AImage.Bitmap.Height;
+  end;
+  if QueryImageScale(AImage.Key.FileName, FullW, FullH, AUmX, AUmY) then
+  begin
+    AUmX := AUmX * FullW / AImage.Bitmap.Width;
+    AUmY := AUmY * FullH / AImage.Bitmap.Height;
+  end;
+end;
+
 procedure TMView.StartSave(const AImage: IDecodedImage; const AFileName, AFallbackDir: string);
+var
+  UmX, UmY: Double;
 begin
   FSavingPaste := FShowingPaste;
-  FSaveThread := TImageSaveThread.Create(AImage, AFileName, AFallbackDir);
+  SaveScale(AImage, UmX, UmY);
+  FSaveThread := TImageSaveThread.Create(AImage, AFileName, AFallbackDir, False, UmX, UmY);
   ShowStatus('saving ' + ExtractFileName(AFileName) + ' ...', 0);
 end;
 
@@ -2826,7 +3590,7 @@ begin
   if FShowingPaste then
     AFileName := FScratchPrefix + '_' + FormatDateTime('yyyymmdd-hhnnss', Now) + '.png'
   else if Assigned(FCurrentImage) then
-    AFileName := ChangeFileExt(ExtractFileName(FCurrentImage.Key.FileName), '.png')
+    AFileName := ItemBaseName(FCurrentImage.Key.FileName) + '.png'
   else
     AFileName := 'image.png';
 end;
@@ -2847,12 +3611,15 @@ begin
     ShowStatus('nothing to save', 3000);
     Exit;
   end;
-  { MView writes PNG only: the name says so ("cell.jpg" -> "cell.png";
-    another ending, e.g. "cell.v2", is kept: "cell.v2.png"). }
+  { MView writes PNG or (Day 26) TIFF: the name says so ("cell.jpg" ->
+    "cell.png"; another ending, e.g. "cell.v2", is kept: "cell.v2.png").
+    A TIFF carries the scale ImageJ's way (Fiji reads it in µm). }
   FileName := AFileName;
   Ext := LowerCase(ExtractFileExt(FileName));
-  if (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.jpe') or (Ext = '.tif')
-    or (Ext = '.tiff') or (Ext = '.bmp') or (Ext = '.gif') then
+  if (Ext = '.tif') or (Ext = '.tiff') then
+    { kept }
+  else if (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.jpe') or (Ext = '.bmp')
+    or (Ext = '.gif') then
     FileName := ChangeFileExt(FileName, '.png')
   else if Ext <> '.png' then
     FileName := FileName + '.png';
@@ -2934,6 +3701,7 @@ end;
 procedure TMView.SaveCurrentImage;
 var
   Img: IDecodedImage;
+  UmX, UmY: Double;
 begin
   if Assigned(FSaveThread) then
   begin
@@ -2951,8 +3719,9 @@ begin
   if (Img = nil) or Img.IsError or (Img.Quality < FCurrentImage.Quality) then
     Img := FCurrentImage;
 
+  SaveScale(Img, UmX, UmY);
   FSaveThread := TImageSaveThread.Create(Img,
-    SavedImageFileName(FConfig.SaveDirectory, Img), UserDocumentsDirectory);
+    SavedImageFileName(FConfig.SaveDirectory, Img), UserDocumentsDirectory, False, UmX, UmY);
   FSavingPaste := False;
   FRenderer.RequestScreenshot(SavedViewFileName(FConfig.SaveDirectory, Img));
   ShowStatus('saving ' + ExtractFileName(FSaveThread.FileName) + ' ...', 0);
@@ -3068,25 +3837,47 @@ begin
       FFilterPanel.Available := FRenderer.FiltersAvailable;
       UpdateFilterPanel;
       if not FFilterPanel.Available and not ColourNeutral(FFilters) then
-        ShowStatus('filters: not available with this graphics driver (UseGPU=0 in MView.ini shows them)', 6000);
+        ShowStatus(EditionText('filters: not available with this graphics driver (UseGPU=0 in VersariteViewer.ini shows them)'), 6000);
     end;
     if FFilterPanel.Tick(NowMs) then
       UpdateFilterPanel;
     { The histogram follows the image and the selection (while it is
-      seen, or Auto is on: then the points follow too). }
+      seen, or Auto is on: then the points follow too - for a selection
+      when its drag ends, Day 26, user: "on mouse up"). }
     if (FFilterPanel.Visible or FAutoOn) and RefreshHistogram then
     begin
-      if FAutoOn then
+      if FAutoOn and not FSelDragging then
         ApplyAuto(False);
       UpdateFilterPanel;
     end;
+    if FSelDragDone then
+    begin
+      FSelDragDone := False;
+      if FAutoOn then
+      begin
+        ApplyAuto(False);
+        UpdateFilterPanel;
+      end;
+    end;
+  end;
+
+  { The preview strip: closes 1 s after the mouse left it. }
+  if Assigned(FStrip) and FStrip.Visible then
+    if FStrip.Tick(NowMs) then
+      UpdateStrip(False);
+
+  { A drive almost full (Day 27): checked every few seconds. }
+  if FConfig.DiskWarning and (NowMs - FDiskCheckMs >= DiskCheckEveryMs) then
+  begin
+    FDiskCheckMs := NowMs;
+    CheckDiskSpace;
   end;
 
   { The notice in the middle: two short flashes, then steady, then gone. }
   if FNoticeStartMs > 0 then
   begin
     NoticeT := NowMs - FNoticeStartMs;
-    if NoticeT >= NoticeMs then
+    if NoticeT >= FNoticeLastMs then
     begin
       FNoticeStartMs := 0;
       FRenderer.NoticeOn := False;
@@ -3095,7 +3886,7 @@ begin
     end
     else
     begin
-      NoticeShown := not (((NoticeT >= 180) and (NoticeT < 300))
+      NoticeShown := FNoticeSteady or not (((NoticeT >= 180) and (NoticeT < 300))
         or ((NoticeT >= 480) and (NoticeT < 600)));
       if NoticeShown <> FRenderer.NoticeOn then
       begin
@@ -3112,9 +3903,14 @@ begin
     PollTotalCommander;
   end;
 
-  { The pause before the full-size decode is over. }
+  { The dir preview's next image (1.1). }
+  if FDirFolder <> '' then
+    StepDirPreview;
+
+  { The pause before the full-size decode is over (the dir preview:
+    quick views only, unless it plays everything slowly). }
   if (not FFullAllowed) and (FShownFile <> '') and FNavigator.HasCurrentImage
-    and (NowMs - FShownSinceMs >= FConfig.RefineDelayMs) then
+    and (NowMs - FShownSinceMs >= FConfig.RefineDelayMs) and not DirPreviewQuick then
     AllowFull;
 end;
 
@@ -3171,6 +3967,18 @@ begin
   begin
     FScannerNoteShown := True;
     ShowStatus('reading folders: the disk is not responding', 0);
+  end;
+
+  if (FIniNote <> '') and (NowMs >= FIniNoteAtMs) then
+  begin
+    { In the middle, red, steady (as the disk warning). }
+    if FIniNoteWarns then
+      FlashNotice(FIniNote, 3)
+    else
+      FlashNotice(FIniNote);
+    FNoticeSteady := True;
+    FNoticeLastMs := IniNoteMs;
+    FIniNote := '';
   end;
 end;
 
@@ -3256,8 +4064,16 @@ function TMView.HandleOverlayMouse(AKind: TOverlayMouseKind; AButton: TOverlayBu
 var
   Hit: TPanelHit;
   Notches: Integer;
+  LayerTook: Boolean;
 begin
   Result := False;
+  { A selection's drag ends with the button's release (wherever it is):
+    Auto for every image re-levels then (Day 26). }
+  if (AKind = omUp) and FSelDragging then
+  begin
+    FSelDragging := False;
+    FSelDragDone := True;
+  end;
   if FPanel = nil then
     Exit;
   SyncPanelLayout;
@@ -3268,12 +4084,22 @@ begin
     SetFollowMode((FFollowMode + 1) mod 3);
     Exit(True);
   end;
-  { The filter panel (left edge) first. }
+  { The preview strip (top, Day 27) and the filter panel (left edge)
+    first. }
+  if HandleStripMouse(AKind, AButton, AX, AY, AWheel) then
+    Exit(True);
   if HandleFilterMouse(AKind, AButton, AX, AY, AWheel, AButtonDown, ADouble) then
     Exit(True);
   { The magnifier (not over the open sort panel). }
   if HandleLensMouse(AKind, AButton, AX, AY, AWheel, AButtonDown) then
     Exit(True);
+  { The edition's layers (uExtensions, M0): over the view, not over the
+    open sort panel. A move they take still reaches the panel (its edge
+    must keep opening it). }
+  LayerTook := HandleLayerMouse(AKind, AButton, AX, AY, AWheel);
+  if LayerTook and not (AKind in [omMove, omLeave]) then
+    Exit(True);
+  Result := LayerTook;
   case AKind of
     omMove:
       if FPanel.NoteMouse(AX, AY, AButtonDown, NowMs) then
@@ -3314,10 +4140,15 @@ begin
           left (Day 24, user): into its folder. Else it acts on release,
           where it was pressed (like a button). }
         Hit := FPanel.HitTest(AX, AY);
-        if (FPanelPress.Part in [ppSlot, ppSlotMenu])
+        if (FPanelPress.Part in [ppSlot, ppSlotMenu, ppContainer])
           and (Abs(AX - FPanelPressX) >= Round(SwipePx * Max(1.0, FPanelScale)))
           and (Abs(AY - FPanelPressY) < Abs(AX - FPanelPressX)) then
-          OpenSlotFolder(FPanelPress.Slot)
+        begin
+          if FPanelPress.Part = ppContainer then
+            OpenContainerInView(FPanelPress.Slot)     { a .lif (M2c) }
+          else
+            OpenSlotFolder(FPanelPress.Slot);
+        end
         else if (FPanelPress.Part <> ppNone) and (Hit.Part = FPanelPress.Part)
           and (Hit.Slot = FPanelPress.Slot) then
           PanelClick(Hit, FPanelPressButton);
@@ -3361,6 +4192,11 @@ begin
           FOnSortMenu(AHit.Slot, P);
       end;
 
+    ppListPrev:
+      CycleSortList(-1);
+    ppListNext:
+      CycleSortList(1);
+
     ppPin:
       begin
         FPanel.Pinned := not FPanel.Pinned;
@@ -3371,6 +4207,76 @@ begin
 
     ppFooter:
       UndoLast;
+
+    { Containers (M2c; never in MView). }
+    ppContainer:
+      if AButton = obMiddle then
+        OpenContainerInView(AHit.Slot)
+      else if (AButton in [obLeft, obRight]) and SecondSlotClick(-1000 - AHit.Slot, AButton) then
+        EnterContainer(AHit.Slot)
+      else if AButton in [obLeft, obRight] then
+      begin
+        FPanel.FooterText := 'double-click: list its images';
+        UpdatePanel;
+      end;
+
+    ppContainerMenu:
+      ;                                    { no pinned containers any more (Day 25) }
+
+    ppBack:
+      if AButton = obLeft then
+      begin
+        { From a stack's frames back to its .lif's images (Day 26). }
+        if (FFramesOf <> '') and (FPanel.ContainerCount > 0) then
+          EnterContainer(0)
+        else
+          LeaveContainer;
+      end;
+
+    ppEntry:
+      if (AButton = obLeft) and (AHit.Slot >= 0) and (AHit.Slot < FPanel.EntryCount) then
+      begin
+        if FFramesOf <> '' then
+          ShowContainerFrame(AHit.Slot)               { a stack's frame (Day 26) }
+        else if FPanel.Entry(AHit.Slot).Frames > 1 then
+        begin
+          { A stack: a click shows its projection, a double-click lists its
+            frames (user, Day 25). }
+          if SecondSlotClick(-2000 - AHit.Slot, AButton) then
+            EnterFrames(FPanel.Entry(AHit.Slot).VirtualName)
+          else
+          begin
+            { Shown already: not opened again (a rescan would bring the
+              projection back over a frame clicked meanwhile). }
+            if FShowingPaste or not FNavigator.HasCurrentImage
+              or not SameText(FPanel.Entry(AHit.Slot).VirtualName, FNavigator.CurrentFileName) then
+              OpenMedia(FPanel.Entry(AHit.Slot).VirtualName);
+            FPanel.FooterText := 'double-click: its frames';
+            UpdatePanel;
+          end;
+        end
+        else
+          OpenMedia(FPanel.Entry(AHit.Slot).VirtualName);
+      end
+      else if (AButton = obRight) and (AHit.Slot >= 0) and (AHit.Slot < FPanel.EntryCount)
+        and ((FFramesOf <> '') or (FPanel.Entry(AHit.Slot).Frames > 1)) then
+      begin
+        { A stack (or one of its frames): a right double-click plays it in
+          the view, again stops it (user, Day 25: nothing can be moved
+          into a stack, the right double-click is free there). }
+        if SecondSlotClick(-3000 - AHit.Slot, AButton) then
+        begin
+          if FFramesOf <> '' then
+            PlayStack(FFramesOf)
+          else
+            PlayStack(FPanel.Entry(AHit.Slot).VirtualName);
+        end
+        else
+        begin
+          FPanel.FooterText := 'right double-click: play it';
+          UpdatePanel;
+        end;
+      end;
   end;
 end;
 
@@ -3453,7 +4359,23 @@ begin
     Exit(False);
   end;
   AFileName := FNavigator.CurrentFileName;
+  { An image inside a container (.lif, M2b) is no file of its own. }
+  if IsVirtualName(AFileName) then
+  begin
+    ShowStatus('an image inside ' + ExtractFileName(ContainerFileOf(AFileName))
+      + ' can''t be copied, moved or deleted on its own', 5000);
+    AFileName := '';
+    Exit(False);
+  end;
   Result := True;
+end;
+
+function TMView.FolderOnDisk: string;
+begin
+  Result := FNavigator.CurrentDirectory;
+  if IsContainerName(ExcludeTrailingPathDelimiter(Result))
+    and FileExists(ExcludeTrailingPathDelimiter(Result)) then
+    Result := ExtractFileDir(ExcludeTrailingPathDelimiter(Result));
 end;
 
 { Status line and panel footer together. }
@@ -3905,13 +4827,252 @@ begin
   Result := Assigned(FPanel) and FPanel.Visible;
 end;
 
-procedure TMView.SortFoldersChanged;
+{ ---- The preview strip (Day 27, testers) ---- }
+
+procedure TMView.SetPreviewStrip(AShow, AByEdge: Boolean);
+begin
+  if FStrip = nil then
+    Exit;
+  if AShow = FStrip.Visible then
+    Exit;
+  if AShow then
+  begin
+    if not FNavigator.HasCurrentImage or (FSurface = nil) then
+      Exit;
+    { Its size first: the current image goes in the middle. }
+    FStrip.SetViewSize(FSurface.ClientWidth, FSurface.ClientHeight, Screen.PixelsPerInch / 96);
+    SyncStrip(True);
+    FStrip.Show(AByEdge, not AByEdge);
+  end
+  else
+    FStrip.Hide;
+  UpdateStrip;
+end;
+
+{ The strip's list follows the folder and the image shown: the list is
+  made again only when the folder or its count changed. }
+procedure TMView.SyncStrip(AForce: Boolean);
+var
+  Key: string;
+  Files: TStringArray;
+begin
+  if (FStrip = nil) or not (AForce or FStrip.Visible) then
+    Exit;
+  Key := FNavigator.CurrentDirectory + '|' + IntToStr(FNavigator.ImageCount) + '|'
+    + IntToStr(Ord(FNavigator.SortMode));
+  if AForce or (Key <> FStripKey) then
+  begin
+    if Key <> FStripKey then
+      FStripThumbs.Forget;
+    FStripKey := Key;
+    Files := FNavigator.CurrentFiles;
+    FStrip.SetItems(Files, FNavigator.CurrentIndex);
+  end
+  else
+    FStrip.SetCurrent(FNavigator.CurrentIndex);
+end;
+
+{ The scan bar's picture to the renderer; ARequest: its thumbnails
+  asked for (the image under the mouse changed). }
+procedure TMView.UpdateStrip(ARequest: Boolean);
+var
+  Bmp: TBGRABitmap;
+begin
+  if (FStrip = nil) or (FSurface = nil) then
+    Exit;
+  FStrip.SetViewSize(FSurface.ClientWidth, FSurface.ClientHeight, Screen.PixelsPerInch / 96);
+  FStrip.OutlineColor := BGRA(FRenderer.OverlayRed, FRenderer.OverlayGreen, FRenderer.OverlayBlue, 255);
+  { The info line's font for the name under the preview. }
+  if FRenderer.InfoFontSize > 0 then
+    FStrip.SetTextFont(FRenderer.InfoFontName, Round(FRenderer.InfoFontSize * Screen.PixelsPerInch / 72))
+  else
+    FStrip.SetTextFont(FRenderer.InfoFontName, 13);
+  Bmp := FStrip.Bitmap;
+  if Bmp = nil then
+    FRenderer.SetStrip(nil, 0, 0, 0)
+  else
+  begin
+    FRenderer.SetStrip(Bmp, FStrip.Left, FStrip.Top, FStrip.Version);
+    if ARequest then
+      FStripThumbs.Request(FStrip.WantedFiles, FStrip.ThumbSize);
+  end;
+  Refresh;
+end;
+
+procedure TMView.HandleStripThumb(const AFileName: string; ABitmap: TBGRABitmap);
+begin
+  if FStrip = nil then
+  begin
+    ABitmap.Free;
+    Exit;
+  end;
+  FStrip.SetThumb(AFileName, ABitmap);
+  if FStrip.Visible then
+    UpdateStrip(False);
+end;
+
+{ The mouse over the strip: hover, a click opens the image, the wheel
+  scrolls. Moves elsewhere still count (closing it 1 s after leaving). }
+function TMView.HandleStripMouse(AKind: TOverlayMouseKind; AButton: TOverlayButton;
+  AX, AY, AWheel: Integer): Boolean;
+var
+  Idx: Integer;
+  F: string;
+begin
+  Result := False;
+  if (FStrip = nil) or not FStrip.Visible then
+    Exit;
+  case AKind of
+    omMove:
+      begin
+        if FStrip.NoteMouse(AX, AY, NowMs) then
+          UpdateStrip;
+        Result := FStrip.Contains(AX, AY);
+      end;
+    omLeave:
+      begin
+        FStrip.MouseGone(NowMs);
+        UpdateStrip;
+      end;
+    omWheel:
+      if FStrip.Contains(AX, AY) then
+      begin
+        Result := True;
+        if FStrip.Scroll(Sign(AWheel)) then
+          UpdateStrip;
+      end;
+    omDown:
+      if FStrip.Contains(AX, AY) then
+      begin
+        Result := True;
+        if AButton = obLeft then
+          FStripPress := FStrip.HitTest(AX, AY)
+        else
+          FStripPress := -1;
+      end;
+    omUp:
+      if FStrip.Contains(AX, AY) or (FStripPress >= 0) then
+      begin
+        Result := FStrip.Contains(AX, AY);
+        Idx := FStrip.HitTest(AX, AY);
+        if (AButton = obLeft) and (Idx >= 0) and (Idx = FStripPress) then
+        begin
+          F := FStrip.FileAt(Idx);
+          FCommandMs := NowMs;
+          if (F <> '') and FNavigator.SelectFile(F) then
+            ShowCurrent;
+        end;
+        FStripPress := -1;
+      end;
+  end;
+end;
+
+procedure TMView.CycleSortList(ADir: Integer);
+var
+  Folders: TSortFolders;
+begin
+  Folders := FConfig.SortFolders;
+  Folders.CycleList(ADir);
+  if Assigned(FPanel) then
+    FPanel.ScrollToTop;
+  SortFoldersChanged;
+  { The panel's title says which list; a new one says so in the middle. }
+  if Folders.Count = 0 then
+    DirectoryHint('New folder list: add folders with "+"');
+end;
+
+procedure TMView.StatusNote(const AText: string; ADurationMs: Double);
+begin
+  ShowStatus(AText, ADurationMs);
+  Refresh;
+end;
+
+function TMView.PreviewStripVisible: Boolean;
+begin
+  Result := Assigned(FStrip) and FStrip.Visible;
+end;
+
+function TMView.PreviewStripPinned: Boolean;
+begin
+  Result := Assigned(FStrip) and FStrip.Visible and FStrip.Pinned;
+end;
+
+function TMView.RapidSelection: Boolean;
+begin
+  Result := FConfig.SortFolders.Rapid;
+end;
+
+procedure TMView.SetRapidSelection(AOn: Boolean);
+var
+  Folders: TSortFolders;
+  I, Made: Integer;
+begin
+  Folders := FConfig.SortFolders;
+  if AOn = Folders.Rapid then
+    Exit;
+  if AOn then
+  begin
+    Folders.SetRapid(True, FConfig.ImageFolder);
+    { The folders are made where they are missing (a rare, user-made
+      action: the disk is asked here). }
+    Made := 0;
+    for I := 0 to Folders.Count - 1 do
+      if not DirectoryExists(Folders.Slot(I).Folder) then
+        if ForceDirectories(Folders.Slot(I).Folder) then
+          Inc(Made);
+    if Assigned(FPanel) then
+    begin
+      FRapidPrevPinned := FPanel.Pinned;
+      FPanel.ShowSlots;
+      FPanel.ScrollToTop;
+      FPanel.Pinned := True;
+    end;
+    SortFoldersChanged;
+    ShowSortPanel(True);
+    DirectoryHint('Rapid sorting: keys 1 .. 0 move the image');
+    if Made > 0 then
+      ShowStatus(Format('%d folders made in %s', [Made, FConfig.ImageFolder]), 4000);
+  end
+  else
+  begin
+    Folders.SetRapid(False, '');
+    if Assigned(FPanel) then
+    begin
+      FPanel.Pinned := FRapidPrevPinned;
+      FPanel.ScrollToTop;
+    end;
+    SortFoldersChanged;
+    DirectoryHint('Rapid sorting off');
+  end;
+end;
+
+{ A digit key: 1 .. 9 = the first nine slots, 0 = the tenth; the image
+  is moved (Undo takes it back). }
+procedure TMView.RapidKey(ADigit: Integer);
+var
+  Slot: Integer;
+begin
+  if (ADigit < 0) or (ADigit > 9) then
+    Exit;
+  if not RapidSelection then
+  begin
+    DirectoryHint('Keys 1 .. 0: switch on Rapid sorting (right-click menu)');
+    Exit;
+  end;
+  Slot := (ADigit + 9) mod 10;
+  if Assigned(FPanel) and not FPanel.Visible then
+    ShowSortPanel(True);
+  SortCurrent(Slot, True);
+end;
+
+procedure TMView.SortFoldersChanged(ARevealSlot: Integer);
 begin
   FConfig.SaveSort;
   RequestIcons(True);
   if Assigned(FPanel) then
   begin
     FPanel.Changed;
+    FPanel.RevealSlot(ARevealSlot);
     UpdatePanel;
   end;
 end;
@@ -3961,14 +5122,14 @@ begin
     and not FNoShaderNoteShown then
   begin
     FNoShaderNoteShown := True;
-    ShowStatus('filters: not available with this graphics driver (UseGPU=0 in MView.ini shows them)', 6000);
+    ShowStatus(EditionText('filters: not available with this graphics driver (UseGPU=0 in VersariteViewer.ini shows them)'), 6000);
   end;
   UpdateInfo;
   UpdateDiagnostics;
   Refresh;
 end;
 
-procedure TMView.SetFiltersLocked(AValue: Boolean);
+procedure TMView.SetFiltersLocked(AValue: Boolean; const ASource: string);
 begin
   FFiltersLocked := AValue;
   if Assigned(FFilterPanel) then
@@ -4081,7 +5242,7 @@ procedure TMView.ResizeToShown;
 var
   Img, Resized: IDecodedImage;
   Src, Bmp: TBGRABitmap;
-  W, H: Integer;
+  W, H, ParentW, ParentH: Integer;
   Angle: Double;
   Key: TImageKey;
   Reason, SourceName, Note: string;
@@ -4122,11 +5283,21 @@ begin
   if FShowingPaste then
     SourceName := FScratchPrefix
   else
-    SourceName := ChangeFileExt(ExtractFileName(FCurrentImage.Key.FileName), '');
+    SourceName := ItemBaseName(FCurrentImage.Key.FileName);
   Key.FileName := SourceName + Format('_%dx%d', [W, H]);
   Key.FileSize := 0;
   Key.FileTime := Now;
   Resized := TDecodedImage.Create(Key, qlFull, Bmp, nil, 0, 0, W, H);
+  { Its scale: the parent's, by the size change (Day 26). }
+  ParentW := Img.FullWidth;
+  ParentH := Img.FullHeight;
+  if (ParentW <= 0) or (ParentH <= 0) then
+  begin
+    ParentW := Src.Width;
+    ParentH := Src.Height;
+  end;
+  NoteDerivedImage(Key.FileName, FCurrentImage.Key.FileName, 'resized', ParentW, ParentH,
+    ParentW / W, ParentH / H, 0);
   Note := '';
   if (Img.Quality < qlFull) and ((W > Src.Width) or (H > Src.Height)) then
     Note := '  (from the quick view: the full image wasn''t loaded yet)';
@@ -4449,7 +5620,16 @@ begin
     if First then
       Exit;              { what it showed when following started: noted }
     FFollowWanted := '';
-    if (F <> '') and IsSupportedImageFile(F) then
+    { The dir preview: the cursor on a folder plays it (1.1). }
+    if FDirPreview and (F <> '') and DirectoryExists(F) then
+    begin
+      StartDirPreview(F);
+      Exit;
+    end;
+    StopDirPreview;
+    { The image under its cursor; or a container (.lif, M2b) there,
+      opened like a folder. }
+    if (F <> '') and (IsSupportedImageFile(F) or IsContainerName(F)) then
     begin
       OpenMedia(F);
       FFollowOpening := True;
@@ -4471,7 +5651,25 @@ begin
   if (FFollowMode = 2) and not SameText(F, FFollowFile) then
   begin
     FFollowFile := F;
-    if First or (F = '') or not IsSupportedImageFile(F)
+    { The dir preview (1.1): a folder under the cursor plays; anything
+      else ends it. }
+    if FDirPreview and not First and (F <> '') and DirectoryExists(F) then
+    begin
+      StartDirPreview(F);
+      Exit;
+    end;
+    if FDirFolder <> '' then
+    begin
+      StopDirPreview;
+      { Back to Total Commander's folder for its files. }
+      if (F <> '') and (IsSupportedImageFile(F) or IsContainerName(F)) then
+      begin
+        OpenMedia(F, '', True);
+        FFollowOpening := True;
+      end;
+      Exit;
+    end;
+    if First or (F = '') or not (IsSupportedImageFile(F) or IsContainerName(F))
       or SameText(F, FNavigator.CurrentFileName) then
       Exit;
     { Its folder still being opened: shown when it is ready. }
@@ -4489,6 +5687,118 @@ begin
       FFollowOpening := True;
     end;
   end;
+end;
+
+{ ---- Total Commander dir preview (1.1, testers) ---- }
+
+procedure TMView.SetDirPreview(AOn: Boolean);
+begin
+  if AOn = FDirPreview then
+    Exit;
+  if AOn then
+  begin
+    FDirPrevFollow := FFollowMode;
+    if FFollowMode <> 2 then
+      SetFollowMode(2);
+    FDirPreview := True;
+    if FConfig.DirPreviewFiles = 0 then
+      ShowStatus('Total Commander dir preview: on (a folder under its cursor plays all its images)', 5000)
+    else
+      ShowStatus(Format('Total Commander dir preview: on (a folder under its cursor plays its '
+        + 'first %d images)', [FConfig.DirPreviewFiles]), 5000);
+  end
+  else
+  begin
+    FDirPreview := False;
+    StopDirPreview;
+    if FDirPrevFollow <> 2 then
+      SetFollowMode(FDirPrevFollow);
+    ShowStatus('Total Commander dir preview: off', 3000);
+  end;
+end;
+
+procedure TMView.StartDirPreview(const AFolder: string);
+var
+  Dir: string;
+begin
+  Dir := ExcludeTrailingPathDelimiter(AFolder);
+  if SameText(Dir, FDirFolder) then
+    Exit;
+  FDirFolder := Dir;
+  FDirIndex := 0;
+  FDirNextMs := 0;              { from the first image on screen }
+  FDirCounts := '';
+  FDirPeek.Request(Dir);
+  { The folder opens as Follow opens one: its first image in the order
+    of the images. }
+  FCommandMs := NowMs;
+  if Length(Dir) > 2 then
+    OpenMedia(Dir)
+  else
+    OpenMedia(IncludeTrailingPathDelimiter(Dir));
+  FFollowOpening := True;
+end;
+
+procedure TMView.StopDirPreview;
+begin
+  if FDirFolder = '' then
+    Exit;
+  FDirFolder := '';
+  FDirCounts := '';
+  FDirPeek.Cancel;
+  UpdateInfo;
+end;
+
+function TMView.DirPreviewQuick: Boolean;
+begin
+  Result := (FDirFolder <> '')
+    and not ((FConfig.DirPreviewFiles = 0) and (FConfig.DirPreviewDelayMs > 1000));
+end;
+
+{ PumpDeliveries: the next of the folder's first images, round and round,
+  once the one shown has been there DirPreviewDelayMs. }
+procedure TMView.StepDirPreview;
+var
+  Files: TStringArray;
+  N: Integer;
+begin
+  if not FNavigator.HasCurrentImage
+    or not SameText(ExcludeTrailingPathDelimiter(FNavigator.CurrentDirectory), FDirFolder) then
+    Exit;                       { still opening }
+  if FDirNextMs = 0 then
+  begin
+    FDirNextMs := NowMs + FConfig.DirPreviewDelayMs;
+    UpdateInfo;
+    Exit;
+  end;
+  if NowMs < FDirNextMs then
+    Exit;
+  FDirNextMs := NowMs + FConfig.DirPreviewDelayMs;
+  Files := FNavigator.CurrentFiles;
+  N := Length(Files);
+  if (FConfig.DirPreviewFiles > 0) and (N > FConfig.DirPreviewFiles) then
+    N := FConfig.DirPreviewFiles;
+  if N <= 1 then
+    Exit;
+  FDirIndex := (FDirIndex + 1) mod N;
+  if FNavigator.SelectFile(Files[FDirIndex]) then
+    ShowCurrent;
+end;
+
+procedure TMView.HandleDirPeek(const AFolder: string; AImages, AFolders: Integer);
+begin
+  if not SameText(AFolder, FDirFolder) then
+    Exit;
+  if AImages = 1 then
+    FDirCounts := '1 image'
+  else
+    FDirCounts := Format('%d images', [AImages]);
+  if AFolders = 1 then
+    FDirCounts := FDirCounts + ', 1 subfolder'
+  else
+    FDirCounts := FDirCounts + Format(', %d subfolders', [AFolders]);
+  UpdateInfo;
+  Refresh;
 end;
 
 { The info line's mark: the picture on screen is filtered. }
@@ -4555,6 +5865,7 @@ var
   FX, FY: Double;
   ROI: Boolean;
   Key: string;
+  CXs, CYs: array[0..3] of Double;
 begin
   Result := False;
   { An animation: its first frame (the frames come and go). }
@@ -4585,6 +5896,16 @@ begin
   end;
   Sel := FRenderer.Selection;
   ROI := FEditMode and Sel.Active and (Sel.X1 - Sel.X0 >= 1) and (Sel.Y1 - Sel.Y0 >= 1);
+  { Upright on a turned image (Day 26): the image's own pixels around it
+    (its bounding box). }
+  if ROI and (Abs(Sel.Angle) >= 1e-9) and FRenderer.SelectionImageCorners(Sel, CXs, CYs) then
+  begin
+    Sel.X0 := Max(0.0, MinValue(CXs));
+    Sel.X1 := Min(Double(FullW), MaxValue(CXs));
+    Sel.Y0 := Max(0.0, MinValue(CYs));
+    Sel.Y1 := Min(Double(FullH), MaxValue(CYs));
+    ROI := (Sel.X1 - Sel.X0 >= 1) and (Sel.Y1 - Sel.Y0 >= 1);
+  end;
   if ROI then
   begin
     { Original pixels -> pixels of the bitmap at hand (a quick view is
@@ -4705,8 +6026,14 @@ end;
 function TMView.CanApplyFilters: Boolean;
 begin
   { Filters, or a turn only (Day 24: the copy takes the rotation too). }
-  Result := ((not FiltersNeutral(FFilters)) or ViewRotated) and Assigned(FCurrentImage)
-    and not FCurrentImage.IsError;
+  Result := ((not FiltersNeutral(FFilters)) or ViewRotated or CopyBurnsIn)
+    and Assigned(FCurrentImage) and not FCurrentImage.IsError;
+end;
+
+function TMView.CopyBurnsIn: Boolean;
+begin
+  Result := Assigned(FCurrentImage) and not FCurrentImage.IsError
+    and OverlayCanBurnIn(FCurrentImage.Key.FileName);
 end;
 
 function TMView.ViewRotated: Boolean;
@@ -4724,12 +6051,16 @@ var
   FullW, FullH, SrcW, SrcH: Integer;
   Angle: Double;
   Key: TImageKey;
-  Reason, SourceName, Suffix, Note: string;
+  Reason, SourceName, Suffix, Note, LayerName, BurnName: string;
   OldCursor: TCursor;
+  BurnIn: Boolean;
+  Map: TBurnInMap;
+  ParentW, ParentH: Integer;
 begin
   if not CanApplyFilters then
   begin
-    ShowStatus('apply filters: no filter is set, and the image is not turned', 3000);
+    ShowStatus('apply filters: no filter is set, the image is not turned, and nothing is measured',
+      3000);
     Exit;
   end;
   Img := BestPixels;
@@ -4752,12 +6083,26 @@ begin
   end;
 
   Angle := FRenderer.View.Angle;
+  ParentW := FullW;
+  ParentH := FullH;
+  { The layers know the image by the name it is shown under. }
+  LayerName := FCurrentImage.Key.FileName;
+  BurnIn := OverlayCanBurnIn(LayerName);
+  BurnName := '';
   { A large image takes a second or so (every pixel). }
   OldCursor := Screen.Cursor;
   Screen.Cursor := crHourGlass;
   try
     Bmp := Img.Bitmap.Duplicate as TBGRABitmap;
     ApplyFiltersToBitmap(Bmp, FFilters, True);
+    { The way from the image's pixels to the copy's (the measuring line
+      is kept in full-size pixels), before FullW / FullH turn. }
+    Map.ScaleX := Bmp.Width / FullW;
+    Map.ScaleY := Bmp.Height / FullH;
+    Map.SourceWidth := Bmp.Width;
+    Map.SourceHeight := Bmp.Height;
+    Map.Mirror := FFilters.Mirror;
+    Map.Angle := Angle;
     { The rotation too (user, Day 24), after the mirror, as on screen;
       the corners of an oblique turn black. }
     if Angle <> 0 then
@@ -4785,6 +6130,20 @@ begin
         FullH := Max(1, Round(Bmp.Height * FullH / SrcH));
       end;
     end;
+    { Last: the edition's layers (the measuring line) upright on the
+      finished copy, as on screen (Day 26, user). }
+    if BurnIn then
+    begin
+      Map.Width := Bmp.Width;
+      Map.Height := Bmp.Height;
+      { An edition's layer failing costs its drawing, not the copy. }
+      try
+        BurnName := OverlayBurnIn(Bmp, LayerName, Map);
+      except
+        BurnName := '';
+      end;
+      Bmp.InvalidateBitmap;
+    end;
   finally
     Screen.Cursor := OldCursor;
   end;
@@ -4792,14 +6151,22 @@ begin
   if FShowingPaste then
     SourceName := FScratchPrefix
   else
-    SourceName := ChangeFileExt(ExtractFileName(FCurrentImage.Key.FileName), '');
+    SourceName := ItemBaseName(FCurrentImage.Key.FileName);
   Suffix := FilterSuffix(FFilters);
   if Angle <> 0 then
     Suffix := Suffix + Format('_rot%d', [Round(Angle)]);
+  if BurnIn then
+  begin
+    if BurnName = '' then
+      BurnName := 'measured';
+    Suffix := Suffix + '_' + BurnName;
+  end;
   Key.FileName := SourceName + Suffix;
   Key.FileSize := 0;
   Key.FileTime := Now;
   Copied := TDecodedImage.Create(Key, qlFull, Bmp, nil, 0, 0, FullW, FullH);
+  { Its scale: the parent's, turned with it (Day 26). }
+  NoteDerivedImage(Key.FileName, LayerName, 'copy', ParentW, ParentH, 1, 1, Angle);
   Note := '';
   if Img.Quality < qlFull then
     Note := '  (from the quick view: the full image wasn''t loaded yet)';
@@ -4820,7 +6187,10 @@ begin
   end;
   SetFilters(NeutralFilters);
   { The copy has the turn in its pixels: shown unturned. }
-  if Angle <> 0 then
+  if BurnIn then
+    ShowStatus('measurement burned into a copy (with the filters and rotation): Save image or '
+      + 'the sort panel writes it', 6000)
+  else if Angle <> 0 then
     ShowStatus('filters and rotation applied to a copy (shown unfiltered and upright now): '
       + 'Save image or the sort panel writes it', 6000)
   else
@@ -4838,6 +6208,8 @@ var
   Hit: TFilterHit;
   F: TFilterSettings;
   Notches: Double;
+  ExtraRow, LocalRow: Integer;
+  Section: TPanelSection;
 begin
   Result := False;
   if FFilterPanel = nil then
@@ -4886,9 +6258,16 @@ begin
       begin
         Result := True;
         FFilterPress := True;
+        FFilterExtraPress := -1;
+        Hit := FFilterPanel.HitTest(AX, AY);
+        { The edition's rows (M3b): any button, acted on at the release. }
+        if Hit.Part = fpExtra then
+        begin
+          FFilterExtraPress := Hit.Extra;
+          Exit;
+        end;
         if AButton <> obLeft then
           Exit;
-        Hit := FFilterPanel.HitTest(AX, AY);
         F := FFilters;
         case Hit.Part of
           fpRow:
@@ -4919,7 +6298,7 @@ begin
             else
               ApplyAuto(True);
           fpLock:
-            SetFiltersLocked(not FFiltersLocked);
+            SetFiltersLocked(not FFiltersLocked, Format('panel click at %d, %d', [AX, AY]));
           fpPin:
             begin
               FFilterPanel.Pinned := not FFilterPanel.Pinned;
@@ -4936,6 +6315,20 @@ begin
         Result := True;
         FFilterPress := False;
         FFilterPanel.EndDrag;
+        { An edition's row: clicked if released where it was pressed. }
+        if FFilterExtraPress >= 0 then
+        begin
+          ExtraRow := FFilterExtraPress;
+          FFilterExtraPress := -1;
+          Hit := FFilterPanel.HitTest(AX, AY);
+          if (Hit.Part = fpExtra) and (Hit.Extra = ExtraRow) and Assigned(FSurface)
+            and PanelSectionAt(ExtraRow, Section, LocalRow) then
+            try
+              Section.Click(LocalRow, AButton, FSurface.ClientToScreen(Point(AX, AY)));
+            except
+              { An edition's fault never reaches the viewer. }
+            end;
+        end;
         UpdateFilterPanel;
       end;
   end;
@@ -4971,7 +6364,7 @@ begin
   end;
   if FNavigator.HasCurrentImage then
   begin
-    Candidate := ExtractFileDir(ExcludeTrailingPathDelimiter(FNavigator.CurrentDirectory));
+    Candidate := ExtractFileDir(ExcludeTrailingPathDelimiter(FolderOnDisk));
     if (Candidate <> '') and DirectoryExists(Candidate) then
       Exit(Candidate);
   end;
@@ -5056,6 +6449,60 @@ begin
   UpdatePanel;
 end;
 
+procedure TMView.HandleOverlayLayerChanged(Sender: TObject);
+begin
+  { The edition's panel rows may have changed too (a calibration chosen). }
+  if (FFilterPanel <> nil) and FFilterPanel.ExtrasChanged then
+    UpdateFilterPanel;
+  Refresh;
+end;
+
+function TMView.HandleLayerMouse(AKind: TOverlayMouseKind; AButton: TOverlayButton;
+  AX, AY, AWheel: Integer): Boolean;
+var
+  LayerIndex: Integer;
+  Layer: TOverlayLayer;
+begin
+  Result := False;
+  if OverlayLayerCount = 0 then
+    Exit;
+  { A release goes to the layer that took the press, wherever it is, and
+    to no other (a press the panel took is the panel's). }
+  if AKind = omUp then
+  begin
+    if FLayerCapture = nil then
+      Exit;
+    Layer := TOverlayLayer(FLayerCapture);
+    FLayerCapture := nil;
+    try
+      Result := Layer.HandleMouse(FRenderer, AKind, AButton, AX, AY, AWheel);
+    except
+      Result := True;
+    end;
+    Exit;
+  end;
+  { Over the open sort panel the panel has the mouse; a layer still
+    hears that the mouse left. }
+  if (AKind <> omLeave) and FPanel.Contains(AX, AY) then
+    Exit;
+  for LayerIndex := 0 to OverlayLayerCount - 1 do
+  begin
+    Layer := OverlayLayer(LayerIndex);
+    if Layer = nil then
+      Continue;
+    try
+      if Layer.HandleMouse(FRenderer, AKind, AButton, AX, AY, AWheel) then
+      begin
+        if AKind = omDown then
+          FLayerCapture := Layer;
+        Exit(True);
+      end;
+    except
+      { A layer's fault never reaches the mouse language. }
+    end;
+  end;
+end;
+
 function TMView.PanelSlotIcon(ASlot, ASize: Integer): TBGRABitmap;
 begin
   Result := nil;
@@ -5095,6 +6542,599 @@ begin
     and FIcons.FolderMissing(FConfig.SortFolders.Slot(ASlot).Folder);
 end;
 
+{ ---- Containers in the side panel (M2c, the microscopy edition) ---- }
+
+type
+  { A container image's thumbnails: as made (Small, Large) and scaled to
+    the size last asked for. }
+  TThumbPair = class
+  public
+    Small, Large: TBGRABitmap;
+    SmallFit, LargeFit: TBGRABitmap;
+    SmallFitSize, LargeFitSize: Integer;
+    destructor Destroy; override;
+  end;
+
+destructor TThumbPair.Destroy;
+begin
+  Small.Free;
+  Large.Free;
+  SmallFit.Free;
+  LargeFit.Free;
+  inherited Destroy;
+end;
+
+{ ABitmap fitted into ASize x ASize: ABitmap itself if it fits, else a
+  copy kept in AFit (made again when ASize changes). }
+function FittedThumb(ABitmap: TBGRABitmap; ASize: Integer; var AFit: TBGRABitmap;
+  var AFitSize: Integer): TBGRABitmap;
+var
+  W, H: Integer;
+begin
+  Result := ABitmap;
+  if (ABitmap = nil) or (ASize <= 0) then
+    Exit;
+  if (ABitmap.Width <= ASize) and (ABitmap.Height <= ASize) then
+    Exit;
+  if (AFit = nil) or (AFitSize <> ASize) then
+  begin
+    FreeAndNil(AFit);
+    FitSize(ABitmap.Width, ABitmap.Height, ASize, ASize, W, H);
+    AFit := ShrinkToSize(ABitmap, Max(1, W), Max(1, H));
+    AFitSize := ASize;
+  end;
+  Result := AFit;
+end;
+
+{ The panel's container group (user, Day 25): only the container the
+  wheel is in, on top of the panel, opened there (its images listed); a
+  click on one shows it. When the wheel leaves it, it goes. Transient:
+  never pinned, never written to the ini. Asked after every step (from
+  UpdateInfo); acts only when the container changes, so "back" in the
+  panel stays back while the wheel walks on inside the same file. }
+procedure TMView.RefreshPanelContainers;
+var
+  Path: string;
+  Items: array of TPanelContainer;
+begin
+  if (ContainerReaderCount = 0) or (FPanel = nil) then
+    Exit;                           { MView: no containers, ever }
+  Path := '';
+  if FNavigator.HasCurrentImage and IsVirtualName(FNavigator.CurrentFileName) then
+    Path := ContainerFileOf(FNavigator.CurrentFileName);
+  { The image shown: yellow in the panel's list (user, Day 25). }
+  if Path = '' then
+  begin
+    if FPanel.SetCurrentEntry('') and FPanel.Visible then
+      UpdatePanel;
+  end
+  else if FShowingPaste and Assigned(FCurrentImage) and IsVirtualName(FCurrentImage.Key.FileName) then
+  begin
+    { A stack's frame shown (Day 26): yellow in the frames' list. }
+    if FPanel.SetCurrentEntry(FCurrentImage.Key.FileName) and FPanel.Visible then
+      UpdatePanel;
+  end
+  else if FPanel.SetCurrentEntry(FNavigator.CurrentFileName) and FPanel.Visible then
+    UpdatePanel;
+  if SameText(Path, FPanelContainer) then
+    Exit;
+  Items := nil;
+  { Out of the old one: it leaves the panel, its list and thumbnails go. }
+  if FPanelContainer <> '' then
+  begin
+    FPanelContainer := '';
+    FPanel.SetContainers(Items);
+    LeaveContainer;
+    if FThumbCache <> nil then
+      FThumbCache.Clear;
+  end;
+  if Path = '' then
+    Exit;
+  { Into a new one: on top of the panel, and open there. }
+  FPanelContainer := Path;
+  SetLength(Items, 1);
+  Items[0].Path := Path;
+  Items[0].Name := ExtractFileName(Path);
+  if SameText(ExtractFileExt(Path), '.lif') then
+    Items[0].Kind := 0
+  else
+    Items[0].Kind := 2;
+  Items[0].Pinned := False;
+  FPanel.SetContainers(Items);
+  EnterContainer(0);
+end;
+
+procedure TMView.OpenDroppedContainer(const AFileName: string);
+begin
+  if IsContainerName(AFileName) and FileExists(AFileName) then
+    OpenMedia(AFileName);
+end;
+
+{ Swipe or wheel click: the container in the view (its folder, on its
+  first image). }
+procedure TMView.OpenContainerInView(AIndex: Integer);
+begin
+  if (AIndex < 0) or (AIndex >= FPanel.ContainerCount) then
+    Exit;
+  OpenMedia(FPanel.Container(AIndex).Path);
+end;
+
+{ Double-click: the panel lists the container's images. The list and
+  the thumbnails come from a thread of their own (uContainerThumbs). }
+procedure TMView.EnterContainer(AIndex: Integer);
+var
+  Path: string;
+begin
+  if (AIndex < 0) or (AIndex >= FPanel.ContainerCount) then
+    Exit;
+  Path := FPanel.Container(AIndex).Path;
+  FFramesOf := '';
+  if FThumbCache = nil then
+  begin
+    FThumbCache := TStringList.Create;
+    FThumbCache.OwnsObjects := True;
+    FThumbCache.CaseSensitive := False;
+    FThumbCache.Sorted := True;
+    FThumbCache.Duplicates := dupIgnore;
+  end;
+  { Another container: the old thumbnails go (back from a stack's frames:
+    the same file, they stay). }
+  if (FThumbs = nil) or not SameText(ContainerFileOf(FThumbs.Container), Path) then
+    FThumbCache.Clear;
+  if FThumbs = nil then
+  begin
+    FThumbs := TContainerThumbs.Create;
+    FThumbs.OnListed := @HandleThumbsListed;
+    FThumbs.OnThumb := @HandleThumbReady;
+  end;
+  FPanel.ShowContents(ExtractFileName(Path), []);
+  FPanel.FooterText := 'reading ' + ExtractFileName(Path) + ' ...';
+  FThumbs.Request(Path, Round(32 * Max(1.0, FPanelScale)), Round(256 * Max(1.0, FPanelScale)));
+  if FPanel.Visible then
+    UpdatePanel;
+end;
+
+{ Left double-click on a stack in the .lif's list (user, Day 25): the
+  panel lists its frames, each with its thumbnail; "back" returns to the
+  .lif's images. }
+procedure TMView.EnterFrames(const AStack: string);
+begin
+  if (FThumbs = nil) or (FThumbCache = nil) or not IsVirtualName(AStack) then
+    Exit;
+  FFramesOf := AStack;
+  FPanel.ShowContents(DisplayItemName(AStack), []);
+  FPanel.FooterText := 'reading ' + DisplayItemName(AStack) + ' ...';
+  FThumbs.Request(AStack, Round(32 * Max(1.0, FPanelScale)), Round(256 * Max(1.0, FPanelScale)));
+  if FPanel.Visible then
+    UpdatePanel;
+end;
+
+{ A frame of the listed stack, shown (Day 26): read at once (one plane
+  per channel), shown like a crop - Save image or the sort panel write
+  it ('sample_Series009_#t03'); the wheel goes on from the stack. Its
+  name stays the frame's virtual name, so the stack's scale measures
+  it. }
+procedure TMView.ShowContainerFrame(AEntry: Integer);
+var
+  Name, Error, Title: string;
+  W, H: Integer;
+  RGBA: TBytes;
+  Bmp: TBGRABitmap;
+  Key: TImageKey;
+  Img: IDecodedImage;
+  OldCursor: TCursor;
+  Ok: Boolean;
+begin
+  if (AEntry < 0) or (AEntry >= FPanel.EntryCount) then
+    Exit;
+  Name := FPanel.Entry(AEntry).VirtualName;
+  OldCursor := Screen.Cursor;
+  Screen.Cursor := crHourGlass;
+  try
+    Ok := DecodeContainerEntry(Name, nil, W, H, RGBA, Error) and (W > 0) and (H > 0);
+  finally
+    Screen.Cursor := OldCursor;
+  end;
+  if not Ok then
+  begin
+    ShowStatus('could not read ' + DisplayItemName(Name) + ': ' + Error, 6000);
+    Exit;
+  end;
+  Bmp := RGBAToBitmap(RGBA, W, H);
+  RGBA := nil;
+  Key.FileName := Name;
+  Key.FileSize := 0;
+  Key.FileTime := Now;
+  Img := TDecodedImage.Create(Key, qlFull, Bmp, nil, 0, 0, W, H);
+  Title := DisplayItemName(FFramesOf) + ' › ' + FPanel.Entry(AEntry).Name;
+  ShowScratch(Img, Title, ItemBaseName(Name));
+  UpdateInfo;
+  Refresh;
+end;
+
+const
+  { Stack playback (Day 26): the frames held at most this much (larger:
+    shrunk to fit); a frame of a time series shown about this long
+    (faster than real time, never slower); a depth stack's frames. }
+  StackPlayBudget = Int64(512) * 1024 * 1024;
+  StackPlayTargetMs = 200;
+  StackPlayDepthMs = 150;
+
+procedure TMView.CancelStackLoad;
+var
+  I: Integer;
+begin
+  if Assigned(FPlayTimer) then
+    FPlayTimer.Enabled := False;
+  for I := 0 to High(FPlayFrames) do
+    FPlayFrames[I].Free;
+  FPlayFrames := nil;
+  FPlayNames := nil;
+  FPlayTimes := nil;
+  FPlayStack := '';
+end;
+
+{ Right double-click on a stack: its usable frames read (one per tick),
+  then played in the view; again (or while reading): stopped, the stack
+  shown as before. }
+procedure TMView.PlayStack(const AStack: string);
+var
+  Entries: TContainerEntryArray;
+  I: Integer;
+begin
+  if (FPlayStack <> '') and SameText(FPlayStack, AStack) then
+  begin
+    CancelStackLoad;
+    ShowStatus('playing cancelled', 2000);
+    Exit;
+  end;
+  if FShowingPaste and Assigned(FAnimImage) and SameText(FPlayingStack, AStack)
+    and SameText(FAnimImage.Key.FileName, AStack) then
+  begin
+    FPlayingStack := '';
+    StopAnimation;
+    ShowCurrent;
+    Exit;
+  end;
+  CancelStackLoad;
+  if not ListContainerEntries(AStack, Entries) or (Length(Entries) < 2) then
+  begin
+    ShowStatus('nothing to play in ' + DisplayItemName(AStack), 4000);
+    Exit;
+  end;
+  FPlayStack := AStack;
+  if FNavigator.HasCurrentImage then
+    FPlayStartCurrent := FNavigator.CurrentFileName
+  else
+    FPlayStartCurrent := '';
+  SetLength(FPlayNames, Length(Entries));
+  SetLength(FPlayTimes, Length(Entries));
+  for I := 0 to High(Entries) do
+  begin
+    FPlayNames[I] := MakeVirtualName(ContainerFileOf(AStack), Entries[I].Id);
+    FPlayTimes[I] := Entries[I].Time;
+  end;
+  SetLength(FPlayFrames, 0);
+  FPlayIndex := 0;
+  FPlayScale := 1;
+  if FPlayTimer = nil then
+  begin
+    FPlayTimer := TTimer.Create(nil);
+    FPlayTimer.Enabled := False;
+    FPlayTimer.Interval := 1;
+    FPlayTimer.OnTimer := @HandlePlayTimer;
+  end;
+  FPlayTimer.Enabled := True;
+  ShowStatus(Format('reading %d frames of %s ...', [Length(FPlayNames), DisplayItemName(AStack)]), 0);
+end;
+
+{ One frame per tick. }
+procedure TMView.HandlePlayTimer(Sender: TObject);
+var
+  W, H, NW, NH: Integer;
+  RGBA: TBytes;
+  Error: string;
+  Bmp, Small: TBGRABitmap;
+  Bytes: Double;
+begin
+  FPlayTimer.Enabled := False;
+  if FPlayStack = '' then
+    Exit;
+  { Moved on meanwhile (another image): not played. }
+  if FNavigator.HasCurrentImage and not SameText(FNavigator.CurrentFileName, FPlayStartCurrent) then
+  begin
+    CancelStackLoad;
+    ShowStatus('', 0);
+    Exit;
+  end;
+  if not DecodeContainerEntry(FPlayNames[FPlayIndex], nil, W, H, RGBA, Error)
+    or (W <= 0) or (H <= 0) then
+  begin
+    ShowStatus('could not read ' + DisplayItemName(FPlayNames[FPlayIndex]) + ': ' + Error, 6000);
+    CancelStackLoad;
+    Exit;
+  end;
+  Bmp := nil;
+  try
+  Bmp := RGBAToBitmap(RGBA, W, H);
+  RGBA := nil;
+  if FPlayIndex = 0 then
+  begin
+    FPlayFullW := W;
+    FPlayFullH := H;
+    { All frames in memory: shrunk when they wouldn't fit the budget
+      (the view's size is what is played; the scale stays right: the
+      original size is kept). }
+    Bytes := Double(W) * H * 4 * Length(FPlayNames);
+    if Bytes > StackPlayBudget then
+      FPlayScale := Sqrt(StackPlayBudget / Bytes)
+    else
+      FPlayScale := 1;
+  end;
+  if FPlayScale < 1 then
+  begin
+    NW := Max(1, Round(FPlayFullW * FPlayScale));
+    NH := Max(1, Round(FPlayFullH * FPlayScale));
+    Small := ShrinkToSize(Bmp, NW, NH);
+    Bmp.Free;
+    Bmp := Small;
+  end
+  else if (W <> FPlayFullW) or (H <> FPlayFullH) then
+  begin
+    { A frame of another size (never in a .lif stack): fitted. }
+    Small := Bmp.Resample(FPlayFullW, FPlayFullH, rmFineResample) as TBGRABitmap;
+    Bmp.Free;
+    Bmp := Small;
+  end;
+  SetLength(FPlayFrames, Length(FPlayFrames) + 1);
+  FPlayFrames[High(FPlayFrames)] := Bmp;
+  except
+    on E: Exception do
+    begin
+      { Out of memory, or a picture that can't be made: not played. }
+      Bmp.Free;
+      ShowStatus('could not play ' + DisplayItemName(FPlayStack) + ': ' + E.Message, 6000);
+      CancelStackLoad;
+      Exit;
+    end;
+  end;
+  Inc(FPlayIndex);
+  if FPlayIndex >= Length(FPlayNames) then
+    FinishStackLoad
+  else
+  begin
+    ShowStatus(Format('reading frames %d / %d of %s ...', [FPlayIndex, Length(FPlayNames),
+      DisplayItemName(FPlayStack)]), 0);
+    FPlayTimer.Enabled := True;
+  end;
+end;
+
+{ All frames read: the delays (a time series at its pace, sped up to
+  about StackPlayTargetMs per frame; a depth stack StackPlayDepthMs),
+  then shown as an animation, like a crop (its name is the stack's: its
+  scale measures it). }
+procedure TMView.FinishStackLoad;
+var
+  Delays: array of Integer;
+  Steps: array of Double;
+  I, N, J: Integer;
+  Median, Speed, T: Double;
+  Timed: Boolean;
+  Anim: TBitmapListAnimation;
+  Key: TImageKey;
+  Img: IDecodedImage;
+  First: TBGRABitmap;
+  Title, Stack: string;
+begin
+  N := Length(FPlayFrames);
+  SetLength(Delays, N);
+  Timed := N >= 2;
+  for I := 0 to N - 1 do
+    if FPlayTimes[I] < 0 then
+      Timed := False;
+  for I := 1 to N - 1 do
+    if Timed and (FPlayTimes[I] <= FPlayTimes[I - 1]) then
+      Timed := False;
+  Speed := 1;
+  if Timed then
+  begin
+    { The median step (sorted copy). }
+    SetLength(Steps, N - 1);
+    for I := 1 to N - 1 do
+      Steps[I - 1] := FPlayTimes[I] - FPlayTimes[I - 1];
+    for I := 1 to High(Steps) do
+    begin
+      T := Steps[I];
+      J := I - 1;
+      while (J >= 0) and (Steps[J] > T) do
+      begin
+        Steps[J + 1] := Steps[J];
+        Dec(J);
+      end;
+      Steps[J + 1] := T;
+    end;
+    Median := Steps[Length(Steps) div 2];
+    Speed := Max(1.0, Median * 1000 / StackPlayTargetMs);
+    for I := 0 to N - 2 do
+      Delays[I] := EnsureRange(Round((FPlayTimes[I + 1] - FPlayTimes[I]) * 1000 / Speed), 20, 5000);
+    Delays[N - 1] := EnsureRange(Round(Median * 1000 / Speed), 20, 5000);
+  end
+  else
+    for I := 0 to N - 1 do
+      Delays[I] := StackPlayDepthMs;
+  Title := Format('%s › playing %d frames', [DisplayItemName(FPlayStack), N]);
+  if Timed and (Speed > 1.05) then
+    Title := Title + Format(' (%.0fx real time)', [Speed])
+  else if Timed then
+    Title := Title + ' (real time)';
+  if FPlayScale < 1 then
+    Title := Title + ' - shrunk to fit in memory';
+  First := FPlayFrames[0].Duplicate as TBGRABitmap;
+  Anim := TBitmapListAnimation.Create(FPlayFrames, Delays, '');
+  { The frames are the animation's now. }
+  FPlayFrames := nil;
+  Stack := FPlayStack;
+  Key.FileName := Stack;
+  Key.FileSize := 0;
+  Key.FileTime := Now;
+  Img := TDecodedImage.Create(Key, qlFull, First, nil, 0, 0, FPlayFullW, FPlayFullH, Anim);
+  CancelStackLoad;
+  FPlayingStack := Stack;
+  ShowStatus('', 0);
+  FKeepFilters := True;
+  try
+    ShowScratch(Img, Title, ItemBaseName(Stack) + '_play');
+  finally
+    FKeepFilters := False;
+  end;
+  UpdateInfo;
+  Refresh;
+end;
+
+{ The reader's note on an image inside a container (one kept: the info
+  line asks often). An empty answer is asked again next time (the reader
+  answers '' while its file is busy elsewhere, rather than wait). }
+function TMView.ItemNote(const AName: string): string;
+begin
+  if not IsVirtualName(AName) then
+    Exit('');
+  if (AName <> FNoteName) or (FNoteText = '') then
+  begin
+    FNoteName := AName;
+    FNoteText := ContainerEntryNote(AName);
+  end;
+  Result := FNoteText;
+end;
+
+procedure TMView.LeaveContainer;
+begin
+  FFramesOf := '';
+  if FThumbs <> nil then
+    FThumbs.Cancel;
+  FPanel.ShowSlots;
+  { Its own notes go; the last action's line (undo) stays. }
+  if (Copy(FPanel.FooterText, 1, 8) = 'reading ') or (Copy(FPanel.FooterText, 1, 10) = 'no images ') then
+    FPanel.FooterText := '';
+  if FPanel.Visible then
+    UpdatePanel;
+end;
+
+procedure TMView.HandleThumbsListed(const AContainer: string; const AEntries: TContainerEntryArray);
+var
+  Items: array of TPanelEntry;
+  I: Integer;
+begin
+  if FPanel.Mode <> pmContents then
+    Exit;
+  SetLength(Items, Length(AEntries));
+  for I := 0 to High(AEntries) do
+  begin
+    Items[I].Name := AEntries[I].Name;
+    { The entries' ids are the container file's (a stack's frames too). }
+    Items[I].VirtualName := MakeVirtualName(ContainerFileOf(AContainer), AEntries[I].Id);
+    Items[I].Frames := AEntries[I].Frames;
+  end;
+  FPanel.ShowContents(DisplayItemName(AContainer), Items);
+  if Length(Items) = 0 then
+    FPanel.FooterText := 'no images in ' + DisplayItemName(AContainer)
+  else
+    FPanel.FooterText := '';
+  if FPanel.Visible then
+    UpdatePanel;
+end;
+
+procedure TMView.HandleThumbReady(const AVirtualName: string; ASmall, ALarge: TBGRABitmap);
+var
+  Pair: TThumbPair;
+  Index: Integer;
+begin
+  if FThumbCache = nil then
+  begin
+    ASmall.Free;
+    ALarge.Free;
+    Exit;
+  end;
+  Index := FThumbCache.IndexOf(AVirtualName);
+  if Index >= 0 then
+    FThumbCache.Delete(Index);
+  Pair := TThumbPair.Create;
+  Pair.Small := ASmall;
+  Pair.Large := ALarge;
+  FThumbCache.AddObject(AVirtualName, Pair);
+  if FPanel.Mode = pmContents then
+  begin
+    FPanel.ThumbsChanged;
+    if FPanel.Visible then
+      UpdatePanel;
+  end;
+end;
+
+function TMView.PanelEntryThumb(AEntry, ASize: Integer): TBGRABitmap;
+var
+  Index: Integer;
+  Pair: TThumbPair;
+begin
+  Result := nil;
+  if (FThumbCache = nil) or (AEntry < 0) or (AEntry >= FPanel.EntryCount) then
+    Exit;
+  Index := FThumbCache.IndexOf(FPanel.Entry(AEntry).VirtualName);
+  if Index < 0 then
+    Exit;
+  Pair := TThumbPair(FThumbCache.Objects[Index]);
+  Result := FittedThumb(Pair.Small, ASize, Pair.SmallFit, Pair.SmallFitSize);
+end;
+
+{ The microscope's details of an entry (user, Day 26), from the
+  edition's metadata reader (the .lif's description: pixel size, stack,
+  channels, system, objective, zoom, pinhole, scan, detectors, time);
+  one kept, the panel draws often. Nothing in MView (no readers). }
+function TMView.PanelEntryDetails(AEntry: Integer): TStringArray;
+var
+  Name: string;
+  Meta: TImageMetadata;
+begin
+  Result := nil;
+  if (AEntry < 0) or (AEntry >= FPanel.EntryCount) then
+    Exit;
+  Name := FPanel.Entry(AEntry).VirtualName;
+  if Name <> FDetailsName then
+  begin
+    FDetailsName := Name;
+    FDetailsLines := nil;
+    if (MetadataReaderCount > 0) and ReadImageMetadata(Name, Meta) then
+      FDetailsLines := Copy(Meta.Lines);
+  end;
+  Result := FDetailsLines;
+end;
+
+function TMView.PanelEntryPreview(AEntry, AMaxSize: Integer; out ACaption: string): TBGRABitmap;
+var
+  Index: Integer;
+  Pair: TThumbPair;
+  Name: string;
+begin
+  Result := nil;
+  ACaption := '';
+  if (AEntry < 0) or (AEntry >= FPanel.EntryCount) then
+    Exit;
+  Name := FPanel.Entry(AEntry).VirtualName;
+  ACaption := FPanel.Entry(AEntry).Name;
+  if FThumbCache <> nil then
+  begin
+    Index := FThumbCache.IndexOf(Name);
+    if Index >= 0 then
+    begin
+      Pair := TThumbPair(FThumbCache.Objects[Index]);
+      Result := FittedThumb(Pair.Large, AMaxSize, Pair.LargeFit, Pair.LargeFitSize);
+      Exit;
+    end;
+  end;
+  { Not made yet: this one next. }
+  if FThumbs <> nil then
+    FThumbs.Prefer(Name);
+end;
+
+
 function TMView.CanMakeIcon: Boolean;
 begin
   Result := ImageToSave <> nil;
@@ -5107,9 +7147,12 @@ var
   FullW, FullH, ViewW, ViewH, BX, BY, BS, I: Integer;
   CX, CY, Side, X1, Y1, Scale, FX, FY: Double;
   Sel: TImageRect;
-  Pngs: array of TBytes;
-  Mem, Ico: TMemoryStream;
-  Writer: TFPWriterPNG;
+  CXs, CYs: array[0..3] of Double;
+  Pictures: array of TBytes;
+  Pixels: TIconPixels;
+  P: PBGRAPixel;
+  PX, PY: Integer;
+  Ico: TMemoryStream;
   Job: TFileJob;
   Name, FromWhere: string;
 begin
@@ -5137,6 +7180,13 @@ begin
     CX := (Sel.X0 + Sel.X1) / 2;
     CY := (Sel.Y0 + Sel.Y1) / 2;
     Side := Min(Sel.X1 - Sel.X0, Sel.Y1 - Sel.Y0);
+    { Upright on a turned image (Day 26): its middle in the image's own
+      pixels (the icon's square stays in the image's axes). }
+    if (Abs(Sel.Angle) >= 1e-9) and FRenderer.SelectionImageCorners(Sel, CXs, CYs) then
+    begin
+      CX := (CXs[0] + CXs[1] + CXs[2] + CXs[3]) / 4;
+      CY := (CYs[0] + CYs[1] + CYs[2] + CYs[3]) / 4;
+    end;
     FromWhere := 'the selection';
   end
   else
@@ -5176,33 +7226,42 @@ begin
   BY := EnsureRange(Round((CY - Side / 2) * FY), 0, Src.Height - BS);
 
   Square := nil;
-  Mem := nil;
   Ico := nil;
-  Writer := TFPWriterPNG.Create;
   try
-    Writer.UseAlpha := True;
-    Writer.WordSized := False;
     Square := Src.GetPart(Rect(BX, BY, BX + BS, BY + BS)) as TBGRABitmap;
-    SetLength(Pngs, Length(IconSizes));
-    Mem := TMemoryStream.Create;
+    SetLength(Pictures, Length(IconSizes));
     for I := 0 to High(IconSizes) do
     begin
       Sized := Square.Resample(IconSizes[I], IconSizes[I], rmFineResample) as TBGRABitmap;
       try
-        Mem.Clear;
-        Sized.SaveToStream(Mem, Writer);
-        SetLength(Pngs[I], Mem.Size);
-        if Mem.Size > 0 then
-          Move(Mem.Memory^, Pngs[I][0], Mem.Size);
+        Pixels.Width := Sized.Width;
+        Pixels.Height := Sized.Height;
+        SetLength(Pixels.Data, Sized.Width * Sized.Height);
+        for PY := 0 to Sized.Height - 1 do
+        begin
+          P := Sized.ScanLine[PY];
+          for PX := 0 to Sized.Width - 1 do
+          begin
+            Pixels.Data[PY * Sized.Width + PX] := (LongWord(P^.alpha) shl 24)
+              or (LongWord(P^.red) shl 16) or (LongWord(P^.green) shl 8) or P^.blue;
+            Inc(P);
+          end;
+        end;
+        { 1.1: old-style DIBs up to 128 px, a PNG with alpha for 256 px
+          (Windows refuses PNG entries without an alpha channel). }
+        if IconSizes[I] >= 256 then
+          Pictures[I] := IconPngEntry(Pixels)
+        else
+          Pictures[I] := IconDibEntry(Pixels);
       finally
         Sized.Free;
       end;
     end;
     Ico := TMemoryStream.Create;
-    WriteIconFile(Ico, Pngs, IconSizes);
+    WriteIconFile(Ico, Pictures, IconSizes);
 
     if FNavigator.HasCurrentImage then
-      Name := IconBaseName(ExcludeTrailingPathDelimiter(FNavigator.CurrentDirectory))
+      Name := IconBaseName(ExcludeTrailingPathDelimiter(FolderOnDisk))
     else
       Name := 'icon';
     Job := Default(TFileJob);
@@ -5225,9 +7284,7 @@ begin
     on E: Exception do
       ShowStatus('make icon: ' + E.Message, 8000);
   end;
-  Writer.Free;
   Square.Free;
-  Mem.Free;
   Ico.Free;
 end;
 
@@ -5264,6 +7321,7 @@ end;
 procedure TMView.SortScratch(ASlot: Integer; AMove: Boolean);
 var
   Img: IDecodedImage;
+  UmX, UmY: Double;
   Slot: TSortSlot;
   FileName: string;
 begin
@@ -5295,7 +7353,8 @@ begin
   FSortSaveTitle := FScratchTitle;
   FSortSavePrefix := FScratchPrefix;
   FSortSaveMove := AMove;
-  FSaveThread := TImageSaveThread.Create(Img, FileName, '', True);
+  SaveScale(Img, UmX, UmY);
+  FSaveThread := TImageSaveThread.Create(Img, FileName, '', True, UmX, UmY);
   Inc(FJobsInFlight);        { Undo waits for it }
   FPanel.JobStarted(ASlot);
   if AMove then

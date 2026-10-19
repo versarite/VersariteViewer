@@ -5,15 +5,17 @@ unit uConfig;
 
   Purpose
   -------
-  Reads and writes MView.ini and provides the settings as typed
+  Reads and writes VersariteViewer.ini (formerly MView.ini; taken over
+  at the first start) and provides the settings as typed
   properties. Only TConfig reads and writes the settings (spec §14);
   the settings editor (uIniEditor) edits MView.ini as text, including
   the [Mouse] ZonesEnabled line.
 
   Owns
   ----
-  Nothing but its own fields. (A TIniFile lives only inside Load,
-  Save, SaveWindowBounds and SaveDirectory.)
+  Nothing but its own fields. (A TMemIniFile lives only inside Load
+  and the Save routines: read from the file's text, written back with
+  uSafeFile.)
 
   Knows
   -----
@@ -27,6 +29,14 @@ unit uConfig;
   - Start from built-in defaults, then read MView.ini on top of them.
     A key missing from the ini keeps its default.
   - First run (no MView.ini): write a complete ini with the defaults.
+  - Keep the ini safe (1.1, a tester's ini was lost): every write goes
+    through uSafeFile (a .tmp, then one replace: never half written);
+    each start keeps a copy of a complete ini as MView.ini.bak; an ini
+    found empty or cut short is restored from it (the damaged one kept
+    as MView.ini.damaged), never silently replaced by defaults.
+    TakeIniNote says so once. Cut short: no [Startup] or [Sort], no line
+    end at the end, or no end line (IniEndLine, written last by every
+    save) while the backup has one.
   - Validate values.
   - Write the settings back on shutdown.
   - Write only the window place (SaveWindowBounds), and the save
@@ -46,7 +56,8 @@ unit uConfig;
 
   Uses (MView units)
   ------------------
-  interface:      uTypes
+  interface:      uTypes, uSortFolders
+  implementation: uEdition, uSafeFile
   Libraries:      Classes, SysUtils, Graphics, IniFiles
 
   Used by
@@ -56,8 +67,8 @@ unit uConfig;
   Notes
   -----
   MView.ini lives next to MView.exe. Keys that TConfig doesn't know are
-  left alone when it saves, because TIniFile only rewrites the keys it
-  writes.
+  left alone when it saves, because only the keys it writes change in
+  the ini read from the file.
 }
 
 {$mode ObjFPC}{$H+}
@@ -114,6 +125,8 @@ type
     FRememberRotation: Boolean;
     FShowInfo        : Boolean;
     FAutoRotate      : Boolean;
+    FDiskWarning     : Boolean;
+    FPanelOpacity    : Integer;
     FOverlaySolid    : Boolean;
     FOverlayColor    : string;
 
@@ -126,6 +139,7 @@ type
     FRecurseFromRoot : Boolean;
     FWrapScope       : TWrapScope;
     FPlaceholderForBadImages: Boolean;
+    FArchives        : Boolean;
 
     { Performance }
 
@@ -147,6 +161,9 @@ type
     FMouseProfile    : string;
     FMouseHideTime   : Integer;
     FZonesEnabled    : Boolean;
+    FEdgeWidth       : Integer;
+    FBottomEdgeMs    : Integer;
+    FTopEdgeMs       : Integer;
 
     { Renderer }
 
@@ -171,11 +188,16 @@ type
     FSortFolders     : TSortFolders;
     FSortEdgeDelayMs : Integer;
     FSortEdgeWidth   : Integer;
+    FSortPanelLines  : Integer;
     FSortPinned      : Boolean;
     FDeletedFolder   : string;
     FIconFolder      : string;
+    FImageFolder     : string;
+    FShowDirHint     : Boolean;
     FTotalCommander  : string;
     FFollowTC        : Integer;
+    FDirPreviewFiles : Integer;
+    FDirPreviewDelay : Integer;
 
     { Filters (Phase H) }
 
@@ -222,7 +244,7 @@ type
     { How MView starts (Day 24, a user's request; replaces
       StartFullscreen): 0 = as before: without a file the settings
       screen, with one the viewer in a window; 1 = the viewer fullscreen,
-      without a file in the last session's folder (none: MView's own
+      without a file in the last session's folder (none: the program's own
       folder); 2 = the same, side by side with Total Commander. }
     property StartMode       : Integer read FStartMode;
     { The viewer starts fullscreen (StartMode 1). }
@@ -252,6 +274,10 @@ type
     property ShowInfo        : Boolean read FShowInfo write FShowInfo;
     { Turn photos upright by their EXIF orientation tag. }
     property AutoRotate      : Boolean read FAutoRotate;
+    { [View] DiskWarning (Day 27): the red "drive almost full" notice. }
+    property DiskWarning     : Boolean read FDiskWarning;
+    { [View] PanelOpacity: the panels' background, percent (1.1). }
+    property PanelOpacity    : Integer read FPanelOpacity;
     { Info and diagnostics lines on a solid black bar instead of
       straight over the image. }
     property OverlaySolid    : Boolean read FOverlaySolid;
@@ -273,6 +299,8 @@ type
     property RecurseFromRoot : Boolean    read FRecurseFromRoot;
     property WrapScope       : TWrapScope read FWrapScope;
     property PlaceholderForBadImages: Boolean read FPlaceholderForBadImages;
+    { [Navigation] Archives (1.1): .zip / .cbz browsed like folders. }
+    property Archives: Boolean read FArchives;
 
     { Performance }
 
@@ -308,6 +336,12 @@ type
     property MouseHideTime   : Integer read FMouseHideTime;
     { The zones of the mouse profile; off = only [Anywhere] counts. }
     property ZonesEnabled    : Boolean read FZonesEnabled;
+    { [Mouse] EdgeWidth / BottomEdgeMs / TopEdgeMs (Day 27, testers): the
+      mouse resting at the bottom edge (zones off) switches zoom mode,
+      at the top edge it opens the preview strip; 0 ms = off. }
+    property EdgeWidth       : Integer read FEdgeWidth;
+    property BottomEdgeMs    : Integer read FBottomEdgeMs;
+    property TopEdgeMs       : Integer read FTopEdgeMs;
 
     { Renderer }
 
@@ -353,17 +387,30 @@ type
       dpi (scaled for the screen). A window's edge is hard to hit
       exactly (user, Day 21): 12 by default. }
     property SortEdgeWidth   : Integer read FSortEdgeWidth;
+    { [Sort] PanelLines (Day 27, testers): the rows the sort panel is laid
+      out for (larger rows, the wheel scrolls the rest); 0 = elastic. }
+    property SortPanelLines  : Integer read FSortPanelLines;
     { The panel's pin: stays open after a copy / move. }
     property SortPinned      : Boolean read FSortPinned write FSortPinned;
     { Where "Delete" moves files. '' = <Documents>\MView deleted files. }
     property DeletedFolder   : string read FDeletedFolder;
     { Where the slot icons are. '' = the icons folder next to MView.exe. }
     property IconFolder      : string read FIconFolder;
+    { [Sort] DefaultImageFolder (Day 27): where Rapid Selection's folders
+      are; empty in the file = the user's Pictures folder (written back). }
+    property ImageFolder     : string read FImageFolder;
+    { [Sort] ShowDirectoryHint (Day 27, user): the panel's hints in the
+      middle of the view (a new list, Rapid selection); default off. }
+    property ShowDirectoryHint: Boolean read FShowDirHint;
     { TOTALCMD64.EXE for "side by side"; '' = find it (registry). }
     property TotalCommander  : string read FTotalCommander;
     { Follow Total Commander (Day 23): 0 = no, 1 = its active panel's
       folder, 2 = and the file under its cursor. }
     property FollowTotalCommander: Integer read FFollowTC write FFollowTC;
+    { Total Commander dir preview (1.1): the folder under its cursor plays
+      its first DirPreviewFiles images (0 = all), each DirPreviewDelayMs. }
+    property DirPreviewFiles: Integer read FDirPreviewFiles;
+    property DirPreviewDelayMs: Integer read FDirPreviewDelay;
 
     { The folder "Delete" moves to, without trailing delimiter. }
     function DeletedFilesFolder: string;
@@ -408,11 +455,25 @@ function ConfigKeyHelp(const ASection, AKey: string): string;
 { The user's Documents folder, with a trailing delimiter (also when it
   was moved). The fallback when the save folder can't be used. }
 function UserDocumentsDirectory: string;
+{ The user's Pictures folder, with a trailing delimiter (Day 27). }
+function UserPicturesDirectory: string;
+
+{ What happened to a damaged ini at the start ('' = nothing); cleared
+  by the call (shown once: the viewer's info line, or the settings
+  screen). }
+function TakeIniNote: string;
+{ The note is a warning (a damaged ini), not news (settings taken over). }
+function IniNoteWarns: Boolean;
+
 
 implementation
 
+uses
+  Math,
+  uEdition,
+  uSafeFile;
+
 const
-  CONFIG_FILE = 'MView.ini';
 
   { Sections }
   SEC_STARTUP     = 'Startup';
@@ -437,14 +498,20 @@ const
   KEY_HEIGHT            = 'Height';
   KEY_SHOW_INFO         = 'ShowInfo';
   KEY_AUTO_ROTATE       = 'AutoRotate';
+  KEY_DISK_WARNING      = 'DiskWarning';
+  KEY_PANEL_OPACITY     = 'PanelOpacity';
   KEY_OVERLAY_SOLID     = 'OverlaySolid';
   KEY_OVERLAY_COLOR     = 'OverlayColor';
   KEY_ZONES_ENABLED     = 'ZonesEnabled';
+  KEY_EDGE_WIDTH        = 'EdgeWidth';
+  KEY_BOTTOM_EDGE_MS    = 'BottomEdgeMs';
+  KEY_TOP_EDGE_MS       = 'TopEdgeMs';
   KEY_SORT_MODE         = 'SortMode';
   KEY_RECURSIVE         = 'Recursive';
   KEY_WRAP_AROUND       = 'WrapAround';
   KEY_WRAP_SCOPE        = 'WrapScope';
   KEY_PLACEHOLDER       = 'PlaceholderForBadImages';
+  KEY_ARCHIVES          = 'Archives';
   KEY_CLIMB_UP          = 'ClimbUp';
   KEY_RECURSE_FROM_ROOT = 'RecurseFromDriveRoot';
   KEY_PRELOAD_COUNT     = 'PreloadCount';
@@ -472,11 +539,16 @@ const
 const
   KEY_SORT_EDGE_DELAY   = 'EdgeDelayMs';
   KEY_SORT_EDGE_WIDTH   = 'EdgeWidth';
+  KEY_SORT_PANEL_LINES  = 'PanelLines';
   KEY_SORT_PINNED       = 'Pinned';
   KEY_DELETED_FOLDER    = 'DeletedFolder';
   KEY_ICON_FOLDER       = 'IconFolder';
+  KEY_IMAGE_FOLDER      = 'DefaultImageFolder';
+  KEY_SHOW_DIR_HINT     = 'ShowDirectoryHint';
   KEY_TOTAL_COMMANDER   = 'TotalCommander';
   KEY_FOLLOW_TC         = 'FollowTotalCommander';
+  KEY_DIR_PREVIEW_FILES = 'DirPreviewFiles';
+  KEY_DIR_PREVIEW_DELAY = 'DirPreviewDelayMs';
   SEC_FILTERS           = 'Filters';
   KEY_FILTER_PINNED     = 'Pinned';
   KEY_AUTO_FILTER       = 'AutoFilter';
@@ -488,10 +560,102 @@ const
   KEY_LENS_SIZE         = 'Size';
   KEY_LENS_SHARPEN      = 'Sharpen';
 
+var
+  IniNote: string;
+  IniNoteWarning: Boolean = True;
+
+function IniNoteWarns: Boolean;
+begin
+  Result := IniNoteWarning;
+end;
+
+function TakeIniNote: string;
+begin
+  Result := IniNote;
+  IniNote := '';
+end;
+
+{ The ini in memory, read from AFileName (none: empty). Written back
+  only with CommitIni. }
+function OpenIniFile(const AFileName: string): TMemIniFile;
+var
+  Text: string;
+  Lines: TStringList;
+begin
+  Result := TMemIniFile.Create('');
+  try
+    if FileExists(AFileName) then
+    begin
+      if not ReadTextFile(AFileName, Text) then
+        raise EInOutError.Create('could not read ' + AFileName);
+      Lines := TStringList.Create;
+      try
+        Lines.Text := IniTextWithoutEndLine(Text);
+        Result.SetStrings(Lines);
+      finally
+        Lines.Free;
+      end;
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+{ AIni written to AFileName, safely (uSafeFile); with AOnlyIfChanged
+  only if its text differs from the file's. Raises on failure. }
+procedure CommitIni(AIni: TMemIniFile; const AFileName: string; AOnlyIfChanged: Boolean);
+var
+  NewText, OldText: TStringList;
+  Old: string;
+begin
+  NewText := TStringList.Create;
+  OldText := TStringList.Create;
+  try
+    AIni.GetStrings(NewText);
+    NewText.Text := IniTextWithEndLine(NewText.Text);
+    if AOnlyIfChanged and FileExists(AFileName) and ReadTextFile(AFileName, Old) then
+    begin
+      OldText.Text := Old;
+      if NewText.Text = OldText.Text then
+        Exit;
+    end;
+    WriteTextFileSafe(AFileName, NewText.Text);
+  finally
+    OldText.Free;
+    NewText.Free;
+  end;
+end;
+
+{ A complete ini: MView always writes [Startup] and [Sort], ends every
+  line, and (since 1.1) ends with IniEndLine; an ini from before has
+  none, so it counts only once the backup has one (ABakText). }
+function IniTextComplete(const AText, ABakText: string): Boolean;
+var
+  Ini: TMemIniFile;
+  Lines: TStringList;
+begin
+  if (AText = '') or not (AText[Length(AText)] in [#10, #13]) then
+    Exit(False);
+  if not HasEndLine(AText) and HasEndLine(ABakText) then
+    Exit(False);
+  Ini := TMemIniFile.Create('');
+  Lines := TStringList.Create;
+  try
+    Lines.Text := IniTextWithoutEndLine(AText);
+    Ini.SetStrings(Lines);
+    Result := Ini.SectionExists('Startup') and Ini.SectionExists(SortSection);
+  finally
+    Lines.Free;
+    Ini.Free;
+  end;
+end;
+
 constructor TConfig.Create;
 begin
   inherited Create;
-  FIniFileName := ExtractFilePath(ParamStr(0)) + CONFIG_FILE;
+  { MView.ini, or the edition's own (uEdition, M0). }
+  FIniFileName := EditionIniFileName;
   FSortFolders := TSortFolders.Create;
   LoadDefaults;
 end;
@@ -521,9 +685,14 @@ begin
   FFitMode         := fmFitWindow;
   FShowInfo        := True;
   FAutoRotate      := True;
+  FDiskWarning     := True;
+  FPanelOpacity    := 80;
   FOverlaySolid    := False;
   FOverlayColor    := 'White';
   FZonesEnabled    := True;
+  FEdgeWidth       := 12;
+  FBottomEdgeMs    := 1000;
+  FTopEdgeMs       := 500;
 
   FSortMode        := smDateDescending;
   FRecursive       := True;
@@ -532,6 +701,7 @@ begin
   FRecurseFromRoot := False;
   FWrapScope       := wsTree;
   FPlaceholderForBadImages := True;
+  FArchives := True;
 
   FPreloadCount    := 5;
   FPreloadBehind   := 2;
@@ -562,11 +732,16 @@ begin
 
   FSortEdgeDelayMs := 500;     { user, Day 21: 0.5 s }
   FSortEdgeWidth   := 12;
+  FSortPanelLines  := 0;
   FSortPinned      := False;
   FDeletedFolder   := '';
   FIconFolder      := '';
+  FImageFolder     := '';
+  FShowDirHint     := False;
   FTotalCommander  := '';
   FFollowTC        := 0;      { Day 24 (user): off by default }
+  FDirPreviewFiles := 3;
+  FDirPreviewDelay := 1000;
   FFilterPinned    := False;
   FAutoFilter      := True;
   FLensMagPercent  := 300;
@@ -587,9 +762,24 @@ end;
 
 procedure TConfig.Load;
 var
-  Ini: TIniFile;
+  Ini: TMemIniFile;
+  Text, BakText, BakName, DamagedName, Error: string;
+  Lines: TStringList;
 begin
   LoadDefaults;
+
+  { 1.1, the rename: the settings of MView.ini (MViewLab.ini) are taken
+    over once (the old file stays where it is). }
+  if not FileExists(FIniFileName) and (FIniFileName = EditionIniFileName)
+    and FileExists(EditionOldIniFileName) and ReadTextFile(EditionOldIniFileName, Text)
+    and (Trim(Text) <> '') then
+  begin
+    if WriteTextFileSafely(FIniFileName, Text, Error) then
+    begin
+      IniNote := Format('Settings taken over from %s', [ExtractFileName(EditionOldIniFileName)]);
+      IniNoteWarning := False;
+    end;
+  end;
 
   { First run: write a complete ini with the defaults. }
   if not FileExists(FIniFileName) then
@@ -598,7 +788,53 @@ begin
     Exit;
   end;
 
-  Ini := TIniFile.Create(FIniFileName);
+  if not ReadTextFile(FIniFileName, Text) then
+    raise EInOutError.Create('could not read ' + FIniFileName);
+  BakName := FIniFileName + '.bak';
+  DamagedName := FIniFileName + '.damaged';
+  if not (FileExists(BakName) and ReadTextFile(BakName, BakText)) then
+    BakText := '';
+  if IniTextComplete(Text, BakText) then
+  begin
+    { The copy of the last complete ini (once per change). }
+    if BakText <> Text then
+      WriteTextFileSafely(BakName, Text, Error);
+  end
+  else
+  begin
+    { Empty or cut short (1.1, a tester's: MView was ended while it
+      wrote the ini). Never defaults over it without a word. }
+    WriteTextFileSafely(DamagedName, Text, Error);
+    if IniTextComplete(BakText, '') then
+    begin
+      WriteTextFileSafely(FIniFileName, BakText, Error);
+      IniNoteWarning := True;
+      IniNote := Format('%s was damaged: restored from its backup of %s', [ExtractFileName(FIniFileName),
+        FormatDateTime('yyyy-mm-dd hh:nn', FileDateToDateTime(FileAge(BakName)))]);
+      Text := BakText;
+    end
+    else if Trim(Text) = '' then
+    begin
+      IniNoteWarning := True;
+      IniNote := Format('%s was empty and there is no backup: default settings',
+        [ExtractFileName(FIniFileName)]);
+      Save;
+      Exit;
+    end
+    else
+      IniNoteWarning := True;
+      IniNote := Format('%s seems cut short and there is no backup: the rest has defaults',
+        [ExtractFileName(FIniFileName)]);
+  end;
+
+  Ini := TMemIniFile.Create('');
+  Lines := TStringList.Create;
+  try
+    Lines.Text := IniTextWithoutEndLine(Text);
+    Ini.SetStrings(Lines);
+  finally
+    Lines.Free;
+  end;
   try
     FOpenLastSession := Ini.ReadBool(SEC_STARTUP, KEY_OPEN_LAST_SESSION, FOpenLastSession);
     FLastDirectory   := Ini.ReadString(SEC_STARTUP, KEY_LAST_DIRECTORY, FLastDirectory);
@@ -620,6 +856,8 @@ begin
 
     FShowInfo        := Ini.ReadBool(SEC_VIEW, KEY_SHOW_INFO, FShowInfo);
     FAutoRotate      := Ini.ReadBool(SEC_VIEW, KEY_AUTO_ROTATE, FAutoRotate);
+    FDiskWarning     := Ini.ReadBool(SEC_VIEW, KEY_DISK_WARNING, FDiskWarning);
+    FPanelOpacity    := Ini.ReadInteger(SEC_VIEW, KEY_PANEL_OPACITY, FPanelOpacity);
     FOverlaySolid    := Ini.ReadBool(SEC_VIEW, KEY_OVERLAY_SOLID, FOverlaySolid);
     FOverlayColor    := Trim(Ini.ReadString(SEC_VIEW, KEY_OVERLAY_COLOR, FOverlayColor));
 
@@ -630,6 +868,7 @@ begin
     FRecurseFromRoot := Ini.ReadBool(SEC_NAVIGATION, KEY_RECURSE_FROM_ROOT, FRecurseFromRoot);
     FWrapScope  := StringToWrapScope(Ini.ReadString(SEC_NAVIGATION, KEY_WRAP_SCOPE, ''), FWrapScope);
     FPlaceholderForBadImages := Ini.ReadBool(SEC_NAVIGATION, KEY_PLACEHOLDER, FPlaceholderForBadImages);
+    FArchives := Ini.ReadBool(SEC_NAVIGATION, KEY_ARCHIVES, FArchives);
 
     FPreloadCount   := Ini.ReadInteger(SEC_PERFORMANCE, KEY_PRELOAD_COUNT, FPreloadCount);
     FPreloadBehind  := Ini.ReadInteger(SEC_PERFORMANCE, KEY_PRELOAD_BEHIND, FPreloadBehind);
@@ -647,6 +886,9 @@ begin
     FMouseProfile  := Ini.ReadString(SEC_MOUSE, KEY_MOUSE_PROFILE, FMouseProfile);
     FMouseHideTime := Ini.ReadInteger(SEC_MOUSE, KEY_MOUSE_HIDE_TIME, FMouseHideTime);
     FZonesEnabled  := Ini.ReadBool(SEC_MOUSE, KEY_ZONES_ENABLED, FZonesEnabled);
+    FEdgeWidth     := EnsureRange(Ini.ReadInteger(SEC_MOUSE, KEY_EDGE_WIDTH, FEdgeWidth), 2, 60);
+    FBottomEdgeMs  := EnsureRange(Ini.ReadInteger(SEC_MOUSE, KEY_BOTTOM_EDGE_MS, FBottomEdgeMs), 0, 10000);
+    FTopEdgeMs     := EnsureRange(Ini.ReadInteger(SEC_MOUSE, KEY_TOP_EDGE_MS, FTopEdgeMs), 0, 10000);
 
     FUseMipMaps      := Ini.ReadBool(SEC_RENDERER, KEY_USE_MIPMAPS, FUseMipMaps);
     FUseGPU          := Ini.ReadBool(SEC_RENDERER, KEY_USE_GPU, FUseGPU);
@@ -659,11 +901,20 @@ begin
 
     FSortEdgeDelayMs := Ini.ReadInteger(SortSection, KEY_SORT_EDGE_DELAY, FSortEdgeDelayMs);
     FSortEdgeWidth   := Ini.ReadInteger(SortSection, KEY_SORT_EDGE_WIDTH, FSortEdgeWidth);
+    FSortPanelLines  := Ini.ReadInteger(SortSection, KEY_SORT_PANEL_LINES, FSortPanelLines);
     FSortPinned      := Ini.ReadBool(SortSection, KEY_SORT_PINNED, FSortPinned);
     FDeletedFolder   := Trim(Ini.ReadString(SortSection, KEY_DELETED_FOLDER, FDeletedFolder));
     FIconFolder      := Trim(Ini.ReadString(SortSection, KEY_ICON_FOLDER, FIconFolder));
+    FImageFolder     := ExcludeTrailingPathDelimiter(Trim(Ini.ReadString(SortSection,
+      KEY_IMAGE_FOLDER, FImageFolder)));
+    if FImageFolder = '' then
+      FImageFolder := ExcludeTrailingPathDelimiter(UserPicturesDirectory);
+    FShowDirHint     := Ini.ReadBool(SortSection, KEY_SHOW_DIR_HINT, FShowDirHint);
     FTotalCommander  := Trim(Ini.ReadString(SortSection, KEY_TOTAL_COMMANDER, FTotalCommander));
     FFollowTC        := Ini.ReadInteger(SortSection, KEY_FOLLOW_TC, FFollowTC);
+    FDirPreviewFiles := Max(0, Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_FILES, FDirPreviewFiles));
+    FDirPreviewDelay := EnsureRange(Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_DELAY, FDirPreviewDelay),
+      200, 60000);
     if (FFollowTC < 0) or (FFollowTC > 2) then
       FFollowTC := 1;
     FSortFolders.LoadFromIni(Ini);
@@ -691,10 +942,13 @@ end;
 
 procedure TConfig.Save;
 var
-  Ini: TIniFile;
+  Ini: TMemIniFile;
   I: Integer;
 begin
-  Ini := TIniFile.Create(FIniFileName);
+  { In memory (one read), and written only when something differs from
+    the file (user, Day 25: "settings should be written when changes
+    occur") - usually only the last file and folder. }
+  Ini := OpenIniFile(FIniFileName);
   try
     Ini.WriteBool(SEC_STARTUP, KEY_OPEN_LAST_SESSION, FOpenLastSession);
     Ini.WriteString(SEC_STARTUP, KEY_LAST_DIRECTORY, FLastDirectory);
@@ -713,6 +967,8 @@ begin
 
     Ini.WriteBool(SEC_VIEW, KEY_SHOW_INFO, FShowInfo);
     Ini.WriteBool(SEC_VIEW, KEY_AUTO_ROTATE, FAutoRotate);
+    Ini.WriteBool(SEC_VIEW, KEY_DISK_WARNING, FDiskWarning);
+    Ini.WriteInteger(SEC_VIEW, KEY_PANEL_OPACITY, FPanelOpacity);
     Ini.WriteBool(SEC_VIEW, KEY_OVERLAY_SOLID, FOverlaySolid);
     Ini.WriteString(SEC_VIEW, KEY_OVERLAY_COLOR, FOverlayColor);
 
@@ -723,6 +979,7 @@ begin
     Ini.WriteBool(SEC_NAVIGATION, KEY_RECURSE_FROM_ROOT, FRecurseFromRoot);
     Ini.WriteString(SEC_NAVIGATION, KEY_WRAP_SCOPE, WrapScopeToString(FWrapScope));
     Ini.WriteBool(SEC_NAVIGATION, KEY_PLACEHOLDER, FPlaceholderForBadImages);
+    Ini.WriteBool(SEC_NAVIGATION, KEY_ARCHIVES, FArchives);
 
     Ini.WriteInteger(SEC_PERFORMANCE, KEY_PRELOAD_COUNT, FPreloadCount);
     Ini.WriteInteger(SEC_PERFORMANCE, KEY_PRELOAD_BEHIND, FPreloadBehind);
@@ -740,6 +997,9 @@ begin
     Ini.WriteString(SEC_MOUSE, KEY_MOUSE_PROFILE, FMouseProfile);
     Ini.WriteInteger(SEC_MOUSE, KEY_MOUSE_HIDE_TIME, FMouseHideTime);
     Ini.WriteBool(SEC_MOUSE, KEY_ZONES_ENABLED, FZonesEnabled);
+    Ini.WriteInteger(SEC_MOUSE, KEY_EDGE_WIDTH, FEdgeWidth);
+    Ini.WriteInteger(SEC_MOUSE, KEY_BOTTOM_EDGE_MS, FBottomEdgeMs);
+    Ini.WriteInteger(SEC_MOUSE, KEY_TOP_EDGE_MS, FTopEdgeMs);
 
     Ini.WriteBool(SEC_RENDERER, KEY_USE_MIPMAPS, FUseMipMaps);
     Ini.WriteBool(SEC_RENDERER, KEY_USE_GPU, FUseGPU);
@@ -764,6 +1024,7 @@ begin
     Ini.WriteInteger(SEC_INFOLINE, KEY_INFO_FONT_SIZE, FInfoFontSize);
     for I := 0 to High(FInfoAll) do
       Ini.WriteBool(SEC_INFOLINE, InfoItemKeys[FInfoAll[I]], FInfoOn[FInfoAll[I]]);
+    CommitIni(Ini, FIniFileName, True);
   finally
     Ini.Free;
   end;
@@ -833,22 +1094,33 @@ procedure TConfig.WriteSort(AIni: TCustomIniFile);
 begin
   AIni.WriteInteger(SortSection, KEY_SORT_EDGE_DELAY, FSortEdgeDelayMs);
   AIni.WriteInteger(SortSection, KEY_SORT_EDGE_WIDTH, FSortEdgeWidth);
+  AIni.WriteInteger(SortSection, KEY_SORT_PANEL_LINES, FSortPanelLines);
   AIni.WriteBool(SortSection, KEY_SORT_PINNED, FSortPinned);
   AIni.WriteString(SortSection, KEY_DELETED_FOLDER, FDeletedFolder);
   AIni.WriteString(SortSection, KEY_ICON_FOLDER, FIconFolder);
+  AIni.WriteString(SortSection, KEY_IMAGE_FOLDER, FImageFolder);
+  AIni.WriteBool(SortSection, KEY_SHOW_DIR_HINT, FShowDirHint);
   AIni.WriteString(SortSection, KEY_TOTAL_COMMANDER, FTotalCommander);
   AIni.WriteInteger(SortSection, KEY_FOLLOW_TC, FFollowTC);
+  AIni.WriteInteger(SortSection, KEY_DIR_PREVIEW_FILES, FDirPreviewFiles);
+  AIni.WriteInteger(SortSection, KEY_DIR_PREVIEW_DELAY, FDirPreviewDelay);
   FSortFolders.SaveToIni(AIni);
+  { Containers are never kept (Day 25, user: transient in the panel);
+    an old [Containers] section of the first Lab builds goes. }
+  if AIni.SectionExists(ContainersSection) then
+    AIni.EraseSection(ContainersSection);
 end;
 
 procedure TConfig.SaveSort;
 var
-  Ini: TIniFile;
+  Ini: TMemIniFile;
 begin
   try
-    Ini := TIniFile.Create(FIniFileName);
+    { In memory, then one safe write (uSafeFile). }
+    Ini := OpenIniFile(FIniFileName);
     try
       WriteSort(Ini);
+      CommitIni(Ini, FIniFileName, False);
     finally
       Ini.Free;
     end;
@@ -859,12 +1131,14 @@ end;
 
 procedure TConfig.SaveFilters;
 var
-  Ini: TIniFile;
+  Ini: TMemIniFile;
 begin
   try
-    Ini := TIniFile.Create(FIniFileName);
+    { In memory, then one safe write (uSafeFile). }
+    Ini := OpenIniFile(FIniFileName);
     try
       Ini.WriteBool(SEC_FILTERS, KEY_FILTER_PINNED, FFilterPinned);
+      CommitIni(Ini, FIniFileName, False);
     finally
       Ini.Free;
     end;
@@ -888,7 +1162,13 @@ begin
   if FDeletedFolder <> '' then
     Result := ExcludeTrailingPathDelimiter(FDeletedFolder)
   else
+  begin
+    { 1.1: named for VersariteViewer; one made before the rename stays
+      in use (its files, and no second folder). }
     Result := UserDocumentsDirectory + 'MView deleted files';
+    if not DirectoryExists(Result) then
+      Result := UserDocumentsDirectory + EditionTitle + ' deleted files';
+  end;
 end;
 
 function TConfig.IconFilesFolder: string;
@@ -907,37 +1187,47 @@ type
   end;
 
 const
-  KeyHelpTable: array[0..38] of TKeyHelp = (
+  KeyHelpTable: array[0..44] of TKeyHelp = (
     (Section: SEC_STARTUP; Key: KEY_OPEN_LAST_SESSION;
-     Text: 'Not used any more: started without a file or folder, MView shows this editor; "View images" opens the last session.'),
+     Text: 'Not used any more: started without a file or folder, VersariteViewer shows this editor; "View images" opens the last session.'),
     (Section: SEC_STARTUP; Key: KEY_LAST_DIRECTORY;
-     Text: 'Folder of the last session (written by MView on exit).'),
+     Text: 'Folder of the last session (written by VersariteViewer on exit).'),
     (Section: SEC_STARTUP; Key: KEY_LAST_FILE;
-     Text: 'Image of the last session (written by MView on exit).'),
+     Text: 'Image of the last session (written by VersariteViewer on exit).'),
     (Section: SEC_STARTUP; Key: KEY_START_MODE;
-     Text: 'How MView starts:' + LineEnding +
+     Text: 'How VersariteViewer starts:' + LineEnding +
            '  0  without a file this settings screen, with a file the viewer in a window' + LineEnding +
-           '  1  (default) the viewer fullscreen; without a file in the last session''s folder (none: MView''s own folder)' + LineEnding +
-           '  2  like 1, side by side with Total Commander (MView left, Total Commander right, in that folder)' + LineEnding +
+           '  1  (default) the viewer fullscreen; without a file in the last session''s folder (none: VersariteViewer''s own folder)' + LineEnding +
+           '  2  like 1, side by side with Total Commander (VersariteViewer left, Total Commander right, in that folder)' + LineEnding +
            'Enter switches fullscreen; Esc in the viewer comes back here.'),
     (Section: SEC_WINDOW; Key: KEY_LEFT;
-     Text: 'Window position when not fullscreen (written by MView when the window is moved or closed).'),
+     Text: 'Window position when not fullscreen (written by VersariteViewer when the window is moved or closed).'),
     (Section: SEC_WINDOW; Key: KEY_TOP;
-     Text: 'Window position when not fullscreen (written by MView).'),
+     Text: 'Window position when not fullscreen (written by VersariteViewer).'),
     (Section: SEC_WINDOW; Key: KEY_WIDTH;
-     Text: 'Window width when not fullscreen (written by MView when the window is resized or closed).'),
+     Text: 'Window width when not fullscreen (written by VersariteViewer when the window is resized or closed).'),
     (Section: SEC_WINDOW; Key: KEY_HEIGHT;
-     Text: 'Window height when not fullscreen (written by MView).'),
+     Text: 'Window height when not fullscreen (written by VersariteViewer).'),
     (Section: SEC_VIEW; Key: KEY_SHOW_INFO;
      Text: '1 = show the info bar (file name, size, zoom). The mouse profile command Info switches it.'),
     (Section: SEC_VIEW; Key: KEY_AUTO_ROTATE;
      Text: '1 = turn photos upright by their EXIF orientation.'),
+    (Section: SEC_VIEW; Key: KEY_DISK_WARNING;
+     Text: '1 = a flashing red notice when a drive VersariteViewer works with (the image''s, the sort '
+       + 'folders'', the deleted-files folder''s) has less than 100 MB free (default). 0 = off.'),
+    (Section: SEC_NAVIGATION; Key: KEY_ARCHIVES;
+     Text: '1 = .zip and .cbz archives are browsed like folders: their pictures are listed in the side panel '
+       + 'and the wheel walks through them, nothing is unpacked to the disk (default). 0 = archives are passed over.'),
+    (Section: SEC_VIEW; Key: KEY_PANEL_OPACITY;
+     Text: 'How solid the panels are, in percent: the side panels, the filter panel and the scan bar '
+       + 'together. 80 = default; 100 = solid; lower = more of the image shows through (20 .. 100).'),
     (Section: SEC_NAVIGATION; Key: KEY_SORT_MODE;
      Text: 'Order of the images in a folder. Values:' + LineEnding +
            '  DateDescending  newest first (default)' + LineEnding +
            '  DateAscending  oldest first' + LineEnding +
            '  FileNameAscending  by name, A to Z (Image2 before Image10)' + LineEnding +
            '  FileNameDescending  by name, Z to A' + LineEnding +
+           '  Random  shuffled (the right-click menu: Random again shuffles anew)' + LineEnding +
            'The zones of the mouse profile can browse in their own order (by date / by name).'),
     (Section: SEC_NAVIGATION; Key: KEY_RECURSIVE;
      Text: '1 = include the subfolders (the whole tree under the start folder).'),
@@ -950,7 +1240,7 @@ const
            '  Tree  the first image of the next folder with images (default)'),
     (Section: SEC_NAVIGATION; Key: KEY_CLIMB_UP;
      Text: '1 = at the end of the folder tree (next / previous folder, or next / previous image with' + LineEnding +
-           '    WrapScope=Tree) MView browses on one level higher, into the neighbouring folders,' + LineEnding +
+           '    WrapScope=Tree) VersariteViewer browses on one level higher, into the neighbouring folders,' + LineEnding +
            '    instead of starting again at the beginning; again and again, up to one level below' + LineEnding +
            '    the drive. Also leaves a folder opened from the sort panel. Needs Recursive=1.' + LineEnding +
            '    0 = stay in the tree (default).'),
@@ -963,9 +1253,9 @@ const
     (Section: SEC_PERFORMANCE; Key: KEY_DECODE_THREADS;
      Text: 'Decode threads; 0 = automatic (cores - 1, 1..4).'),
     (Section: SEC_PERFORMANCE; Key: KEY_USE_WIC;
-     Text: '1 = full-size JPEGs with the Windows Imaging Component (fast); 0 = MView''s own decoder.'),
+     Text: '1 = full-size JPEGs with the Windows Imaging Component (fast); 0 = VersariteViewer''s own decoder.'),
     (Section: SEC_PERFORMANCE; Key: KEY_USE_WIC_QUICK;
-     Text: '1 = quick views of large JPEGs scaled by the Windows codec (fast); 0 = MView''s own decoder. Compare in timing.csv.'),
+     Text: '1 = quick views of large JPEGs scaled by the Windows codec (fast); 0 = VersariteViewer''s own decoder. Compare in timing.csv.'),
     (Section: SEC_PERFORMANCE; Key: KEY_REFINE_DELAY;
      Text: 'ms an image must be shown before its full size is decoded (at once when zooming). 0 = at once.'),
     (Section: SEC_PERFORMANCE; Key: KEY_CACHE_SIZE_MB;
@@ -981,13 +1271,24 @@ const
     (Section: SEC_PERFORMANCE; Key: KEY_SKIM_EXIT;
      Text: 'ms without browsing that end Skim mode: then the real image is decoded.'),
     (Section: SEC_MOUSE; Key: KEY_MOUSE_PROFILE;
-     Text: 'The mouse profile file, next to MView.ini: which button does what in which zone of the screen. Edit it on the "Mouse & keys" page.'),
+     Text: 'The mouse profile file, next to VersariteViewer.ini: which button does what in which zone of the screen. Edit it on the "Mouse & keys" page.'),
     (Section: SEC_MOUSE; Key: KEY_MOUSE_HIDE_TIME;
      Text: 'ms without mouse movement until the cursor hides in the viewer; 0 = never.'),
     (Section: SEC_MOUSE; Key: KEY_ZONES_ENABLED;
      Text: '1 = the four zones of the mouse profile work (default).' + LineEnding
        + '0 = the zones are off: every button does its Anywhere command everywhere.'
        + LineEnding + 'Also the green / red button on the "Mouse & keys" page.'),
+    (Section: SEC_MOUSE; Key: KEY_EDGE_WIDTH;
+     Text: 'How close to the top / bottom edge of the view the mouse must rest, in pixels '
+       + '(default 12, scaled for the screen; 2 .. 60).'),
+    (Section: SEC_MOUSE; Key: KEY_BOTTOM_EDGE_MS;
+     Text: 'With the zones off: the mouse resting this long (ms) at the bottom edge switches '
+       + 'zoom mode on / off (the wheel zooms at the mouse instead of going to the next / '
+       + 'previous image). Default 1000; 0 = off.'),
+    (Section: SEC_MOUSE; Key: KEY_TOP_EDGE_MS;
+     Text: 'The mouse resting this long (ms) at the top edge opens the preview strip (the '
+       + 'folder''s images; a click opens one). Default 500; 0 = off (the mouse profile '
+       + 'command TogglePreview still opens it).'),
     (Section: SEC_VIEW; Key: KEY_OVERLAY_SOLID;
      Text: '0 = info and diagnostics lines straight over the image (default).' + LineEnding
        + '1 = on a solid black bar (easier to read on busy images).'),
@@ -1005,10 +1306,12 @@ const
     (Section: SEC_DEBUG; Key: KEY_SHOW_FPS;
      Text: '1 = show the diagnostics line (key D switches).'),
     (Section: SEC_DEBUG; Key: KEY_TIMING_LOG;
-     Text: '1 = one line per displayed image in timing.csv next to MView.exe.')
+     Text: '1 = one line per displayed image in timing.csv next to VersariteViewer.exe.')
   );
 
-function ConfigKeyHelp(const ASection, AKey: string): string;
+{ The help as written (with "VersariteViewer"); ConfigKeyHelp says it
+  for the edition. }
+function KeyHelpText(const ASection, AKey: string): string;
 var
   I: Integer;
   It: TInfoItem;
@@ -1019,13 +1322,13 @@ begin
     Exit('Folder for "Save image" (context menu). Empty: your Documents folder, written here at the first save. '
       + 'If the folder can''t be used (wrong path, missing drive), the image goes to your Documents folder.');
   if SameText(ASection, SEC_FILTERS) and SameText(AKey, KEY_FILTER_PINNED) then
-    Exit('1 = the filter panel (left edge) stays open (its pin). Written by MView. '
+    Exit('1 = the filter panel (left edge) stays open (its pin). Written by VersariteViewer. '
       + 'It opens when the mouse rests at the left edge ([Sort] EdgeDelayMs and EdgeWidth), '
       + 'or with the menu entry "Filters".');
   if SameText(ASection, SEC_STARTUP) and SameText(AKey, KEY_ONLY_ONE_INSTANCE) then
-    Exit('1 = only one MView (default): an image or folder opened while MView runs (e.g. from '
-      + 'Total Commander) opens in the running MView, which comes to the front. 0 = a new MView '
-      + 'each time. Read when MView starts.');
+    Exit('1 = only one VersariteViewer (default): an image or folder opened while VersariteViewer runs (e.g. from '
+      + 'Total Commander) opens in the running VersariteViewer, which comes to the front. 0 = a new VersariteViewer '
+      + 'each time. Read when VersariteViewer starts.');
   if SameText(ASection, SEC_NAVIGATION) and SameText(AKey, KEY_RECURSE_FROM_ROOT) then
     Exit('0 = a drive root (C:\, also a network share''s root) is opened without its subfolders, '
       + 'even with Recursive=1: only the images directly in it (default; a whole drive would '
@@ -1046,19 +1349,19 @@ begin
       + 'FileName, Dimensions (W x H), Folder, Position (12 / 40), Videos (in the folder), '
       + 'Sorting (by date / by name), Zoom (52 % = size on screen, angle), State (loading, '
       + 'skimming, scanning), Animation (frames), Filters ([filtered, auto ...]), Messages '
-      + '(what MView just did).');
+      + '(what VersariteViewer just did).');
   end;
   if SameText(ASection, SEC_MAGNIFIER) then
   begin
     if SameText(AKey, KEY_LENS_MAG) then
       Exit('The magnifier''s magnification, in percent of what the screen shows (300 = 3 x; '
-        + '125 .. 3200). Left drag sideways changes it; written by MView on exit.');
+        + '125 .. 3200). Left drag sideways changes it; written by VersariteViewer on exit.');
     if SameText(AKey, KEY_LENS_SIZE) then
       Exit('The magnifier''s diameter in pixels (80 .. 4000). Left drag up / down changes it; '
-        + 'written by MView on exit.');
+        + 'written by VersariteViewer on exit.');
     if SameText(AKey, KEY_LENS_SHARPEN) then
       Exit('The magnifier''s sharpening: 0 off (default), 1 low, 2 high. The wheel changes it; '
-        + 'written by MView on exit.');
+        + 'written by VersariteViewer on exit.');
   end;
   if SameText(ASection, SEC_FILTERS) and SameText(AKey, KEY_AUTO_FILTER) then
     Exit('1 = Auto black / white point for every image from the start (default): each image is '
@@ -1073,29 +1376,57 @@ begin
     if SameText(AKey, KEY_SORT_EDGE_WIDTH) then
       Exit('How close to the right edge the mouse must rest to open the sort panel, in pixels '
         + '(default 12, scaled for the screen; 2..60). Larger = easier to hit in a window.');
+    if SameText(AKey, KEY_SORT_PANEL_LINES) then
+      Exit('How many folder rows the sort panel is laid out for (the rows grow to fill it); '
+        + 'more folders: the wheel scrolls. 0 = elastic (default: the rows shrink to fit, down to '
+        + 'a small font). At most as many as fit at the smallest row (about 30 on a full-HD '
+        + 'screen); a smaller window scrolls sooner. Try 20.');
     if SameText(AKey, KEY_SORT_PINNED) then
-      Exit('1 = the sort panel stays open after a copy / move (its pin). Written by MView.');
+      Exit('1 = the sort panel stays open after a copy / move (its pin). Written by VersariteViewer.');
     if SameText(AKey, KEY_DELETED_FOLDER) then
-      Exit('Where "Delete current image" moves files (MView never really deletes). '
-        + 'Empty = "MView deleted files" in your Documents folder.');
+      Exit('Where "Delete current image" moves files (VersariteViewer never really deletes). '
+        + 'Empty = "VersariteViewer deleted files" in your Documents folder.');
+    if SameText(AKey, KEY_IMAGE_FOLDER) then
+      Exit('Rapid sorting (right-click menu) sorts into Selection1 .. Selection9 and '
+        + 'Selection0 in this folder (made when missing); keys 1 .. 0 move the image there. '
+        + 'Filled in with your Pictures folder.');
+    if SameText(AKey, KEY_SHOW_DIR_HINT) then
+      Exit('1 = a hint in the middle of the view for 3 s when a new, empty folder list comes up '
+        + 'or Rapid sorting is switched on / off. 0 = none (default).');
+    if SameText(AKey, KEY_LIST) then
+      Exit('The folder list shown (1 = [DirList1], ...). The arrows in the panel''s top line '
+        + 'go through the lists; after the last one comes a new, empty list. Written by VersariteViewer.');
     if SameText(AKey, KEY_ICON_FOLDER) then
-      Exit('Folder with .ico / .png icons for the sort panel. Empty = "icons" next to MView.exe.');
+      Exit('Folder with .ico / .png icons for the sort panel. Empty = "icons" next to VersariteViewer.exe.');
     if SameText(AKey, KEY_FOLLOW_TC) then
-      Exit('Follow Total Commander: 0 = no (default); 1 = when its active panel changes folder, MView opens '
-        + 'that folder; 2 = also the image under its cursor (MView as Total Commander''s '
+      Exit('Follow Total Commander: 0 = no (default); 1 = when its active panel changes folder, VersariteViewer opens '
+        + 'that folder; 2 = also the image under its cursor (VersariteViewer as Total Commander''s '
         + 'viewer). Also in the right-click menu.');
     if SameText(AKey, KEY_TOTAL_COMMANDER) then
-      Exit('Total Commander (TOTALCMD64.EXE) for "Side by side". Empty = found by MView.');
+      Exit('Total Commander (TOTALCMD64.EXE) for "Side by side". Empty = found by VersariteViewer.');
+    if SameText(AKey, KEY_DIR_PREVIEW_FILES) then
+      Exit('Total Commander dir preview (right-click menu): with Total Commander''s cursor on a '
+        + 'folder, its first images play as a slide show, round and round, in the order of the '
+        + 'images (name / date / random). How many: default 3; 0 = all.');
+    if SameText(AKey, KEY_DIR_PREVIEW_DELAY) then
+      Exit('Total Commander dir preview: how long each image stays, in milliseconds (default 1000; '
+        + '200 .. 60000). The quick views are shown (speed first), the full size only with '
+        + 'DirPreviewFiles=0 and more than 1000 ms.');
     if Pos('Slot', AKey) = 1 then
       Exit('A sort panel folder (Folder, Name, Color, Icon). Set on the panel: drop a folder on it, '
         + 'or its "..." menu. Colors: Green, Blue, Red, Yellow, Orange, Purple, Cyan, Grey.');
     if Pos('Recent', AKey) = 1 then
-      Exit('A folder used recently for the sort panel (written by MView).');
+      Exit('A folder used recently for the sort panel (written by VersariteViewer).');
   end;
   for I := Low(KeyHelpTable) to High(KeyHelpTable) do
     if SameText(KeyHelpTable[I].Section, ASection)
       and SameText(KeyHelpTable[I].Key, AKey) then
       Exit(KeyHelpTable[I].Text);
+end;
+
+function ConfigKeyHelp(const ASection, AKey: string): string;
+begin
+  Result := EditionText(KeyHelpText(ASection, AKey));
 end;
 
 {$IFDEF WINDOWS}
@@ -1125,18 +1456,39 @@ begin
   Result := IncludeTrailingPathDelimiter(Result);
 end;
 
+function UserPicturesDirectory: string;
+{$IFDEF WINDOWS}
+const
+  CSIDL_MYPICTURES_FOLDER = $27;
+var
+  Buf: array[0..1023] of WideChar;
+{$ENDIF}
+begin
+  Result := '';
+  {$IFDEF WINDOWS}
+  FillChar(Buf, SizeOf(Buf), 0);
+  if MViewSHGetFolderPathW(0, CSIDL_MYPICTURES_FOLDER, 0, 0, @Buf[0]) = 0 then
+    Result := string(UTF8Encode(UnicodeString(PWideChar(@Buf[0]))));
+  {$ENDIF}
+  if Result = '' then
+    Result := IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures';
+  Result := IncludeTrailingPathDelimiter(Result);
+end;
+
 function TConfig.SaveDirectory: string;
 var
-  Ini: TIniFile;
+  Ini: TMemIniFile;
 begin
   if Trim(FSaveImageDir) <> '' then
     Exit(IncludeTrailingPathDelimiter(Trim(FSaveImageDir)));
   FSaveImageDir := UserDocumentsDirectory;
   Result := FSaveImageDir;
   try
-    Ini := TIniFile.Create(FIniFileName);
+    { In memory, then one safe write (uSafeFile). }
+    Ini := OpenIniFile(FIniFileName);
     try
       Ini.WriteString(SEC_DEBUG, KEY_SAVE_IMAGE_DIR, FSaveImageDir);
+      CommitIni(Ini, FIniFileName, False);
     finally
       Ini.Free;
     end;
@@ -1160,17 +1512,19 @@ end;
 
 procedure TConfig.SaveWindowBounds;
 var
-  Ini: TIniFile;
+  Ini: TMemIniFile;
 begin
   if FWidth <= 0 then
     Exit;
   try
-    Ini := TIniFile.Create(FIniFileName);
+    { In memory, then one safe write (uSafeFile). }
+    Ini := OpenIniFile(FIniFileName);
     try
       Ini.WriteInteger(SEC_WINDOW, KEY_LEFT, FLeft);
       Ini.WriteInteger(SEC_WINDOW, KEY_TOP, FTop);
       Ini.WriteInteger(SEC_WINDOW, KEY_WIDTH, FWidth);
       Ini.WriteInteger(SEC_WINDOW, KEY_HEIGHT, FHeight);
+      CommitIni(Ini, FIniFileName, False);
     finally
       Ini.Free;
     end;
@@ -1181,6 +1535,7 @@ end;
 
 procedure TConfig.Validate;
 begin
+  FPanelOpacity := EnsureRange(FPanelOpacity, 20, 100);
   if FSortEdgeDelayMs < 0 then
     FSortEdgeDelayMs := 0;
   if (FSortEdgeDelayMs > 0) and (FSortEdgeDelayMs < 200) then
@@ -1189,6 +1544,10 @@ begin
     FSortEdgeWidth := 2;
   if FSortEdgeWidth > 60 then
     FSortEdgeWidth := 60;
+  if FSortPanelLines < 0 then
+    FSortPanelLines := 0;
+  if FSortPanelLines > 200 then
+    FSortPanelLines := 200;
   if FPreloadCount < 0 then
     FPreloadCount := 0;
   if FPreloadCount > 20 then

@@ -58,7 +58,7 @@ unit uSortIcons;
 
   Uses (MView units)
   ------------------
-  implementation: uIconFile
+  implementation: uIconFile, umedialoader (DecodeIconBitmap)
   Libraries:      Classes, SysUtils, SyncObjs, Math, BGRABitmap,
                   BGRABitmapTypes
 
@@ -155,7 +155,8 @@ implementation
 
 uses
   Math,
-  uIconFile;
+  uIconFile,
+  umedialoader;
 
 const
   MaxIconFiles = 300;
@@ -551,55 +552,22 @@ end;
 function DecodeIcon(const ABytes: TBytes; const APath: string; ASize: Integer): TBGRABitmap;
 var
   Entries: TIconEntries;
-  Idx, X, Y: Integer;
   Stream: TMemoryStream;
-  Pixels: TIconPixels;
-  P: PBGRAPixel;
-  C: LongWord;
 begin
   Result := nil;
-  Stream := nil;
+  if ReadIconDirectory(ABytes, Entries) then
+    Exit(DecodeIconBitmap(ABytes, ASize));
+  if LowerCase(ExtractFileExt(APath)) = '.ico' then
+    Exit;
+  { A .png (or anything BGRABitmap reads). }
+  Stream := TMemoryStream.Create;
   try
     try
-      if ReadIconDirectory(ABytes, Entries) then
-      begin
-        Idx := ChooseIconEntry(Entries, ASize);
-        if Idx < 0 then
-          Exit;
-        if Entries[Idx].IsPng then
-        begin
-          Stream := TMemoryStream.Create;
-          Stream.WriteBuffer(ABytes[Entries[Idx].Offset], Entries[Idx].Size);
-          Stream.Position := 0;
-          Result := TBGRABitmap.Create;
-          Result.LoadFromStream(Stream);
-        end
-        else if DecodeIconDib(ABytes, Entries[Idx], Pixels) then
-        begin
-          Result := TBGRABitmap.Create(Pixels.Width, Pixels.Height);
-          for Y := 0 to Pixels.Height - 1 do
-          begin
-            P := Result.ScanLine[Y];
-            for X := 0 to Pixels.Width - 1 do
-            begin
-              C := Pixels.Data[Y * Pixels.Width + X];
-              P^ := BGRA((C shr 16) and $FF, (C shr 8) and $FF, C and $FF, C shr 24);
-              Inc(P);
-            end;
-          end;
-          Result.InvalidateBitmap;
-        end;
-      end
-      else if LowerCase(ExtractFileExt(APath)) <> '.ico' then
-      begin
-        { A .png (or anything BGRABitmap reads). }
-        Stream := TMemoryStream.Create;
-        if Length(ABytes) > 0 then
-          Stream.WriteBuffer(ABytes[0], Length(ABytes));
-        Stream.Position := 0;
-        Result := TBGRABitmap.Create;
-        Result.LoadFromStream(Stream);
-      end;
+      if Length(ABytes) > 0 then
+        Stream.WriteBuffer(ABytes[0], Length(ABytes));
+      Stream.Position := 0;
+      Result := TBGRABitmap.Create;
+      Result.LoadFromStream(Stream);
     except
       FreeAndNil(Result);
     end;

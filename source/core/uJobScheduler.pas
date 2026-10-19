@@ -115,6 +115,7 @@ type
     FWakeUp: TEvent;
     FOnImageReady: TImageReadyEvent;
     FShuttingDown: Boolean;
+    FStopSignalled: Boolean;     { BeginShutdown done }
     FDecodeDelayMs: Integer;
     FWorkerCount: Integer;
     FReplacements: Integer;
@@ -152,6 +153,12 @@ type
     { UI thread. Cancels all work and stops the workers. Safe to call
       more than once. }
     procedure Shutdown;
+    { UI thread, without waiting (Day 25: Esc to the settings shows them
+      at once): no more deliveries, all work cancelled, the workers told
+      to stop. WorkersStopped: all have come back (or are stuck and
+      abandoned); Shutdown then waits for nothing. }
+    procedure BeginShutdown;
+    function WorkersStopped: Boolean;
 
     property OnImageReady: TImageReadyEvent read FOnImageReady write FOnImageReady;
 
@@ -481,6 +488,31 @@ end;
   stop and wait for the workers, remove their pending deliveries, free
   what is left. While we wait, the RTL may still run queued
   ProcessResults calls; FShuttingDown makes them only free jobs. }
+procedure TJobScheduler.BeginShutdown;
+var
+  I: Integer;
+begin
+  if FShuttingDown or FStopSignalled then
+    Exit;
+  FStopSignalled := True;
+  FOnImageReady := nil;
+  FQueue.CancelAllExcept('');
+  for I := 0 to High(FWorkers) do
+    FWorkers[I].Terminate;
+  for I := 0 to High(FWorkers) do
+    FWakeUp.SetEvent;
+end;
+
+function TJobScheduler.WorkersStopped: Boolean;
+var
+  I: Integer;
+begin
+  for I := 0 to High(FWorkers) do
+    if not (FWorkers[I].FAbandoned or FWorkers[I].Finished) then
+      Exit(False);
+  Result := True;
+end;
+
 procedure TJobScheduler.Shutdown;
 var
   I: Integer;

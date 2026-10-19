@@ -148,7 +148,7 @@ const
   AskTag = Ord('G') + 256 * Ord('W');      { a question, answer in UTF-16 }
   AnswerTag = Ord('R') + 256 * Ord('W');   { the answer }
   AnswerTagAnsi = Ord('R') + 256 * Ord('A');
-  ReplyClassName: WideString = 'VersariteMViewTCReply';
+  ReplyClassName: WideString = 'VersariteViewerTCReply';
   HwndMessage = HWND(High(PtrUInt) - 2);   { HWND_MESSAGE (-3) }
   TimeoutMs = 300;
 

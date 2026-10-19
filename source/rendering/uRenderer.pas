@@ -122,11 +122,16 @@ type
     Angle: Double;       { degrees clockwise, 0 <= Angle < 360 }
   end;
 
-  { A rectangle in pixels of the original image (edit mode selection);
-    X0 <= X1, Y0 <= Y1. }
+  { The edit mode selection: a rectangle in pixels of the original
+    image, X0 <= X1, Y0 <= Y1 - turned by Angle (Day 26, user: on a
+    turned image the frame is drawn upright on the screen, not turned
+    with the image). Angle 0: the image's own axes (as always). Else
+    X0..Y1 are in the image's pixels turned clockwise by Angle about its
+    middle (SelectionAngle: the screen's axes when it was drawn). }
   TImageRect = record
     Active: Boolean;
     X0, Y0, X1, Y1: Double;
+    Angle: Double;
   end;
 
   { The magnifier (Phase H, G6): a round lens at (X, Y) on screen,
@@ -171,6 +176,10 @@ type
     FFilterPanel: TBGRABitmap;
     FFilterPanelX, FFilterPanelY: Integer;
     FFilterPanelVersion: Cardinal;
+    { The preview strip (Day 27), along the top. }
+    FStrip: TBGRABitmap;
+    FStripX, FStripY: Integer;
+    FStripVersion: Cardinal;
     { The display filters (Phase H); FFilterVersion changes with them. }
     FFilters: TFilterSettings;
     FFilterVersion: Cardinal;
@@ -232,10 +241,18 @@ type
     { The angle the image is drawn at (the CPU renderer: quarter turns
       only). }
     function DrawAngle: Double; virtual;
-    { The selection's corners on screen (a turned rectangle); False if
-      there is none. }
+    { The selection's corners on screen; False if there is none. }
     function SelectionCorners(out APoints: array of TPoint): Boolean;
   public
+    { The angle a selection drawn now gets (Day 26): its rectangle is
+      upright on the screen. The draw angle beyond the nearest quarter
+      turn (quarter turns keep upright rectangles upright); mirrored,
+      its negative (so does a mirror). 0 for the CPU renderer (quarter
+      turns only). }
+    function SelectionAngle: Double;
+    { ASel's corners in the image's own pixels (X0 Y0, X1 Y0, X1 Y1,
+      X0 Y1 turned back); False without an image. }
+    function SelectionImageCorners(const ASel: TImageRect; out AXs, AYs: array of Double): Boolean;
     constructor Create; virtual;
     destructor Destroy; override;
 
@@ -341,6 +358,12 @@ type
     property FilterPanelX: Integer read FFilterPanelX;
     property FilterPanelY: Integer read FFilterPanelY;
     property FilterPanelVersion: Cardinal read FFilterPanelVersion;
+    { The preview strip (Day 27): nil = none. Not owned. }
+    procedure SetStrip(ABitmap: TBGRABitmap; AX, AY: Integer; AVersion: Cardinal);
+    property Strip: TBGRABitmap read FStrip;
+    property StripX: Integer read FStripX;
+    property StripY: Integer read FStripY;
+    property StripVersion: Cardinal read FStripVersion;
     { The display filters (uFilters); only the picture on screen changes,
       never the image. }
     procedure SetFilters(const AFilters: TFilterSettings);
@@ -364,7 +387,7 @@ type
     function BadgeBitmap: TBGRABitmap;
     property BadgeVersion: Cardinal read FBadgeVersion;
     { The notice in the middle ('' = none); AStyle as for the badge (1
-      light blue, 2 amber). Shown while NoticeOn. }
+      light blue, 2 amber, 3 red - a warning). Shown while NoticeOn. }
     procedure SetNotice(const AText: string; AStyle: Integer = 2);
     property NoticeText: string read FNoticeText;
     property NoticeOn: Boolean read FNoticeOn write FNoticeOn;
@@ -424,6 +447,10 @@ const
   MaxZoom: Double = 256;
 
 implementation
+
+uses
+  uExtensions,
+  uContainers;
 
 const
   ZeroD: Double = 0;
@@ -610,10 +637,15 @@ begin
     FNoticeBmp.Fill(BGRAPixelTransparent);
     if FNoticeStyle = 1 then
       Fill := BGRA(140, 200, 255, 245)
+    else if FNoticeStyle = 3 then
+      Fill := BGRA(210, 30, 30, 250)      { a warning (Day 27: disk almost full) }
     else
       Fill := BGRA(255, 190, 60, 245);
     FNoticeBmp.FillRoundRectAntialias(0, 0, FNoticeBmp.Width - 1, FNoticeBmp.Height - 1, 9, 9, Fill);
-    FNoticeBmp.TextOut(20, 10, FNoticeText, BGRA(20, 20, 20, 255));
+    if FNoticeStyle = 3 then
+      FNoticeBmp.TextOut(20, 10, FNoticeText, BGRA(255, 255, 255, 255))
+    else
+      FNoticeBmp.TextOut(20, 10, FNoticeText, BGRA(20, 20, 20, 255));
     Inc(FNoticeVersion);
   end;
   Result := FNoticeBmp;
@@ -915,7 +947,7 @@ function TRenderer.ModeLine: string;
 begin
   case FInputMode of
     imZoom:
-      Result := Format('ZOOM   %d %%      wheel = zoom at the mouse,   X1 / Esc = back',
+      Result := Format('ZOOM   %d %%      wheel = zoom at the mouse,   X1 / Esc / bottom edge = back',
         [Round(FLastScale * 100)]);
     imRotate:
       Result := Format('ROTATE   %.0f°      wheel = turn,   X2 / Esc = back',
@@ -957,7 +989,7 @@ begin
   begin
     SetLength(ALines, 3);
     ALines[0] := 'Cannot display this image';
-    ALines[1] := ExtractFileName(FImage.Key.FileName);
+    ALines[1] := DisplayItemName(FImage.Key.FileName);
     ALines[2] := FImage.ErrorMessage;
   end;
 end;
@@ -1046,25 +1078,61 @@ begin
   AY := FSurfaceHeight / 2 + FView.PanY + DX * S + DY * C;
 end;
 
+function TRenderer.SelectionAngle: Double;
+begin
+  { Only what is beyond a quarter turn: an image-axis rectangle is upright
+    at 0, 90, 180 and 270 degrees already (the old selection, untouched). }
+  Result := DrawAngle - 90.0 * Round(DrawAngle / 90.0);
+  if Abs(Result) < 1e-9 then
+    Result := 0;
+  if FFilters.Mirror then
+    Result := -Result;
+end;
+
+function TRenderer.SelectionImageCorners(const ASel: TImageRect; out AXs, AYs: array of Double): Boolean;
+var
+  LogW, LogH, I: Integer;
+  TX, TY: array[0..3] of Double;
+  CX, CY, Rad, C, S, DX, DY: Double;
+begin
+  LogicalSize(LogW, LogH);
+  Result := (LogW > 0) and (LogH > 0) and (Length(AXs) >= 4) and (Length(AYs) >= 4);
+  if not Result then
+    Exit;
+  TX[0] := ASel.X0;  TY[0] := ASel.Y0;
+  TX[1] := ASel.X1;  TY[1] := ASel.Y0;
+  TX[2] := ASel.X1;  TY[2] := ASel.Y1;
+  TX[3] := ASel.X0;  TY[3] := ASel.Y1;
+  CX := LogW / 2;
+  CY := LogH / 2;
+  { Turned back (counter-clockwise by Angle) about the middle. }
+  Rad := DegToRad(ASel.Angle);
+  C := Cos(Rad);
+  S := Sin(Rad);
+  for I := 0 to 3 do
+  begin
+    DX := TX[I] - CX;
+    DY := TY[I] - CY;
+    AXs[I] := CX + DX * C + DY * S;
+    AYs[I] := CY - DX * S + DY * C;
+  end;
+end;
+
 function TRenderer.SelectionCorners(out APoints: array of TPoint): Boolean;
 var
   SX, SY: Double;
-
-  procedure Corner(AIndex: Integer; AImgX, AImgY: Double);
-  begin
-    ImageToScreen(AImgX, AImgY, SX, SY);
-    APoints[AIndex] := Point(Round(SX), Round(SY));
-  end;
-
+  XS, YS: array[0..3] of Double;
+  I: Integer;
 begin
   Result := FSelection.Active and (FImage <> nil) and not FImage.IsError
-    and (Length(APoints) >= 4);
+    and (Length(APoints) >= 4) and SelectionImageCorners(FSelection, XS, YS);
   if not Result then
     Exit;
-  Corner(0, FSelection.X0, FSelection.Y0);
-  Corner(1, FSelection.X1, FSelection.Y0);
-  Corner(2, FSelection.X1, FSelection.Y1);
-  Corner(3, FSelection.X0, FSelection.Y1);
+  for I := 0 to 3 do
+  begin
+    ImageToScreen(XS[I], YS[I], SX, SY);
+    APoints[I] := Point(Round(SX), Round(SY));
+  end;
 end;
 
 function TRenderer.IsUploading: Boolean;
@@ -1262,6 +1330,14 @@ begin
   FPanelVersion := AVersion;
 end;
 
+procedure TRenderer.SetStrip(ABitmap: TBGRABitmap; AX, AY: Integer; AVersion: Cardinal);
+begin
+  FStrip := ABitmap;
+  FStripX := AX;
+  FStripY := AY;
+  FStripVersion := AVersion;
+end;
+
 procedure TRenderer.SetFilterPanel(ABitmap: TBGRABitmap; AX, AY: Integer; AVersion: Cardinal);
 begin
   FFilterPanel := ABitmap;
@@ -1294,6 +1370,9 @@ var
   NewImagePainted: Boolean;
   Lines: TStringArray;
   Corners: array[0..3] of TPoint;
+  LayerIndex: Integer;
+  LayerBmp: TBGRABitmap;
+  LayerLeft, LayerTop: Integer;
 begin
   StartMs := BeginPaint(AWidth, AHeight);
 
@@ -1328,6 +1407,19 @@ begin
       ACanvas.Polygon(Corners);
       ACanvas.Brush.Style := bsSolid;
     end;
+    { Plug-in layers (uExtensions, M0: the microscopy edition's scale bar
+      and measuring line), over the image, under the texts and panels. }
+    for LayerIndex := 0 to OverlayLayerCount - 1 do
+    begin
+      { A layer's fault costs its picture, not the paint. }
+      try
+        LayerBmp := OverlayLayer(LayerIndex).Picture(Self, AWidth, AHeight, LayerLeft, LayerTop);
+      except
+        LayerBmp := nil;
+      end;
+      if LayerBmp <> nil then
+        LayerBmp.Draw(ACanvas, LayerLeft, LayerTop, False);
+    end;
   end;
 
   { Measured before the overlays, so the numbers can be shown in this
@@ -1348,6 +1440,8 @@ begin
     Panel.Draw(ACanvas, PanelX, PanelY, False);
   if Assigned(FilterPanel) then
     FilterPanel.Draw(ACanvas, FilterPanelX, FilterPanelY, False);
+  if Assigned(Strip) then
+    Strip.Draw(ACanvas, StripX, StripY, False);
 
   if NewImagePainted then
     ReportPainted;
