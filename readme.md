@@ -16,7 +16,7 @@ got its new name, VersariteViewer; the settings of an earlier version are taken 
 Microscopy-specific work continues in a separate **microscopy edition**, Versarite Image Lab
 (see [What comes next](#what-comes-next-the-microscopy-edition)).
 
-![VersariteViewer Overview](docs/VersariteViewer_screenshot_full.png)
+![VersariteViewer Overview](docs/VersariteViewer_welcome.png)
 
 > **Dedicated to Hamana** - written by Makito Miyano (last version 1.48, 2006),
 > the viewer that showed how browsing images should feel:
