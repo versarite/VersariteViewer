@@ -24,7 +24,7 @@ first thing to read before changing a unit; this document is the map that ties t
 # What changed since 1.0
 
 The program is now called **VersariteViewer** (formerly MView); its microscopy edition is
-**Versarite Image Lab**. The project files are VersariteViewer.lpi / .lpr (the edition: VersariteViewerLab.lpi / .lpr); the
+**Versarite Image Lab**. The project files are VersariteViewer.lpi / .lpr (the edition: VersariteImageLab.lpi / .lpr); the
 units keep their names (uMView, TMView …). The program is VersariteViewer.exe, its settings
 VersariteViewer.ini (an MView.ini is taken over at the first start).
 
@@ -177,6 +177,6 @@ uSafeFile.
 
 **Versarite Image Lab** (metadata, calibration, measuring, scale bar, movies, image editing, Fiji
 through Fiji itself) is a second program built from this same source tree: its own project file
-(VersariteViewerLab.lpi), its units in `source\microscopy\`, plugged in through uEdition, uExtensions and
+(VersariteImageLab.lpi), its units in `source\microscopy\`, plugged in through uEdition, uExtensions and
 uContainers. It is in development and not part of this repository. Planned there: RAR archives,
 Nikon .nd2 files. Planned for 1.2: a CBZ read as one continuous strip, a true lossless crop.

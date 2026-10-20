@@ -271,7 +271,8 @@ uses
   uTCFollow,
   uDirPeek,
   uExifOrientation,
-  uImageFormats;
+  uImageFormats,
+  uExtensions;   { TBurnInMap (1.1: the figure source) }
 
 type
 
@@ -415,6 +416,9 @@ type
       FStripKey: the folder / count the strip's list was made from;
       FStripPress: the file pressed on (-1 = none). }
     FStrip: TPreviewStrip;
+    { [View] PreviewStrip (1.1): the pinned strip of the last session was
+      opened again (with the first image). }
+    FStripRestored: Boolean;
     FStripThumbs: TFolderThumbs;
     FStripKey: string;
     FStripPress: Integer;
@@ -451,6 +455,10 @@ type
     FClimbStep: TCommand;
     FClimbGeneration: Cardinal;
     FClimbSinceMs: Double;
+    { 1.1 (user): a climb out of a folder without images (no image to
+      come back to): the step starts from this folder in the larger
+      tree, not from its top. '' = from the current image. }
+    FClimbFrom: string;
     FPanelPressButton: TOverlayButton;
     { The layer (uExtensions' TOverlayLayer) that took a button press: it
       alone gets the release, wherever it is (M0). }
@@ -601,6 +609,8 @@ type
     procedure CheckDiskSpace;
     procedure CycleSortList(ADir: Integer);
     procedure SetPreviewStrip(AShow, AByEdge: Boolean);
+    { [View] PreviewStrip (1.1): written when the pinned strip changed. }
+    procedure RememberPreviewStrip;
     procedure SyncStrip(AForce: Boolean = False);
     procedure UpdateStrip(ARequest: Boolean = True);
     procedure HandleStripThumb(const AFileName: string; ABitmap: TBGRABitmap);
@@ -697,6 +707,8 @@ type
     procedure StopDirPreview;
     procedure StepDirPreview;
     function DirPreviewQuick: Boolean;
+    function DirPreviewPaused: Boolean;
+    function DirPreviewPlaysGif: Boolean;
     procedure HandleDirPeek(const AFolder: string; AImages, AFolders: Integer);
     function HandleLensMouse(AKind: TOverlayMouseKind; AButton: TOverlayButton;
       AX, AY, AWheel: Integer; AButtonDown: Boolean): Boolean;
@@ -707,6 +719,15 @@ type
     function UseRecursive: Boolean;
     procedure UserFilters(const AFilters: TFilterSettings);
     function BestPixels: IDecodedImage;
+    { The filters, mirror and turn into a copy of AImg's pixels (as on
+      screen); AMap: image pixels -> the copy's; AFullW / AFullH: the
+      image's full size in, the copy's out (1.1: shared by "Apply filters
+      to a copy" and the SVG figure). }
+    function BuildTurnedCopy(const AImg: IDecodedImage; AAngle: Double; out AMap: TBurnInMap;
+      var AFullW, AFullH: Integer): TBGRABitmap;
+    { uExtensions' figure source (1.1). }
+    function FigureSource(out ABitmap: TBGRABitmap; out AMap: TBurnInMap;
+      out AImageName, ASourceName, AFolder, AError: string; out AQuick: Boolean): Boolean;
     function HandleFilterMouse(AKind: TOverlayMouseKind; AButton: TOverlayButton;
       AX, AY, AWheel: Integer; AButtonDown, ADouble: Boolean): Boolean;
   public
@@ -936,7 +957,6 @@ uses
   uMouseEngine,
   uIconFile,
   uTotalCommander,
-  uExtensions,
   uImageScaling,
   uClipboardImage,
   uSafeFile,
@@ -1036,8 +1056,10 @@ begin
     FConfig.Save;
   end;
 
-  { No layer repaints a viewer that is going. }
+  { No layer repaints a viewer that is going; no figure from it. }
   OnOverlayChanged := nil;
+  OnViewerNote := nil;
+  UnregisterFigureSource(Self);
 
   Shutdown;
 
@@ -1085,8 +1107,10 @@ begin
     FConfig.Save;
     FSettingsSaved := True;
   end;
-  { No layer repaints a viewer that is going. }
+  { No layer repaints a viewer that is going; no figure from it. }
   OnOverlayChanged := nil;
+  OnViewerNote := nil;
+  UnregisterFigureSource(Self);
   StopAnimation;
   CancelStackLoad;
   if Assigned(FIcons) then
@@ -1274,6 +1298,8 @@ begin
   FPanel.OnEntryDetails := @PanelEntryDetails;
   { The edition's overlay layers repaint the view (uExtensions, M0). }
   OnOverlayChanged := @HandleOverlayLayerChanged;
+  RegisterFigureSource(@FigureSource);
+  OnViewerNote := @StatusNote;
   if FPanel.Pinned then
     FPanel.Show;
 
@@ -1391,6 +1417,7 @@ var
 begin
   FKeepScratch := False;   { StartWithPaste sets it again, after this }
   FClimbing := False;      { ClimbUp sets it again, after this }
+  FClimbFrom := '';
   { The scanner is stuck in an earlier request: a new one wouldn't be
     looked at. }
   if FScanner.LastAliveAgeMs > ScannerStuckMs then
@@ -1775,6 +1802,14 @@ begin
     when its better version arrives). }
   if FAutoOn and Assigned(AImage) and not AImage.IsError then
     ApplyAuto(False);
+  { The preview strip pinned in the last session (1.1): open again with
+    the first image of the folder. }
+  if (not FStripRestored) and FNavigator.HasCurrentImage and Assigned(FSurface) then
+  begin
+    FStripRestored := True;
+    if FConfig.PreviewStrip then
+      SetPreviewStrip(True, False);
+  end;
   { Animated: play (not while skimming past it). }
   if Assigned(AImage) and (AImage.Animation <> nil) and not FSkim then
     StartAnimation(AImage)
@@ -1809,6 +1844,10 @@ begin
   end;
   FAnimTimer.Interval := Max(1, Round(FAnimClock.MsUntilNext(NowMs)));
   FAnimTimer.Enabled := True;
+  { The dir preview (1.1): the GIF's time starts when it starts playing,
+    not when its first frame came. }
+  if (FDirFolder <> '') and (FDirNextMs <> 0) then
+    FDirNextMs := NowMs + FConfig.DirPreviewDelayMs;
 end;
 
 procedure TMView.StopAnimation;
@@ -2013,6 +2052,26 @@ begin
     Exit;
   end;
 
+  { Climbing out of a folder without images (1.1): the step goes on from
+    that folder's place in the new tree. Not shown in between: SetTree
+    moves an empty start on to the first folder with images, which is not
+    where the step should land. }
+  if FClimbing and (AGeneration = FClimbGeneration) and (FClimbFrom <> '')
+    and not FShowingPaste then
+  begin
+    FNavigator.SetTree(ATree);
+    FNavigator.EnterDirectory(FClimbFrom);
+    FClimbFrom := '';
+    FClimbing := False;
+    FConfig.LastDirectory := FNavigator.RootDirectory;
+    ShowStatus('browsing from ' + FNavigator.RootDirectory + '  (one level up)', 4000);
+    Navigate(FClimbStep);
+    { Nothing found and no further climb: "No images found". }
+    if (not FClimbing) and not FNavigator.HasCurrentImage then
+      ShowCurrent;
+    Exit;
+  end;
+
   { The scanner may have chosen another root. A pasted or cropped image
     on screen stays. }
   if FNavigator.SetTree(ATree) and not FShowingPaste then
@@ -2086,8 +2145,15 @@ begin
   end;
 
   { The end of the tree with ClimbUp: one level up, and the same step
-    there once its tree is known (Day 22). }
-  if (not Moved) and FNavigator.ClimbWanted then
+    there once its tree is known (Day 22). Also without ClimbUp when
+    there is nothing at all to step to (1.1, user: a deep folder with no
+    images under it was a dead end; only "up" got out): the whole tree
+    has no image. Not while following Total Commander (it decides the
+    folder) and not without subfolders (the parent's tree would be
+    flat as well). }
+  if (not Moved) and (FNavigator.ClimbWanted
+    or ((not FNavigator.HasCurrentImage) and FNavigator.TreeReady
+      and FNavigator.CanClimbUp and not TCFolderLock)) then
   begin
     if SkimEnded then
       LeaveSkim;
@@ -2114,6 +2180,10 @@ begin
   if (Parent = '') or SameText(Parent, Root) then
     Exit;
   OpenMedia(Parent, FNavigator.CurrentFileName, True);
+  { No image to come back to: remember where we are (OpenMedia cleared
+    it), so the step goes on from this folder, not from the parent's top. }
+  if not FNavigator.HasCurrentImage then
+    FClimbFrom := ExcludeTrailingPathDelimiter(FNavigator.CurrentDirectory);
   FClimbing := True;
   FClimbSinceMs := NowMs;
   FClimbStep := ACommand;
@@ -2401,10 +2471,14 @@ begin
     cmdPreviewStrip:
       if Round(AArgs.Value) = 1 then
         SetPreviewStrip(True, True)
-      else if FStrip.Visible and not FStrip.Pinned then
-        FStrip.Pinned := True
       else
-        SetPreviewStrip(not FStrip.Visible, False);
+      begin
+        if FStrip.Visible and not FStrip.Pinned then
+          FStrip.Pinned := True
+        else
+          SetPreviewStrip(not FStrip.Visible, False);
+        RememberPreviewStrip;
+      end;
 
     cmdExit:
       begin
@@ -3432,7 +3506,10 @@ begin
     ShowNote('cut cancelled', 2000);
   end
   else if Assigned(FStrip) and FStrip.Visible then
-    SetPreviewStrip(False, False)
+  begin
+    SetPreviewStrip(False, False);
+    RememberPreviewStrip;
+  end
   else if MagnifierOn then
     SetMagnifier(False)
   else if Assigned(FFilterPanel) and FFilterPanel.Visible then
@@ -3911,6 +3988,11 @@ begin
     quick views only, unless it plays everything slowly). }
   if (not FFullAllowed) and (FShownFile <> '') and FNavigator.HasCurrentImage
     and (NowMs - FShownSinceMs >= FConfig.RefineDelayMs) and not DirPreviewQuick then
+    AllowFull;
+  { A GIF in a slow dir preview (1.1): its frames at once, without the
+    pause (they have only DirPreviewDelayMs). }
+  if (not FFullAllowed) and (FShownFile <> '') and FNavigator.HasCurrentImage
+    and DirPreviewPlaysGif then
     AllowFull;
 end;
 
@@ -4849,6 +4931,14 @@ begin
   UpdateStrip;
 end;
 
+procedure TMView.RememberPreviewStrip;
+begin
+  if FConfig.PreviewStrip = PreviewStripPinned then
+    Exit;
+  FConfig.PreviewStrip := PreviewStripPinned;
+  FConfig.SavePreviewStrip;
+end;
+
 { The strip's list follows the folder and the image shown: the list is
   made again only when the folder or its count changed. }
 procedure TMView.SyncStrip(AForce: Boolean);
@@ -5751,8 +5841,26 @@ end;
 
 function TMView.DirPreviewQuick: Boolean;
 begin
-  Result := (FDirFolder <> '')
+  Result := (FDirFolder <> '') and not DirPreviewPaused
     and not ((FConfig.DirPreviewFiles = 0) and (FConfig.DirPreviewDelayMs > 1000));
+end;
+
+{ 1.1 (user): with VersariteViewer's own window in front (it has the
+  focus, not Total Commander), the dir preview waits: no slide show, and
+  the image shown gets its full version as usual, so a GIF plays. Total
+  Commander in front again: the preview goes on. }
+function TMView.DirPreviewPaused: Boolean;
+begin
+  Result := (FDirFolder <> '') and Application.Active;
+end;
+
+{ 1.1 (user): DirPreviewDelayMs above 1000 ms: an animated GIF in the
+  preview plays (its frames come with the full version) for that time,
+  instead of showing only its first frame. }
+function TMView.DirPreviewPlaysGif: Boolean;
+begin
+  Result := (FDirFolder <> '') and (FConfig.DirPreviewDelayMs > 1000)
+    and SameText(ExtractFileExt(FShownFile), '.gif');
 end;
 
 { PumpDeliveries: the next of the folder's first images, round and round,
@@ -5765,6 +5873,14 @@ begin
   if not FNavigator.HasCurrentImage
     or not SameText(ExcludeTrailingPathDelimiter(FNavigator.CurrentDirectory), FDirFolder) then
     Exit;                       { still opening }
+  { VersariteViewer in front: the slide show waits, and starts its time
+    afresh when Total Commander is in front again. }
+  if DirPreviewPaused then
+  begin
+    if FDirNextMs <> 0 then
+      FDirNextMs := NowMs + FConfig.DirPreviewDelayMs;
+    Exit;
+  end;
   if FDirNextMs = 0 then
   begin
     FDirNextMs := NowMs + FConfig.DirPreviewDelayMs;
@@ -6044,11 +6160,121 @@ end;
 { The filters into the pixels of a copy, shown like a crop (Save / Save
   as / the sort panel write it); the file is never changed. The copy is
   shown unfiltered (it has them already). }
+function TMView.BuildTurnedCopy(const AImg: IDecodedImage; AAngle: Double; out AMap: TBurnInMap;
+  var AFullW, AFullH: Integer): TBGRABitmap;
+var
+  Turned: TBGRABitmap;
+  SrcW, SrcH: Integer;
+begin
+  Result := AImg.Bitmap.Duplicate as TBGRABitmap;
+  ApplyFiltersToBitmap(Result, FFilters, True);
+  { The way from the image's pixels to the copy's (the measuring line
+    is kept in full-size pixels), before AFullW / AFullH turn. }
+  AMap.ScaleX := Result.Width / AFullW;
+  AMap.ScaleY := Result.Height / AFullH;
+  AMap.SourceWidth := Result.Width;
+  AMap.SourceHeight := Result.Height;
+  AMap.Mirror := FFilters.Mirror;
+  AMap.Angle := AAngle;
+  { The rotation too (user, Day 24), after the mirror, as on screen;
+    the corners of an oblique turn black. }
+  if AAngle <> 0 then
+  begin
+    SrcW := Result.Width;
+    SrcH := Result.Height;
+    Turned := RotatedBitmap(Result, AAngle, BGRABlack);
+    Result.Free;
+    Result := Turned;
+    if Abs(AAngle - 90.0 * Round(AAngle / 90.0)) < 0.01 then
+    begin
+      { A quarter turn: the full size exactly (swapped if odd). }
+      if Odd(Round(AAngle / 90.0)) then
+      begin
+        SrcW := AFullW;
+        AFullW := AFullH;
+        AFullH := SrcW;
+      end;
+    end
+    else
+    begin
+      { Oblique: the full size grows with the picture (a quick view is
+        smaller than the full image). }
+      AFullW := Max(1, Round(Result.Width * AFullW / SrcW));
+      AFullH := Max(1, Round(Result.Height * AFullH / SrcH));
+    end;
+  end;
+  AMap.Width := Result.Width;
+  AMap.Height := Result.Height;
+end;
+
+function TMView.FigureSource(out ABitmap: TBGRABitmap; out AMap: TBurnInMap;
+  out AImageName, ASourceName, AFolder, AError: string; out AQuick: Boolean): Boolean;
+var
+  Img: IDecodedImage;
+  FullW, FullH: Integer;
+  Reason: string;
+  OldCursor: TCursor;
+begin
+  Result := False;
+  ABitmap := nil;
+  AImageName := '';
+  ASourceName := '';
+  AFolder := '';
+  AError := '';
+  AQuick := False;
+  if (FCurrentImage = nil) or FCurrentImage.IsError then
+  begin
+    AError := 'no image is shown';
+    Exit;
+  end;
+  Img := BestPixels;
+  if Img = nil then
+  begin
+    AError := 'the image is not in memory (yet)';
+    Exit;
+  end;
+  if not DecodeFits(Img.Bitmap.Width, Img.Bitmap.Height, 0, Reason) then
+  begin
+    AError := Reason;
+    Exit;
+  end;
+  FullW := Img.FullWidth;
+  FullH := Img.FullHeight;
+  if (FullW <= 0) or (FullH <= 0) then
+  begin
+    FullW := Img.Bitmap.Width;
+    FullH := Img.Bitmap.Height;
+  end;
+  OldCursor := Screen.Cursor;
+  Screen.Cursor := crHourGlass;
+  try
+    ABitmap := BuildTurnedCopy(Img, FRenderer.View.Angle, AMap, FullW, FullH);
+  finally
+    Screen.Cursor := OldCursor;
+  end;
+  AImageName := FCurrentImage.Key.FileName;
+  AQuick := Img.Quality < qlFull;
+  if FShowingPaste then
+  begin
+    ASourceName := FScratchPrefix;
+    AFolder := '';
+  end
+  else
+  begin
+    ASourceName := ItemBaseName(AImageName);
+    AFolder := ItemDirectory(AImageName);
+  end;
+  { A pasted or derived image, or a folder that is gone: the save folder. }
+  if (AFolder = '') or not DirectoryExists(AFolder) then
+    AFolder := FConfig.SaveDirectory;
+  Result := True;
+end;
+
 procedure TMView.ApplyFiltersToCopy;
 var
   Img, Copied: IDecodedImage;
-  Bmp, Turned: TBGRABitmap;
-  FullW, FullH, SrcW, SrcH: Integer;
+  Bmp: TBGRABitmap;
+  FullW, FullH: Integer;
   Angle: Double;
   Key: TImageKey;
   Reason, SourceName, Suffix, Note, LayerName, BurnName: string;
@@ -6093,43 +6319,7 @@ begin
   OldCursor := Screen.Cursor;
   Screen.Cursor := crHourGlass;
   try
-    Bmp := Img.Bitmap.Duplicate as TBGRABitmap;
-    ApplyFiltersToBitmap(Bmp, FFilters, True);
-    { The way from the image's pixels to the copy's (the measuring line
-      is kept in full-size pixels), before FullW / FullH turn. }
-    Map.ScaleX := Bmp.Width / FullW;
-    Map.ScaleY := Bmp.Height / FullH;
-    Map.SourceWidth := Bmp.Width;
-    Map.SourceHeight := Bmp.Height;
-    Map.Mirror := FFilters.Mirror;
-    Map.Angle := Angle;
-    { The rotation too (user, Day 24), after the mirror, as on screen;
-      the corners of an oblique turn black. }
-    if Angle <> 0 then
-    begin
-      SrcW := Bmp.Width;
-      SrcH := Bmp.Height;
-      Turned := RotatedBitmap(Bmp, Angle, BGRABlack);
-      Bmp.Free;
-      Bmp := Turned;
-      if Abs(Angle - 90.0 * Round(Angle / 90.0)) < 0.01 then
-      begin
-        { A quarter turn: the full size exactly (swapped if odd). }
-        if Odd(Round(Angle / 90.0)) then
-        begin
-          SrcW := FullW;
-          FullW := FullH;
-          FullH := SrcW;
-        end;
-      end
-      else
-      begin
-        { Oblique: the full size grows with the picture (a quick view is
-          smaller than the full image). }
-        FullW := Max(1, Round(Bmp.Width * FullW / SrcW));
-        FullH := Max(1, Round(Bmp.Height * FullH / SrcH));
-      end;
-    end;
+    Bmp := BuildTurnedCopy(Img, Angle, Map, FullW, FullH);
     { Last: the edition's layers (the measuring line) upright on the
       finished copy, as on screen (Day 26, user). }
     if BurnIn then

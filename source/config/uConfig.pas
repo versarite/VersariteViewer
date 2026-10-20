@@ -129,6 +129,7 @@ type
     FPanelOpacity    : Integer;
     FOverlaySolid    : Boolean;
     FOverlayColor    : string;
+    FPreviewStrip    : Boolean;
 
     { Navigation }
 
@@ -232,6 +233,8 @@ type
     { Writes only [Window] Left/Top/Width/Height (other keys, and any
       unsaved text in the settings editor, stay as they are). }
     procedure SaveWindowBounds;
+    { Writes only [View] PreviewStrip (1.1). }
+    procedure SavePreviewStrip;
 
     { Full path of MView.ini (next to MView.exe). }
     property IniFileName: string read FIniFileName;
@@ -283,6 +286,9 @@ type
     property OverlaySolid    : Boolean read FOverlaySolid;
     { Colour of the texts over the image: White, Yellow or Red. }
     property OverlayColor    : string  read FOverlayColor;
+    { [View] PreviewStrip (1.1, user): the preview strip at the top is
+      pinned open; written when it is switched on / off. }
+    property PreviewStrip    : Boolean read FPreviewStrip write FPreviewStrip;
 
     { Navigation }
 
@@ -502,6 +508,7 @@ const
   KEY_PANEL_OPACITY     = 'PanelOpacity';
   KEY_OVERLAY_SOLID     = 'OverlaySolid';
   KEY_OVERLAY_COLOR     = 'OverlayColor';
+  KEY_PREVIEW_STRIP     = 'PreviewStrip';
   KEY_ZONES_ENABLED     = 'ZonesEnabled';
   KEY_EDGE_WIDTH        = 'EdgeWidth';
   KEY_BOTTOM_EDGE_MS    = 'BottomEdgeMs';
@@ -689,6 +696,7 @@ begin
   FPanelOpacity    := 80;
   FOverlaySolid    := False;
   FOverlayColor    := 'White';
+  FPreviewStrip    := False;
   FZonesEnabled    := True;
   FEdgeWidth       := 12;
   FBottomEdgeMs    := 1000;
@@ -860,6 +868,7 @@ begin
     FPanelOpacity    := Ini.ReadInteger(SEC_VIEW, KEY_PANEL_OPACITY, FPanelOpacity);
     FOverlaySolid    := Ini.ReadBool(SEC_VIEW, KEY_OVERLAY_SOLID, FOverlaySolid);
     FOverlayColor    := Trim(Ini.ReadString(SEC_VIEW, KEY_OVERLAY_COLOR, FOverlayColor));
+    FPreviewStrip    := Ini.ReadBool(SEC_VIEW, KEY_PREVIEW_STRIP, FPreviewStrip);
 
     FSortMode   := StringToSortMode(Ini.ReadString(SEC_NAVIGATION, KEY_SORT_MODE, ''), FSortMode);
     FRecursive  := Ini.ReadBool(SEC_NAVIGATION, KEY_RECURSIVE, FRecursive);
@@ -971,6 +980,7 @@ begin
     Ini.WriteInteger(SEC_VIEW, KEY_PANEL_OPACITY, FPanelOpacity);
     Ini.WriteBool(SEC_VIEW, KEY_OVERLAY_SOLID, FOverlaySolid);
     Ini.WriteString(SEC_VIEW, KEY_OVERLAY_COLOR, FOverlayColor);
+    Ini.WriteBool(SEC_VIEW, KEY_PREVIEW_STRIP, FPreviewStrip);
 
     Ini.WriteString(SEC_NAVIGATION, KEY_SORT_MODE, SortModeToString(FSortMode));
     Ini.WriteBool(SEC_NAVIGATION, KEY_RECURSIVE, FRecursive);
@@ -1187,7 +1197,7 @@ type
   end;
 
 const
-  KeyHelpTable: array[0..44] of TKeyHelp = (
+  KeyHelpTable: array[0..45] of TKeyHelp = (
     (Section: SEC_STARTUP; Key: KEY_OPEN_LAST_SESSION;
      Text: 'Not used any more: started without a file or folder, VersariteViewer shows this editor; "View images" opens the last session.'),
     (Section: SEC_STARTUP; Key: KEY_LAST_DIRECTORY;
@@ -1295,6 +1305,10 @@ const
     (Section: SEC_VIEW; Key: KEY_OVERLAY_COLOR;
      Text: 'Colour of the texts over the image:' + LineEnding
        + 'White   (default)' + LineEnding + 'Yellow' + LineEnding + 'Red'),
+    (Section: SEC_VIEW; Key: KEY_PREVIEW_STRIP;
+     Text: '1 = the preview strip (the folder''s images along the top) stays open, also after a '
+       + 'restart. Written by VersariteViewer when it is switched on / off (right-click menu, '
+       + 'Esc, the PreviewStrip command).'),
     (Section: SEC_RENDERER; Key: KEY_USE_MIPMAPS;
      Text: '1 = smooth reduced images on the GPU (mipmaps).'),
     (Section: SEC_RENDERER; Key: KEY_USE_GPU;
@@ -1530,6 +1544,23 @@ begin
     end;
   except
     { A read-only folder: the window just opens at its default place. }
+  end;
+end;
+
+procedure TConfig.SavePreviewStrip;
+var
+  Ini: TMemIniFile;
+begin
+  try
+    Ini := OpenIniFile(FIniFileName);
+    try
+      Ini.WriteBool(SEC_VIEW, KEY_PREVIEW_STRIP, FPreviewStrip);
+      CommitIni(Ini, FIniFileName, False);
+    finally
+      Ini.Free;
+    end;
+  except
+    { A read-only folder: it just isn't remembered. }
   end;
 end;
 

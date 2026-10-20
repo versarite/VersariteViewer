@@ -123,7 +123,7 @@ unit uMainForm;
 
   Used by
   -------
-  VersariteViewer.lpr, VersariteViewerLab.lpr (programs)
+  VersariteViewer.lpr, VersariteImageLab.lpr (programs)
 }
 
 {$mode ObjFPC}{$H+}
@@ -211,6 +211,9 @@ type
     FSideBounds: TRect;
     FSideHaveBounds: Boolean;
     FSideRight: TRect;
+    { 1.1 (user): MView's half; fullscreen while side by side comes back
+      to it (next to Total Commander), not to the place before. }
+    FSideLeft: TRect;
     FSideWaitUntil: QWord;       { 0 = not waiting }
     FSideAgainAt: QWord;         { place it once more then (it may move itself); 0 = no }
     { The same on the settings screen: its own timer (the viewer's isn't
@@ -1085,6 +1088,7 @@ begin
   Work := Monitor.WorkareaRect;
   Mid := Work.Left + (Work.Right - Work.Left) div 2;
   LeftHalf := Rect(Work.Left, Work.Top, Mid, Work.Bottom);
+  FSideLeft := LeftHalf;
   FSideRight := Rect(Mid, Work.Top, Work.Right, Work.Bottom);
   if WindowState <> wsNormal then
     WindowState := wsNormal;
@@ -2506,16 +2510,27 @@ begin
 end;
 
 procedure TMainForm.HandleToggleFullscreen(Sender: TObject);
+var
+  Wnd: THandle;
 begin
-  { Fullscreen ends side by side (Total Commander stays where it is);
-    the place before comes back first, so fullscreen returns to it. }
+  { Side by side stays on through fullscreen (1.1, user): leaving
+    fullscreen puts MView back next to Total Commander (its half, and
+    Total Commander on its own half again), not at the place before. The
+    side-by-side menu entry still goes back to the place before. }
   if FSideBySide then
   begin
-    FSideBySide := False;
-    FSideWaitUntil := 0;
-    FSideAgainAt := 0;
-    if FSideHaveBounds and not FFullscreen then
-      BoundsRect := FSideBounds;
+    if not FFullscreen then
+    begin
+      SetFullscreen(True);
+      Exit;
+    end;
+    SetFullscreen(False);
+    if not PlaceWindow(Handle, FSideLeft) then
+      BoundsRect := FSideLeft;
+    Wnd := FindTotalCommanderWindow;
+    if Wnd <> 0 then
+      PlaceWindow(Wnd, FSideRight);
+    Exit;
   end;
   SetFullscreen(not FFullscreen);
 end;
@@ -2631,10 +2646,20 @@ begin
     FSideBySide := False;
     FSideWaitUntil := 0;
     FSideAgainAt := 0;
-    if FSideHaveBounds then
-      BoundsRect := FSideBounds;
-    if FSideWasFullscreen then
-      SetFullscreen(True);
+    if FFullscreen then
+    begin
+      { Fullscreen meanwhile (1.1): it stays; leaving it later goes to
+        the place before side by side. }
+      if FSideHaveBounds then
+        FNormalBounds := FSideBounds;
+    end
+    else
+    begin
+      if FSideHaveBounds then
+        BoundsRect := FSideBounds;
+      if FSideWasFullscreen then
+        SetFullscreen(True);
+    end;
     FMView.ShowNote('back from side by side (Total Commander stays where it is)', 4000);
     Exit;
   end;
@@ -2655,6 +2680,7 @@ begin
   Work := Monitor.WorkareaRect;
   Mid := Work.Left + (Work.Right - Work.Left) div 2;
   LeftHalf := Rect(Work.Left, Work.Top, Mid, Work.Bottom);
+  FSideLeft := LeftHalf;
   FSideRight := Rect(Mid, Work.Top, Work.Right, Work.Bottom);
 
   if FFullscreen then

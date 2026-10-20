@@ -52,7 +52,7 @@ unit uSingleInstance;
 
   Used by
   -------
-  VersariteViewer.lpr, VersariteViewerLab.lpr
+  VersariteViewer.lpr, VersariteImageLab.lpr
 }
 
 {$mode ObjFPC}{$H+}

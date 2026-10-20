@@ -206,6 +206,10 @@ type
     function RemoveFile(const AFileName: string): Boolean;
     procedure AddFile(const AFileName: string; ASize: Int64; AModified: TDateTime);
     function SelectFile(const AFileName: string): Boolean;
+    { 1.1: makes ADirectory (a folder of the tree) the current folder, on
+      its first image, or on none if it has none. The next folder step
+      then starts from its place in the tree. }
+    procedure EnterDirectory(const ADirectory: string);
     { The current folder's images in the current order (the preview
       strip, Day 27). }
     function CurrentFiles: TStringArray;
@@ -844,6 +848,11 @@ begin
   Result := Idx >= 0;
   if Result then
     FCurrentIndex := Idx;
+end;
+
+procedure TNavigator.EnterDirectory(const ADirectory: string);
+begin
+  ScanImages(ExcludeTrailingPathDelimiter(ADirectory));
 end;
 
 procedure TNavigator.SetSortMode(AMode: TSortMode);

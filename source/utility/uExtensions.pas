@@ -164,6 +164,12 @@ type
       ('56,32um'), or ''. }
     function BurnIn(ABitmap: TBGRABitmap; const AImageName: string;
       const AMap: TBurnInMap): string; virtual;
+    { The SVG figure (1.1): the layer's name there ('Measurements';
+      '' = not in figures) and its elements in the copy's pixels (as
+      BurnIn, but as vectors and text: editable later), '' = nothing for
+      AImageName. }
+    function SvgLayerName: string; virtual;
+    function SvgMarkup(const AImageName: string; const AMap: TBurnInMap): string; virtual;
   end;
 
 { The registry owns ALayer from now on. }
@@ -179,6 +185,27 @@ function OverlayCanBurnIn(const AImageName: string): Boolean;
 function OverlayBurnIn(ABitmap: TBGRABitmap; const AImageName: string;
   const AMap: TBurnInMap): string;
 
+{ ---- The figure (1.1): the image as shown, for an SVG export ---- }
+
+type
+  { The current image's pixels as "Apply filters to a copy" makes them
+    (filters, mirror, turn; no layer burned in): ABitmap (the caller
+    frees it) and AMap (the layers' image pixels -> its pixels; Width /
+    Height set). AImageName: the name the layers know the image by;
+    ASourceName: a short name for the file; AFolder: where the image
+    is (or the save folder); AQuick: from the quick view (the full
+    image not loaded yet). False and AError if there is none. }
+  TFigureSourceFunc = function(out ABitmap: TBGRABitmap; out AMap: TBurnInMap;
+    out AImageName, ASourceName, AFolder, AError: string; out AQuick: Boolean): Boolean of object;
+
+{ The viewer offers it (TMView); nil = none. Unregister only removes
+  AOwner's own. }
+procedure RegisterFigureSource(ASource: TFigureSourceFunc);
+procedure UnregisterFigureSource(AOwner: TObject);
+function FigureSourceAvailable: Boolean;
+function MakeFigure(out ABitmap: TBGRABitmap; out AMap: TBurnInMap;
+  out AImageName, ASourceName, AFolder, AError: string; out AQuick: Boolean): Boolean;
+
 { An edition's popup menu (the left panel's scale list) is open: the
   main form keeps the mouse pointer from hiding meanwhile (Day 26: it
   vanished outside the menu). Call with True before PopUp, False after. }
@@ -186,10 +213,17 @@ procedure NoteMenuOpen(AOpen: Boolean);
 
 type
   TMenuOpenEvent = procedure(AOpen: Boolean) of object;
+  TViewerNoteEvent = procedure(const AText: string; ADurationMs: Double) of object;
 
 var
   OnOverlayChanged: TNotifyEvent = nil;
   OnMenuOpen: TMenuOpenEvent = nil;   { set by the main form }
+  { 1.1: a note in the viewer's info line (set by TMView). }
+  OnViewerNote: TViewerNoteEvent = nil;
+
+{ A note in the viewer's info line for ADurationMs (nothing without a
+  viewer). }
+procedure ViewerNote(const AText: string; ADurationMs: Double);
 
 { ---- Menu entries ---- }
 
@@ -413,6 +447,48 @@ begin
   Result := '';
 end;
 
+function TOverlayLayer.SvgLayerName: string;
+begin
+  Result := '';
+end;
+
+function TOverlayLayer.SvgMarkup(const AImageName: string; const AMap: TBurnInMap): string;
+begin
+  Result := '';
+end;
+
+var
+  FigureSource: TFigureSourceFunc = nil;
+
+procedure RegisterFigureSource(ASource: TFigureSourceFunc);
+begin
+  FigureSource := ASource;
+end;
+
+procedure UnregisterFigureSource(AOwner: TObject);
+begin
+  if Assigned(FigureSource) and (TMethod(FigureSource).Data = Pointer(AOwner)) then
+    FigureSource := nil;
+end;
+
+function FigureSourceAvailable: Boolean;
+begin
+  Result := Assigned(FigureSource);
+end;
+
+function MakeFigure(out ABitmap: TBGRABitmap; out AMap: TBurnInMap;
+  out AImageName, ASourceName, AFolder, AError: string; out AQuick: Boolean): Boolean;
+begin
+  ABitmap := nil;
+  AImageName := '';
+  ASourceName := '';
+  AFolder := '';
+  AQuick := False;
+  AError := 'no image';
+  Result := Assigned(FigureSource)
+    and FigureSource(ABitmap, AMap, AImageName, ASourceName, AFolder, AError, AQuick);
+end;
+
 procedure BurnInPoint(const AMap: TBurnInMap; AX, AY: Double; out ACopyX, ACopyY: Double);
 var
   X, Y, Rad, C, S, DX, DY: Double;
@@ -503,6 +579,12 @@ begin
   except
     { An edition's fault never reaches the viewer. }
   end;
+end;
+
+procedure ViewerNote(const AText: string; ADurationMs: Double);
+begin
+  if Assigned(OnViewerNote) then
+    OnViewerNote(AText, ADurationMs);
 end;
 
 procedure NoteMenuOpen(AOpen: Boolean);

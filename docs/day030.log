@@ -57,3 +57,51 @@ The user's answers first:
 
 Tests: TestNavigation 153, TestSort 135, TestExif 38, TestExtensions 71,
 TestCalibrations 42 - all pass. Both editions build for Windows.
+
+Evening (19:07 - 22:10 UTC) - written by a second Claude session that
+had been opened for another topic and was taken over by accident; it
+has stopped. Its work, checked afterwards (both editions build;
+TestNavigation 153, TestCalibrations 42, TestLif 82, TestExtensions 71;
+the Lab tried under Wine):
+12. Versarite Image Lab:
+    - uScaleBar (M3c / M3d): "Draw scale bar" - click places one end,
+      the bar runs horizontal to the mouse in round lengths (1, 2, 5 x
+      10^n um), click 2 fixes the length, the wheel sets the thickness,
+      click 3 finishes; its length above it; burned into "Apply filters
+      to a copy" ('50um-bar' in the name).
+    - [ScaleBar] Color, Font, FontSize, Bold (also for the measuring
+      line and the labels); SvgReferenceBar.
+    - uTextLabel: "Text labels" - a click asks for a text, a click on a
+      label edits it (empty = removed).
+    - uSvgExport: "Export figure (SVG) ..." - the image as shown
+      (embedded PNG) with the layers Measurements, Scale bar, Labels as
+      vectors and text inside a layer "Figure"; 300 dpi page size; a
+      <desc> note (pixel size, source, date); a reference strip below the
+      picture with a white line of the bar's length (no text), to crop
+      off at the end.
+    - One tool at a time (measurement, scale bar, labels end each other).
+    - A crop's calibration holds for its original's width
+      (CalibrationWidthFor); the dialog says so.
+    - .lif: a negative Length (an axis scanned the other way) read as
+      its size.
+    - Readme_Lab.md: "Versarite Image Lab 0.2", a preview release.
+13. The core (both editions): uExtensions - SvgLayerName / SvgMarkup per
+    layer, the figure source (RegisterFigureSource, MakeFigure); TMView
+    BuildTurnedCopy shared by "Apply filters to a copy" and the figure.
+14. VersariteViewer:
+    - [View] PreviewStrip: the pinned scan bar comes back after a
+      restart.
+    - Climbing out of a folder without images goes on from that folder
+      in the tree (TNavigator.EnterDirectory).
+    - Side by side stays on through fullscreen; leaving fullscreen goes
+      back to its half.
+    - The TC dir preview waits while VersariteViewer's window is in
+      front; with a delay over 1 s an animated GIF plays in it.
+    - readme: the welcome screen as the picture.
+15. This session's own scale bar of the afternoon was dropped in favour
+    of the one above (never written to the project folder).
+16. The Lab's project files renamed to match its program (user):
+    VersariteImageLab.lpi / .lpr / .lps / .ico / .res (and _256.ico),
+    program VersariteImageLab; the references in the units, the specs and
+    the architecture document. The viewer and core changes of 12-14 copied
+    to the GitHub folder.
