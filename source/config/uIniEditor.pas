@@ -257,7 +257,7 @@ begin
   FIniPage.Caption := ExtractFileName(EditionIniFileName);
 
   FMouseTab := FPages.AddTabSheet;
-  FMouseTab.Caption := 'Mouse & keys';
+  FMouseTab.Caption := 'Mouse && keys';  { && = one & (a single one underlines the k) }
   FMouse := TMouseProfilePage.Create(Self);
   FMouse.Parent := FMouseTab;
   FMouse.Align := alClient;

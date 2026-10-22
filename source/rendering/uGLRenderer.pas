@@ -202,6 +202,7 @@ type
 
   TGLRenderer = class(TRenderer)
   private
+    FMeasureBmp: TBGRABitmap;    { UpdateBar: for BarTextWidth }
     FControl: TOpenGLControl;
     { The lens being drawn now (DrawLens, DrawTextures' lens pass, the
       shader): the magnifier, then the aiming loupe (Day 28). }
@@ -267,9 +268,11 @@ type
       ALens: Boolean = False);
     procedure DrawLens(AWidth, AHeight: Integer);
     { AFontName / AFontPt: a font of its own ('' / 0 = the standard; the
-      info line, Day 24). }
+      info line, Day 24). AWrapWidth > 0: lines wider than that are
+      broken between their parts (WrapAtParts; the info line, Day 31). }
     procedure UpdateBar(var ABar: TGLTextBar; const AText: string; ACentered: Boolean;
-      const AFontName: string = ''; AFontPt: Integer = 0);
+      const AFontName: string = ''; AFontPt: Integer = 0; AWrapWidth: Integer = 0);
+    function BarTextWidth(const AText: string): Integer;
     procedure UpdatePanel(ABitmap: TBGRABitmap; AVersion: Cardinal; var ABar: TGLTextBar;
       var AUploaded: Cardinal);
     function EnsureShader: Boolean;
@@ -1231,8 +1234,13 @@ begin
 end;
 
 { Redraws a bar's bitmap and texture if its text changed. }
+function TGLRenderer.BarTextWidth(const AText: string): Integer;
+begin
+  Result := FMeasureBmp.TextSize(AText).cx;
+end;
+
 procedure TGLRenderer.UpdateBar(var ABar: TGLTextBar; const AText: string; ACentered: Boolean;
-  const AFontName: string; AFontPt: Integer);
+  const AFontName: string; AFontPt: Integer; AWrapWidth: Integer);
 var
   Bmp: TBGRABitmap;
   Lines: TStringArray;
@@ -1245,6 +1253,9 @@ begin
   Key := AText;
   if (AText <> '') and ((AFontName <> '') or (AFontPt > 0)) then
     Key := AText + #0 + AFontName + #0 + IntToStr(AFontPt);
+  { Wrapped: a new width may break it elsewhere. }
+  if (AText <> '') and (AWrapWidth > 0) then
+    Key := Key + #0 + IntToStr(AWrapWidth);
   if (Key = ABar.Text) and ((ABar.Texture <> 0) or (AText = '')) then
     Exit;
 
@@ -1281,6 +1292,12 @@ begin
       em (the standard sizes: 17 here, 13 on the CPU). }
     if AFontPt > 0 then
       Bmp.FontHeight := Max(8, Round(AFontPt * Screen.PixelsPerInch / 72 * 4 / 3));
+    if AWrapWidth > 0 then
+    begin
+      FMeasureBmp := Bmp;
+      Lines := SplitLines(WrapAtParts(AText, AWrapWidth - 16, @BarTextWidth));
+      FMeasureBmp := nil;
+    end;
 
     W := 0;
     LineH := 0;
@@ -1659,7 +1676,7 @@ begin
     SolidWidth := 0;
   SetupScreenProjection(AWidth, AHeight);
   Bottom := AHeight;
-  UpdateBar(FInfoBar, InfoLine, False, InfoFontName, InfoFontSize);
+  UpdateBar(FInfoBar, InfoLine, False, InfoFontName, InfoFontSize, Max(0, AWidth - BadgeRoom));
   if FInfoBar.Texture <> 0 then
   begin
     Dec(Bottom, Abs(FInfoBar.Height));

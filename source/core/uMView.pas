@@ -288,6 +288,18 @@ type
     Stamp: Int64;            { uExtensions' NextUndoStamp: against the edition's undo (Day 28) }
   end;
 
+  { Day 31 (user): an edition's image shown in place of another (Fiji's
+    result, ShowEditionImage) can be taken back by Undo: what was shown
+    before comes back - the file (Prev = nil) or the earlier unsaved image
+    (a crop, a frame, Fiji's previous result). }
+  TImageUndoEntry = record
+    Stamp: Int64;
+    Shown: IDecodedImage;    { the image it put on screen }
+    Prev: IDecodedImage;     { what was there; nil = the current file }
+    PrevTitle, PrevPrefix, PrevSavedAs: string;
+    Caption: string;
+  end;
+
   { A move under way: the file left the lists at once; if the move
     fails it comes back. }
   TMoveUnderWay = record
@@ -444,6 +456,7 @@ type
     FStripPress: Integer;
     FMover: TFileMover;
     FUndo: array of TUndoEntry;
+    FImageUndo: array of TImageUndoEntry;
     FNextUndoId: Integer;
     FNextJobId: Integer;
     FJobsInFlight: Integer;      { copies / moves / deletes not reported yet }
@@ -709,6 +722,11 @@ type
     procedure AddUndo(const AJob: TFileJob; const APlaced: string);
     function UndoIndex(AId: Integer): Integer;
     function LastUndo: Integer;
+    { The image undo (Day 31): only the chain that leads to the image on
+      screen is kept (the rest freed); its newest entry, -1 = none. }
+    procedure PruneImageUndo;
+    function ImageUndoIndex: Integer;
+    procedure ImageUndo(AIndex: Integer);
     procedure DeleteUndo(AIndex: Integer);
     procedure SortNote(const AStatus, AFooter: string; ADurationMs: Double);
     { Icons (stage 2). }
@@ -1630,6 +1648,7 @@ begin
   FConfig.LastFile := FileName;
   { A pasted image gives way to the file (the next step). }
   FShowingPaste := False;
+  PruneImageUndo;           { the unsaved images' undo goes with them }
 
   { Another file: the animation shown stops (its last frame stays until
     the new image arrives) and no longer holds its frames in memory. }
@@ -2624,7 +2643,7 @@ end;
   every zoom step): a marker (InfoZoomMarker) says where it goes. }
 procedure TMView.UpdateInfo;
 var
-  Text, FileName, Part: string;
+  Text, FileName, Part, Message: string;
   Items: TInfoItems;
   I, ShownW, ShownH: Integer;
   Paste: Boolean;
@@ -2654,10 +2673,11 @@ begin
   if (FFilterPanel <> nil) and FFilterPanel.ExtrasChanged then
     UpdateFilterPanel;
   Paste := FShowingPaste and Assigned(FCurrentImage);
-  { Nothing open (and no pasted image): no line. }
+  { Nothing open (and no pasted image): no line - but a message (Day 31:
+    "Slide show: no images here" was never seen). }
   if (not Paste) and not FNavigator.HasCurrentImage then
   begin
-    FRenderer.InfoText := '';
+    FRenderer.InfoText := FStatusNote;
     Exit;
   end;
   if Paste then
@@ -2666,6 +2686,7 @@ begin
     FileName := FNavigator.CurrentFileName;
 
   Text := '';
+  Message := '';
   Items := FConfig.InfoItems;
   for I := 0 to High(Items) do
   begin
@@ -2697,6 +2718,8 @@ begin
           { The dir preview's folder: its counts (1.1). }
           if (FDirFolder <> '') and (FDirCounts <> '') then
             Part := Part + '   (' + FDirCounts + ')'
+          else if FSlideShow and (FConfig.DirPreviewDelayMs = 0) then
+            Part := Part + '   (slide show, paused)'
           else if FSlideShow then
             Part := Part + Format('   (slide show, %.1f s)', [FConfig.DirPreviewDelayMs / 1000]);
         end;
@@ -2746,13 +2769,25 @@ begin
       iiFilters:
         Part := Trim(FilterMark);
       iiMessages:
-        Part := FStatusNote;
+        begin
+          { Day 31 (user): on a line of its own, above the others (at
+            the end of a long line it was cut off or went unnoticed). }
+          Message := FStatusNote;
+          Continue;
+        end;
     end;
     if Part = '' then
       Continue;
     if Text <> '' then
       Text := Text + '     ';
     Text := Text + Part;
+  end;
+  if Message <> '' then
+  begin
+    if Text <> '' then
+      Text := Message + #10 + Text
+    else
+      Text := Message;
   end;
 
   FRenderer.InfoText := Text;
@@ -3275,6 +3310,26 @@ begin
   Key.FileSize := 0;
   Key.FileTime := Now;
   Img := TDecodedImage.Create(Key, qlFull, ABitmap);
+  { Day 31 (user): Undo brings back what is shown now. }
+  PruneImageUndo;
+  if Length(FImageUndo) >= 10 then
+    Delete(FImageUndo, 0, 1);
+  SetLength(FImageUndo, Length(FImageUndo) + 1);
+  with FImageUndo[High(FImageUndo)] do
+  begin
+    Stamp := NextUndoStamp;
+    Shown := Img;
+    if FShowingPaste and Assigned(FCurrentImage) then
+    begin
+      Prev := FCurrentImage;
+      PrevTitle := FScratchTitle;
+      PrevPrefix := FScratchPrefix;
+      PrevSavedAs := FPasteSavedAs;
+    end
+    else
+      Prev := nil;
+    Caption := 'Undo ' + ATitle;
+  end;
   { The same way round as the image it came from. }
   Angle := FRenderer.View.Angle;
   ShowScratch(Img, ATitle, ASaveName);
@@ -5003,6 +5058,64 @@ begin
   Result := -1;
 end;
 
+procedure TMView.PruneImageUndo;
+var
+  Keep: array of TImageUndoEntry;
+  Want: IDecodedImage;
+  I, N: Integer;
+begin
+  if Length(FImageUndo) = 0 then
+    Exit;
+  Keep := nil;
+  N := 0;
+  if FShowingPaste then
+    Want := FCurrentImage
+  else
+    Want := nil;
+  { From the newest: the entry that put the image shown there, then the
+    one that put its predecessor there, and so on. }
+  for I := High(FImageUndo) downto 0 do
+    if (Want <> nil) and (FImageUndo[I].Shown = Want) then
+    begin
+      SetLength(Keep, N + 1);
+      Keep[N] := FImageUndo[I];
+      Inc(N);
+      Want := FImageUndo[I].Prev;
+    end;
+  { Oldest first again. }
+  SetLength(FImageUndo, N);
+  for I := 0 to N - 1 do
+    FImageUndo[I] := Keep[N - 1 - I];
+end;
+
+function TMView.ImageUndoIndex: Integer;
+begin
+  PruneImageUndo;
+  Result := High(FImageUndo);
+end;
+
+procedure TMView.ImageUndo(AIndex: Integer);
+var
+  E: TImageUndoEntry;
+  Angle: Double;
+begin
+  E := FImageUndo[AIndex];
+  Delete(FImageUndo, AIndex, Length(FImageUndo) - AIndex);
+  Angle := FRenderer.View.Angle;
+  if E.Prev <> nil then
+  begin
+    ShowScratch(E.Prev, E.PrevTitle, E.PrevPrefix);
+    FPasteSavedAs := E.PrevSavedAs;
+    if Angle <> 0 then
+      FRenderer.RotateBy(Angle);
+  end
+  else
+    ShowCurrent;            { the file, as before (the unsaved image goes) }
+  ShowStatus(E.Caption + ' - done', 3000);
+  UpdateInfo;
+  Refresh;
+end;
+
 procedure TMView.DeleteUndo(AIndex: Integer);
 var
   I: Integer;
@@ -5051,6 +5164,11 @@ var
   I: Integer;
 begin
   Result := '';
+  { The image undo, when it is the newest of all (Day 31). }
+  I := ImageUndoIndex;
+  if (I >= 0) and not ((EditionUndoCaption <> '') and (EditionUndoStamp > FImageUndo[I].Stamp))
+    and not ((LastUndo >= 0) and (FUndo[LastUndo].Stamp > FImageUndo[I].Stamp)) then
+    Exit(FImageUndo[I].Caption);
   if EditionUndoFirst then
     Exit(EditionUndoCaption);
   I := LastUndo;
@@ -5074,6 +5192,14 @@ var
   I: Integer;
   Job: TFileJob;
 begin
+  { The image undo (Day 31) when it is the newest of all. }
+  I := ImageUndoIndex;
+  if (I >= 0) and not ((EditionUndoCaption <> '') and (EditionUndoStamp > FImageUndo[I].Stamp))
+    and not ((LastUndo >= 0) and (FUndo[LastUndo].Stamp > FImageUndo[I].Stamp)) then
+  begin
+    ImageUndo(I);
+    Exit;
+  end;
   { The edition's (a mark) when it is the newer: at once, no file job. }
   if EditionUndoFirst then
   begin
@@ -6289,19 +6415,29 @@ begin
       FSlideNextMs := Max(NowMs, FSlideNextMs + (New - Old));
   end;
   if FSlideShow and (FDirFolder = '') then
-    Text := Format('Slide show: %d ms per image', [New])
+    Text := 'Slide show: '
   else
-    Text := Format('Dir preview: %d ms per image', [New]);
-  if (New = Old) and (ADir < 0) then
-    Text := Text + ' (the shortest)'
-  else if New = Old then
-    Text := Text + ' (the longest)';
+    Text := 'Dir preview: ';
+  { Day 31 (user): down to 0 = paused (not ended); longer goes on. }
+  if New = 0 then
+    Text := Text + 'paused (0 ms; "each image longer" goes on)'
+  else
+  begin
+    Text := Text + Format('%d ms per image', [New]);
+    if Old = 0 then
+      Text := Text + ' - goes on'
+    else if (New = Old) and (ADir > 0) then
+      Text := Text + ' (the longest)';
+  end;
+  if New <> Old then
+    UpdateInfo;
   ShowStatus(Text, 2500);
 end;
 
 function TMView.DirPreviewQuick: Boolean;
 begin
-  Result := (FDirFolder <> '') and not DirPreviewPaused
+  { Paused at 0 ms (Day 31): the image stays, so its full version. }
+  Result := (FDirFolder <> '') and not DirPreviewPaused and (FConfig.DirPreviewDelayMs > 0)
     and not ((FConfig.DirPreviewFiles = 0) and (FConfig.DirPreviewDelayMs > 1000));
 end;
 
@@ -6355,6 +6491,13 @@ begin
       FDirNextMs := NowMs + FConfig.DirPreviewDelayMs;
     Exit;
   end;
+  { Day 31 (user): 0 ms = paused; the time starts afresh when it is
+    longer again, then the folder's next image. }
+  if FConfig.DirPreviewDelayMs = 0 then
+  begin
+    FDirNextMs := 0;
+    Exit;
+  end;
   if FDirNextMs = 0 then
   begin
     FDirNextMs := NowMs + FConfig.DirPreviewDelayMs;
@@ -6387,8 +6530,12 @@ begin
   FSlideShow := AOn;
   FSlideNextMs := 0;
   if AOn then
-    ShowStatus(Format('Slide show: on (%d ms per image; Esc ends it)',
-      [FConfig.DirPreviewDelayMs]), 4000)
+    if FConfig.DirPreviewDelayMs = 0 then
+      ShowStatus('Slide show: on, paused (0 ms per image; "each image longer" goes on; '
+        + 'Esc ends it)', 5000)
+    else
+      ShowStatus(Format('Slide show: on (%d ms per image; Esc ends it)',
+        [FConfig.DirPreviewDelayMs]), 4000)
   else
     ShowStatus('Slide show: off', 2500);
   UpdateInfo;
@@ -6408,7 +6555,8 @@ begin
     Exit;
   { Waits: an unsaved image is shown (it would be lost), edit mode is on,
     or the image is still coming. Its time starts afresh after. }
-  if FShowingPaste or FEditMode or (FPendingFile <> '') then
+  if FShowingPaste or FEditMode or (FPendingFile <> '')
+    or (FConfig.DirPreviewDelayMs = 0) then   { 0 ms = paused (Day 31) }
   begin
     FSlideNextMs := 0;
     Exit;

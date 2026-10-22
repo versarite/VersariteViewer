@@ -109,6 +109,17 @@ const
   { In InfoText: where the zoom ("52 % = 1997 x 1331", the angle) goes;
     none = no zoom in the line (user, Day 24: [InfoLine] Zoom=0). }
   InfoZoomMarker = #1;
+  { Between the info line's parts: where a line too long is wrapped. }
+  InfoPartGap = '     ';
+
+type
+  { The width of a text in the font being drawn with (WrapAtParts). }
+  TTextWidthFunc = function(const AText: string): Integer of object;
+
+{ Day 31 (user): each line of AText that is wider than AMaxWidth broken
+  into several, between its parts (InfoPartGap), as many parts per line as
+  fit; a single part wider than that stays whole (the caller cuts it). }
+function WrapAtParts(const AText: string; AMaxWidth: Integer; AWidthOf: TTextWidthFunc): string;
 
 type
 
@@ -414,6 +425,7 @@ type
 
   TCpuRenderer = class(TRenderer)
   private
+    FMeasureCanvas: TCanvas;     { DrawOverlays: for CanvasTextWidth }
     FRotated: TBGRACustomBitmap;
     FRotatedTurns: Integer;      { quarter turns FRotated was made for }
     FRotatedMirror: Boolean;     { ... and whether mirrored }
@@ -423,6 +435,8 @@ type
     FFiltered: TBGRACustomBitmap; { FDisplay with the filters (owned) }
     FFilteredKey: string;
     FNote: string;               { e.g. why the GPU isn't used }
+
+    function CanvasTextWidth(const AText: string): Integer;
 
     function SourceBitmap: TBGRACustomBitmap;
     procedure ClearDisplay;
@@ -504,6 +518,66 @@ begin
       Inc(N);
       Start := I + 1;
     end;
+end;
+
+function WrapAtParts(const AText: string; AMaxWidth: Integer; AWidthOf: TTextWidthFunc): string;
+var
+  Lines: TStringArray;
+  I, P: Integer;
+  Rest, Part, Cur: string;
+
+  procedure Emit(const ALine: string);
+  begin
+    if Result <> '' then
+      Result := Result + #10;
+    Result := Result + ALine;
+  end;
+
+begin
+  Result := '';
+  if (AText = '') or (AMaxWidth <= 0) or not Assigned(AWidthOf) then
+    Exit(AText);
+  Lines := SplitAtLineBreaks(AText);
+  for I := 0 to High(Lines) do
+  begin
+    if AWidthOf(Lines[I]) <= AMaxWidth then
+    begin
+      Emit(Lines[I]);
+      Continue;
+    end;
+    Cur := '';
+    Rest := Lines[I];
+    while Rest <> '' do
+    begin
+      P := Pos(InfoPartGap, Rest);
+      if P > 0 then
+      begin
+        Part := Copy(Rest, 1, P - 1);
+        Rest := Copy(Rest, P + Length(InfoPartGap), MaxInt);
+        { More spaces than the gap belong to it. }
+        while (Rest <> '') and (Rest[1] = ' ') do
+          Delete(Rest, 1, 1);
+      end
+      else
+      begin
+        Part := Rest;
+        Rest := '';
+      end;
+      if Part = '' then
+        Continue;
+      if Cur = '' then
+        Cur := Part
+      else if AWidthOf(Cur + InfoPartGap + Part) <= AMaxWidth then
+        Cur := Cur + InfoPartGap + Part
+      else
+      begin
+        Emit(Cur);
+        Cur := Part;
+      end;
+    end;
+    if Cur <> '' then
+      Emit(Cur);
+  end;
 end;
 
 function NormalizeAngle(A: Double): Double;
@@ -1838,6 +1912,11 @@ begin
   Result := Copy(AText, 1, N) + '...';
 end;
 
+function TCpuRenderer.CanvasTextWidth(const AText: string): Integer;
+begin
+  Result := FMeasureCanvas.TextWidth(AText);
+end;
+
 function TCpuRenderer.DrawBar(ACanvas: TCanvas; AWidth, ABottom: Integer; const AText: string;
   ASolid: Boolean): Integer;
 var
@@ -1905,9 +1984,15 @@ begin
       ACanvas.Font.Size := InfoFontSize
     else
       ACanvas.Font.Height := -13;
-    { It ends before the mode badge (bottom right). }
-    Text := FitCanvasText(ACanvas, Text, AWidth - 16 - BadgeRoom);
-    Bottom := DrawBar(ACanvas, AWidth, Bottom, Text, OverlaySolid);
+    { It ends before the mode badge (bottom right). Day 31 (user): too
+      long for the window: on more lines, broken between its parts; the
+      message has a line of its own (TMView.UpdateInfo). }
+    FMeasureCanvas := ACanvas;
+    Lines := SplitAtLineBreaks(WrapAtParts(Text, AWidth - 16 - BadgeRoom, @CanvasTextWidth));
+    for I := High(Lines) downto 0 do
+      if Lines[I] <> '' then
+        Bottom := DrawBar(ACanvas, AWidth, Bottom,
+          FitCanvasText(ACanvas, Lines[I], AWidth - 16 - BadgeRoom), OverlaySolid);
     ACanvas.Font.Name := OldFontName;
     ACanvas.Font.Height := -13;
   end;

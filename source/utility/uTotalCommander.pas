@@ -74,8 +74,17 @@ function OpenInTotalCommander(const AExe, AFolder: string): Boolean;
 { True if the window was placed (False: e.g. it runs as administrator
   and MView doesn't). }
 function PlaceWindow(AWindow: THandle; const ARect: Types.TRect): Boolean;
+{ Day 31 (user, two screens): ARect moved from the work area AFrom to
+  ATo, at the same place relative to it, and kept inside ATo (made
+  smaller only when it is larger than ATo). }
+function ShiftIntoWork(const ARect, AFrom, ATo: Types.TRect): Types.TRect;
+{ AWindow (another program's) moved from the screen with work area AFrom
+  to the one with ATo, its size kept; a maximised one is maximised there.
+  False if it could not be moved. }
+function MoveWindowToWork(AWindow: THandle; const AFrom, ATo: Types.TRect): Boolean;
 
 implementation
+
 
 {$IFDEF WINDOWS}
 uses
@@ -261,7 +270,37 @@ begin
     SWP_NOZORDER or SWP_NOACTIVATE);
 end;
 
+function MoveWindowToWork(AWindow: THandle; const AFrom, ATo: Types.TRect): Boolean;
+var
+  Outer, Frame: TWinRect;
+  R: Types.TRect;
+  Maximised: Boolean;
+begin
+  Result := False;
+  if (AWindow = 0) or not IsWindow(AWindow) then
+    Exit;
+  Maximised := IsZoomed(AWindow);
+  if IsIconic(AWindow) or Maximised then
+    ShowWindow(AWindow, SW_RESTORE);
+  { Its visible frame (without the invisible borders), as PlaceWindow
+    takes it. }
+  if not MViewGetWindowRect(AWindow, @Outer) then
+    Exit;
+  if MViewDwmGetWindowAttribute(AWindow, DWMWA_EXTENDED_FRAME_BOUNDS_ID, @Frame,
+    SizeOf(Frame)) <> S_OK then
+    Frame := Outer;
+  R := ShiftIntoWork(Types.Rect(Frame.Left, Frame.Top, Frame.Right, Frame.Bottom), AFrom, ATo);
+  Result := PlaceWindow(AWindow, R);
+  if Result and Maximised then
+    ShowWindow(AWindow, SW_MAXIMIZE);
+end;
+
 {$ELSE}
+
+function MoveWindowToWork(AWindow: THandle; const AFrom, ATo: Types.TRect): Boolean;
+begin
+  Result := False;
+end;
 
 function FindTotalCommanderWindow: THandle;
 begin
@@ -284,5 +323,28 @@ begin
 end;
 
 {$ENDIF}
+
+function ShiftIntoWork(const ARect, AFrom, ATo: Types.TRect): Types.TRect;
+var
+  W, H, L, T: Integer;
+begin
+  W := ARect.Right - ARect.Left;
+  H := ARect.Bottom - ARect.Top;
+  if W > ATo.Right - ATo.Left then
+    W := ATo.Right - ATo.Left;
+  if H > ATo.Bottom - ATo.Top then
+    H := ATo.Bottom - ATo.Top;
+  L := ARect.Left - AFrom.Left + ATo.Left;
+  T := ARect.Top - AFrom.Top + ATo.Top;
+  if L + W > ATo.Right then
+    L := ATo.Right - W;
+  if T + H > ATo.Bottom then
+    T := ATo.Bottom - H;
+  if L < ATo.Left then
+    L := ATo.Left;
+  if T < ATo.Top then
+    T := ATo.Top;
+  Result := Types.Rect(L, T, L + W, T + H);
+end;
 
 end.

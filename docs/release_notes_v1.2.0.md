@@ -16,8 +16,12 @@ The slide show, and the next round of testers' reports (day 31, 2026-10-22).
 - **The speed, live:** the new commands **DirPreviewLonger** and **DirPreviewShorter** (on a key
   or mouse button, "Mouse & keys" page) make each image stay longer or shorter by
   `[Sort] DirPreviewStepMs` (default 100 ms, 10 … 10000), in the slide show and in the dir
-  preview. The image on screen keeps its time, changed by the step; the info line shows the new
-  time ("the shortest" at 200 ms, "the longest" at 60 s) and it is written to the ini at once.
+  preview. The image on screen keeps its time, changed by the step; the new time is shown ("the
+  longest" at 60 s) and written to the ini at once.
+  - **Down to 0 = paused:** shorter goes all the way to 0 ms, whatever the step; there the show
+    pauses (it is not ended; the info line says "paused", the image gets its full version).
+    Longer again goes on: the slide show from the image shown, the dir preview with the folder's
+    next image.
 - **The Total Commander dir preview as a slide show:** `[Sort] TCSlideShowMode=1` (or the new
   command **SlideShowMode**) keeps the folder under Total Commander's cursor playing also while
   VersariteViewer has the focus, so the keys and buttons above work on it. `0` (default): it waits
@@ -46,6 +50,16 @@ The slide show, and the next round of testers' reports (day 31, 2026-10-22).
   (on the settings screen it maximizes as usual).
 - `[Magnifier] AimRestMs` (default 500, 100 … 3000): how long the mouse must rest in edit mode until
   the aiming loupe shows.
+- **Side by side on two screens** (user): with `[Window] SideBySideScreens=1` and a second screen,
+  "Side by side with Total Commander" moves Total Commander to the other screen and leaves
+  VersariteViewer as it is (fullscreen too); `=2` moves VersariteViewer to the other screen and
+  leaves Total Commander. The windows keep their size (a maximised one is maximised there);
+  nothing moves when they are on two screens already. Back: VersariteViewer returns to where it
+  was. `0` (default) and one screen: the halves, as before. Also on the settings screen.
+- **The info line in a small window**: what doesn't fit goes on a second (third …) line,
+  broken between its parts, instead of being cut off at the right edge. **Messages** ("Slide show:
+  on", "Sent to Fiji", "Saved …") have a line of their own above it, so they are seen at once;
+  before, they came last and were often cut off. A message also shows when no image is open.
 
 ## Settings added
 
@@ -59,6 +73,7 @@ screen (the mouse over a key):
 | `[Sort]` | `RapidFolder1` … `RapidFolder0` | empty |
 | `[Navigation]` | `GuardUnsavedCopy` | 1 |
 | `[Window]` | `CloseButtonMinimizes` | 1 |
+| `[Window]` | `SideBySideScreens` | 0 |
 | `[Magnifier]` | `AimRestMs` | 500 |
 
 New commands for the mouse profile: `SlideShow`, `DirPreview`, `SlideShowMode`,

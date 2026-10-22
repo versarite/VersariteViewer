@@ -181,6 +181,8 @@ type
       with ~70 entries, pushed into Windows at each showing, cost ~10 s. }
     FLazy: array[TMouseEvent, 0..MaxActionsPerEvent - 1] of Integer;
     FRowsBuilt: Boolean;         { BuildRows done (the page was shown) }
+    FLabelWidth: Integer;        { the first column: buttons / keys (MeasureLabelWidth) }
+    FHeadings: array[0..MaxActionsPerEvent] of TLabel;  { the boxes' columns, then 'Button / key' }
     FActions: array of TMouseAction;   { the choosable commands, list order }
 
     { Keys (Day 27). }
@@ -211,6 +213,8 @@ type
     procedure BuildItems(AList: TStrings; AFirst: Boolean; AEvent: TMouseEvent);
     procedure SetLazy(ACombo: TComboBox; AFirst: Boolean; AEvent: TMouseEvent; AIndex: Integer);
     procedure EnsureFilled(ACombo: TComboBox);
+    function MeasureLabelWidth: Integer;
+    procedure PlaceHeader;
     procedure BuildRows;
     procedure HandleComboOpen(Sender: TObject);
     procedure HandleFitDropDown(Sender: TObject);
@@ -343,7 +347,7 @@ const
   SelKeys = 5;
 
   RowHeight = 30;
-  LabelWidth = 200;
+  MinLabelWidth = 200;          { at 96 dpi; widened to the longest caption }
   ComboWidth = 250;
   ComboGap = 8;
   StripHeight = 34;
@@ -538,6 +542,9 @@ begin
   FProfile := TMouseProfile.Create;
   FProfile.LoadDefaults;
   FSelection := Ord(mzBottomLeft);
+  { Measured when the page is first shown (PageShown): Windows' key names
+    are asked for then, not while the program starts. }
+  FLabelWidth := MulDiv(MinLabelWidth, Screen.PixelsPerInch, 96);
 
   { The choosable commands: all but "None". }
   N := 0;
@@ -640,7 +647,6 @@ begin
 
   FIntro := TLabel.Create(Self);
   FIntro.Parent := FRight;
-  FIntro.SetBounds(8, 8, LabelWidth + 3 * (ComboWidth + ComboGap), 50);
   FIntro.AutoSize := False;
   FIntro.WordWrap := True;
 
@@ -649,34 +655,32 @@ begin
   begin
     Heading := TLabel.Create(Self);
     Heading.Parent := FRight;
-    Heading.SetBounds(LabelWidth + K * (ComboWidth + ComboGap) + 2, HeadingTop, ComboWidth, 20);
     Heading.Font.Style := [fsBold];
     Heading.Caption := ColumnHeadings[K];
+    FHeadings[K] := Heading;
   end;
   Heading := TLabel.Create(Self);
   Heading.Parent := FRight;
-  Heading.SetBounds(8, HeadingTop, LabelWidth - 12, 20);
   Heading.Font.Style := [fsBold];
   Heading.Caption := 'Button / key';
+  FHeadings[MaxActionsPerEvent] := Heading;
 
   FTitleLabel := TLabel.Create(Self);
   FTitleLabel.Parent := FRight;
-  FTitleLabel.SetBounds(8, 74, LabelWidth - 8, 24);
   FTitleLabel.Caption := 'Name (shown on screen)';
   FTitleEdit := TEdit.Create(Self);
   FTitleEdit.Parent := FRight;
-  FTitleEdit.SetBounds(LabelWidth, 70, ComboWidth, 26);
   FTitleEdit.OnChange := @HandleTitleChange;
 
   FOrderGroup := TRadioGroup.Create(Self);
   FOrderGroup.Parent := FRight;
-  FOrderGroup.SetBounds(LabelWidth + ComboWidth + ComboGap, 60, 2 * ComboWidth, 46);
   FOrderGroup.Caption := 'Browsing from this zone';
   FOrderGroup.Columns := 3;
   FOrderGroup.Items.Add('any order');
   FOrderGroup.Items.Add('by date');
   FOrderGroup.Items.Add('by name');
   FOrderGroup.OnClick := @HandleOrderClick;
+  PlaceHeader;
 
   { Keys (Day 27): "Add a key", below the key rows (placed by
     BuildKeyRows). }
@@ -725,6 +729,51 @@ end;
 
 { One row per event; the keys use the rows' places too (only one set
   is visible at a time). Made once, when the page is first shown. }
+{ The first column wide enough for every caption it may show: the mouse
+  events ("Wheel down (towards you)") and every key ("Ü   (Oem1)"), with
+  room for a key row's Remove button; at least MinLabelWidth, scaled to the
+  screen (125 %, 150 %). }
+function TMouseProfilePage.MeasureLabelWidth: Integer;
+var
+  Bmp: TBitmap;
+  E: TMouseEvent;
+  Keys: TWordArray;
+  I, W: Integer;
+begin
+  Result := MulDiv(MinLabelWidth, Screen.PixelsPerInch, 96);
+  Bmp := TBitmap.Create;
+  try
+    Bmp.SetSize(4, 4);
+    Bmp.Canvas.Font.Assign(Font);
+    W := 0;
+    for E := Low(TMouseEvent) to High(TMouseEvent) do
+      W := Max(W, Bmp.Canvas.TextWidth(MouseEventCaption(E)) + 12 + 16);
+    Keys := AssignableKeys;
+    for I := 0 to High(Keys) do
+      W := Max(W, Bmp.Canvas.TextWidth(KeyCaption(Keys[I])) + 40 + 16);
+    Bmp.Canvas.Font.Style := [fsBold];
+    W := Max(W, Bmp.Canvas.TextWidth('Button / key') + 12 + 16);
+    Result := Max(Result, W);
+  finally
+    Bmp.Free;
+  end;
+end;
+
+{ The controls above the rows, by the first column's width. }
+procedure TMouseProfilePage.PlaceHeader;
+var
+  K: Integer;
+begin
+  FIntro.SetBounds(8, 8, FLabelWidth + 3 * (ComboWidth + ComboGap), 50);
+  for K := 0 to MaxActionsPerEvent - 1 do
+    FHeadings[K].SetBounds(FLabelWidth + K * (ComboWidth + ComboGap) + 2, HeadingTop,
+      ComboWidth, 20);
+  FHeadings[MaxActionsPerEvent].SetBounds(8, HeadingTop, FLabelWidth - 12, 20);
+  FTitleLabel.SetBounds(8, 74, FLabelWidth - 8, 24);
+  FTitleEdit.SetBounds(FLabelWidth, 70, ComboWidth, 26);
+  FOrderGroup.SetBounds(FLabelWidth + ComboWidth + ComboGap, 60, 2 * ComboWidth, 46);
+end;
+
 procedure TMouseProfilePage.BuildRows;
 var
   E: TMouseEvent;
@@ -740,7 +789,7 @@ begin
       Y := FirstRowTop + Ord(E) * RowHeight;
       FRows[E].Caption := TLabel.Create(Self);
       FRows[E].Caption.Parent := FRight;
-      FRows[E].Caption.SetBounds(8, Y + 4, LabelWidth - 12, 22);
+      FRows[E].Caption.SetBounds(8, Y + 4, FLabelWidth - 12, 22);
       FRows[E].Caption.Caption := MouseEventCaption(E);
       for K := 0 to MaxActionsPerEvent - 1 do
       begin
@@ -748,7 +797,7 @@ begin
         FRows[E].Combos[K].Parent := FRight;
         FRows[E].Combos[K].Style := csDropDownList;
         FRows[E].Combos[K].DropDownCount := 24;
-        FRows[E].Combos[K].SetBounds(LabelWidth + K * (ComboWidth + ComboGap), Y,
+        FRows[E].Combos[K].SetBounds(FLabelWidth + K * (ComboWidth + ComboGap), Y,
           ComboWidth, 26);
         FRows[E].Combos[K].Tag := Ord(E) * 10 + K;
         FRows[E].Combos[K].OnChange := @HandleComboChange;
@@ -767,12 +816,16 @@ procedure TMouseProfilePage.PageShown;
 begin
   if FRowsBuilt then
     Exit;
+  FLabelWidth := MeasureLabelWidth;
+  PlaceHeader;
   BuildRows;
   ShowSelection;
 end;
 
 destructor TMouseProfilePage.Destroy;
 begin
+  { A row's Remove queued a rebuild: not after the page is gone. }
+  Application.RemoveAsyncCalls(Self);
   FTimer.Enabled := False;
   FTry.Engine := nil;
   FTry.Profile := nil;
@@ -1343,11 +1396,11 @@ begin
       FKeyRows[I].Key := Keys[I];
       FKeyRows[I].Caption := TLabel.Create(Self);
       FKeyRows[I].Caption.Parent := FRight;
-      FKeyRows[I].Caption.SetBounds(8, Y + 4, LabelWidth - 40, 22);
+      FKeyRows[I].Caption.SetBounds(8, Y + 4, FLabelWidth - 40, 22);
       FKeyRows[I].Caption.Caption := KeyCaption(Keys[I]);
       FKeyRows[I].Remove := TButton.Create(Self);
       FKeyRows[I].Remove.Parent := FRight;
-      FKeyRows[I].Remove.SetBounds(LabelWidth - 32, Y, 26, 26);
+      FKeyRows[I].Remove.SetBounds(FLabelWidth - 32, Y, 26, 26);
       FKeyRows[I].Remove.Caption := 'x';
       FKeyRows[I].Remove.Hint := 'Remove this key (a digit then is a Rapid sorting key again)';
       FKeyRows[I].Remove.ShowHint := True;
@@ -1361,7 +1414,7 @@ begin
         FKeyRows[I].Combos[K].Style := csDropDownList;
         FKeyRows[I].Combos[K].DropDownCount := 24;
         FKeyRows[I].Combos[K].OnDropDown := @HandleFitDropDown;
-        FKeyRows[I].Combos[K].SetBounds(LabelWidth + K * (ComboWidth + ComboGap), Y,
+        FKeyRows[I].Combos[K].SetBounds(FLabelWidth + K * (ComboWidth + ComboGap), Y,
           ComboWidth, 26);
         if K = 0 then
           FKeyRows[I].Combos[K].Items.Add('(nothing)')
@@ -1380,12 +1433,12 @@ begin
     end;
     { "Add a key": the keys not set yet. }
     Y := FirstRowTop + Length(Keys) * RowHeight + 12;
-    FAddKeyLabel.SetBounds(8, Y + 4, LabelWidth + ComboWidth, 22);
+    FAddKeyLabel.SetBounds(8, Y + 4, FLabelWidth + ComboWidth, 22);
     Inc(Y, 26);
-    FAddKeyBounds := Rect(8, Y, 8 + LabelWidth + ComboWidth - 8 - 80, Y + 26);
-    FAddKeyCombo.SetBounds(8, Y, LabelWidth + ComboWidth - 8 - 80, 26);
-    FAddKeyButton.SetBounds(LabelWidth + ComboWidth - 76, Y, 76, 26);
-    FDigitNote.SetBounds(8, Y + 40, LabelWidth + 2 * ComboWidth, 60);
+    FAddKeyBounds := Rect(8, Y, 8 + FLabelWidth + ComboWidth - 8 - 80, Y + 26);
+    FAddKeyCombo.SetBounds(8, Y, FLabelWidth + ComboWidth - 8 - 80, 26);
+    FAddKeyButton.SetBounds(FLabelWidth + ComboWidth - 76, Y, 76, 26);
+    FDigitNote.SetBounds(8, Y + 40, FLabelWidth + 2 * ComboWidth, 60);
     All := AssignableKeys;
     FAddKeyCombo.Items.BeginUpdate;
     try

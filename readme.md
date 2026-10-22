@@ -69,6 +69,22 @@ The slide show, and the next testers' reports (day 31):
 - `[Magnifier] AimRestMs` (default 500): how long the mouse rests in edit mode until the aiming
   loupe shows.
 
+Added after the first 1.2 builds:
+
+- **Pause by going down to 0:** "each image shorter" now goes all the way down to 0 ms, whatever
+  the step; at 0 the slide show or dir preview **pauses** (it is not ended; the info line says
+  "paused"). "Each image longer" goes on: the slide show from the image shown, the dir preview
+  with the folder's next image.
+- **Messages are seen:** they have a line of their own above the info line (before, they came
+  last and were often cut off), and an info line too long for the window goes on a second line,
+  broken between its parts, instead of being cut off at the right edge.
+- **Side by side on two screens:** `[Window] SideBySideScreens=1` moves Total Commander to the
+  other screen and leaves VersariteViewer as it is (fullscreen too); `=2` moves VersariteViewer
+  instead. The windows keep their size. Needs Windows' "Extend these displays" (Win+P › Extend);
+  `0` (default) or one screen: the halves, as before.
+- **The "Mouse & keys" page:** the first column (buttons and keys) is as wide as the longest name,
+  so names like "Wheel down (towards you)" are no longer cut off at 125 / 150 % display scaling.
+
 The full list: [release notes 1.2](docs/release_notes_v1.2.0.md).
 
 ## What 1.1 brings
@@ -187,7 +203,8 @@ The full list: [release notes 1.1](docs/release_notes_v1.1.0.md).
   state (see-through, light blue, amber) and switches it with a click.
 - **Only one VersariteViewer:** opening images from Total Commander one after another goes to the running
   VersariteViewer, which comes to the front.
-- **Side by side:** VersariteViewer on the left half of the screen, Total Commander on the right.
+- **Side by side:** VersariteViewer on the left half of the screen, Total Commander on the right
+  (with two screens, optionally one on each: `[Window] SideBySideScreens`).
 - See [Working with Total Commander](#working-with-total-commander) below.
 
 ### Everyday details
@@ -288,7 +305,9 @@ tree manager, VersariteViewer is its viewer. They work together in five ways:
     in Total Commander, never pulls you back from your own browsing in VersariteViewer.
 - **Side by side** (right-click menu, or the button on the settings screen): VersariteViewer on the left half
   of the screen, Total Commander on the right half, in the image's folder (from the settings
-  screen: the last session's folder, else Documents).
+  screen: the last session's folder, else Documents). With a second screen ("Extend these
+  displays"), `[Window] SideBySideScreens=1` puts Total Commander on the other screen and `=2`
+  VersariteViewer, both keeping their size; the same entry again brings VersariteViewer back.
 - **Sorting with folders from Total Commander:** drag folders from Total Commander onto the open
   sort panel to make them sort buttons.
 

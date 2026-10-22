@@ -206,6 +206,7 @@ type
       .. 9 = key 0): as written; '' = Selection<digit>. }
     FRapidFolders    : array[0..9] of string;
     FCloseMinimizes  : Boolean;
+    FSideScreens     : Integer;   { [Window] SideBySideScreens (Day 31) }
 
     { Filters (Phase H) }
 
@@ -440,8 +441,8 @@ type
       focus (default). The command SlideShowMode switches it (SaveSort
       writes it). }
     property TCSlideShowMode: Boolean read FTCSlideShow write FTCSlideShow;
-    { DirPreviewDelayMs changed by a command (kept in 200 .. 60000; the
-      caller saves it with SaveSort). }
+    { DirPreviewDelayMs changed by a command (kept in 0 .. 60000; 0 =
+      paused (Day 31, user); the caller saves it with SaveSort). }
     procedure SetDirPreviewDelayMs(AMs: Integer);
     { Rapid sorting's folder for slot ASlot (0 = key 1 .. 9 = key 0),
       without trailing delimiter: [Sort] RapidFolder<digit> - a full path,
@@ -451,6 +452,13 @@ type
       button (and Alt+F4) sends the window to the taskbar; Exit in the
       menu (or the mouse profile's Exit) still ends VersariteViewer. }
     property CloseButtonMinimizes: Boolean read FCloseMinimizes;
+    { [Window] SideBySideScreens (Day 31, user): "Side by side with
+      Total Commander" with a second screen: 0 = both on one screen, in
+      halves (default, as before); 1 = Total Commander goes to another
+      screen, VersariteViewer stays as it is; 2 = VersariteViewer goes to
+      another screen, Total Commander stays. Window sizes are kept. With
+      one screen: halves. }
+    property SideBySideScreens: Integer read FSideScreens;
 
     { The folder "Delete" moves to, without trailing delimiter. }
     function DeletedFilesFolder: string;
@@ -602,6 +610,7 @@ const
   KEY_TC_SLIDE_SHOW     = 'TCSlideShowMode';
   KEY_RAPID_FOLDER      = 'RapidFolder';        { + the digit: RapidFolder1 .. RapidFolder0 }
   KEY_CLOSE_MINIMIZES   = 'CloseButtonMinimizes';
+  KEY_SIDE_SCREENS      = 'SideBySideScreens';
   SEC_FILTERS           = 'Filters';
   KEY_FILTER_PINNED     = 'Pinned';
   KEY_AUTO_FILTER       = 'AutoFilter';
@@ -805,6 +814,7 @@ begin
   for I := 0 to High(FRapidFolders) do
     FRapidFolders[I] := '';
   FCloseMinimizes  := True;
+  FSideScreens     := 0;
   FFilterPinned    := False;
   FAutoFilter      := True;
   FLensMagPercent  := 300;
@@ -920,6 +930,7 @@ begin
     FWidth  := Ini.ReadInteger(SEC_WINDOW, KEY_WIDTH, FWidth);
     FHeight := Ini.ReadInteger(SEC_WINDOW, KEY_HEIGHT, FHeight);
     FCloseMinimizes := Ini.ReadBool(SEC_WINDOW, KEY_CLOSE_MINIMIZES, FCloseMinimizes);
+    FSideScreens := EnsureRange(Ini.ReadInteger(SEC_WINDOW, KEY_SIDE_SCREENS, FSideScreens), 0, 2);
 
     FShowInfo        := Ini.ReadBool(SEC_VIEW, KEY_SHOW_INFO, FShowInfo);
     FAutoRotate      := Ini.ReadBool(SEC_VIEW, KEY_AUTO_ROTATE, FAutoRotate);
@@ -983,7 +994,7 @@ begin
     FFollowTC        := Ini.ReadInteger(SortSection, KEY_FOLLOW_TC, FFollowTC);
     FDirPreviewFiles := Max(0, Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_FILES, FDirPreviewFiles));
     FDirPreviewDelay := EnsureRange(Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_DELAY, FDirPreviewDelay),
-      200, 60000);
+      0, 60000);
     FDirPreviewStep  := EnsureRange(Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_STEP, FDirPreviewStep),
       10, 10000);
     FTCSlideShow     := Ini.ReadBool(SortSection, KEY_TC_SLIDE_SHOW, FTCSlideShow);
@@ -1058,6 +1069,7 @@ begin
       Ini.WriteInteger(SEC_WINDOW, KEY_HEIGHT, FHeight);
     end;
     Ini.WriteBool(SEC_WINDOW, KEY_CLOSE_MINIMIZES, FCloseMinimizes);
+    Ini.WriteInteger(SEC_WINDOW, KEY_SIDE_SCREENS, FSideScreens);
 
     Ini.WriteBool(SEC_VIEW, KEY_SHOW_INFO, FShowInfo);
     Ini.WriteBool(SEC_VIEW, KEY_AUTO_ROTATE, FAutoRotate);
@@ -1218,7 +1230,7 @@ end;
 
 procedure TConfig.SetDirPreviewDelayMs(AMs: Integer);
 begin
-  FDirPreviewDelay := EnsureRange(AMs, 200, 60000);
+  FDirPreviewDelay := EnsureRange(AMs, 0, 60000);
 end;
 
 function TConfig.RapidFolder(ASlot: Integer): string;
@@ -1462,6 +1474,14 @@ begin
       + 'taskbar instead of ending it (default; against closing it by accident). "Exit" in the '
       + 'right-click menu, the Exit command of the mouse profile and the settings screen''s '
       + 'Exit still end it. 0 = the close button ends VersariteViewer.');
+  if SameText(ASection, SEC_WINDOW) and SameText(AKey, KEY_SIDE_SCREENS) then
+    Exit('"Side by side with Total Commander" (right-click menu) with more than one screen: '
+      + '0 = both on the screen VersariteViewer is on, each a half (default). 1 = Total '
+      + 'Commander goes to another screen, VersariteViewer stays as it is (also fullscreen). '
+      + '2 = VersariteViewer goes to another screen, Total Commander stays. With 1 and 2 the '
+      + 'windows keep their size (a maximised one is maximised there); already on two screens: '
+      + 'nothing moves. Back (the menu entry again): VersariteViewer returns to where it was; '
+      + 'Total Commander stays. With one screen: the halves.');
   if SameText(ASection, SEC_STARTUP) and SameText(AKey, KEY_ONLY_ONE_INSTANCE) then
     Exit('1 = only one VersariteViewer (default): an image or folder opened while VersariteViewer runs (e.g. from '
       + 'Total Commander) opens in the running VersariteViewer, which comes to the front. 0 = a new VersariteViewer '
@@ -1559,8 +1579,9 @@ begin
     if SameText(AKey, KEY_DIR_PREVIEW_STEP) then
       Exit('Total Commander dir preview: how many milliseconds the commands DirPreviewLonger / '
         + 'DirPreviewShorter (assign them to a key or mouse button on the "Mouse & keys" page) '
-        + 'add to or take from DirPreviewDelayMs (default 100; 10 .. 10000). The new time is '
-        + 'written to DirPreviewDelayMs at once.');
+        + 'add to or take from DirPreviewDelayMs (default 100; 10 .. 10000). Shorter goes down '
+        + 'to 0 = paused; longer goes on (the slide show from the image shown, the dir preview '
+        + 'with the folder''s next). The new time is written to DirPreviewDelayMs at once.');
     if SameText(AKey, KEY_SHOW_DIR_HINT) then
       Exit('1 = a hint in the middle of the view for 3 s when a new, empty folder list comes up '
         + 'or Rapid sorting is switched on / off. 0 = none (default).');
@@ -1580,9 +1601,10 @@ begin
         + 'folder, its first images play as a slide show, round and round, in the order of the '
         + 'images (name / date / random). How many: default 3; 0 = all.');
     if SameText(AKey, KEY_DIR_PREVIEW_DELAY) then
-      Exit('Total Commander dir preview: how long each image stays, in milliseconds (default 1000; '
-        + '200 .. 60000). The quick views are shown (speed first), the full size only with '
-        + 'DirPreviewFiles=0 and more than 1000 ms.');
+      Exit('Slide show and Total Commander dir preview: how long each image stays, in '
+        + 'milliseconds (default 1000; 0 .. 60000; 0 = paused: the image stays until '
+        + 'DirPreviewLonger). The dir preview shows the quick views (speed first), the full size '
+        + 'only with DirPreviewFiles=0 and more than 1000 ms, or paused.');
     if Pos('Slot', AKey) = 1 then
       Exit('A sort panel folder (Folder, Name, Color, Icon). Set on the panel: drop a folder on it, '
         + 'or its "..." menu. Colors: Green, Blue, Red, Yellow, Orange, Purple, Cyan, Grey.');

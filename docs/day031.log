@@ -103,3 +103,56 @@ Today (2026-10-22, this chat)
    spec v0.2; the architecture picture of the units regenerated for 1.2
    (unchanged units, 192 uses); the architecture text; LabVersion 0.2.0
    (Readme_Lab says 0.2); uFijiLink's header (the ROIs are sent).
+17. Settings screen, "Mouse & keys" (reported): the first column (buttons
+   and keys) was a fixed 200 pixels, so longer names ("Wheel down
+   (towards you)", "Ü   (Oem1)") were cut off, more so at 125 / 150 %.
+   It is measured now when the page is first shown: the longest mouse
+   event and key name (with room for the key rows' Remove button), at
+   least 200 pixels scaled to the screen (uMousePage MeasureLabelWidth,
+   PlaceHeader). Measured then and not at the start: asking Windows for
+   the key names while the program starts crashed under Wine. The tab
+   reads "Mouse & keys" again (the single & had underlined the k).
+18. Slide show / dir preview speed (user): DirPreviewShorter stopped at
+   200 ms. Now DirPreviewDelayMs goes down to 0 (0 .. 60000, also in the
+   ini) and 0 = paused, not ended: the slide show waits on the image
+   shown, the dir preview on its image (shown in full); the info line /
+   status say "paused". DirPreviewLonger goes on: the slide show from the
+   image shown, the dir preview with the folder's next. (uMView
+   StepDirPreviewDelay, StepDirPreview, StepSlideShow, DirPreviewQuick;
+   uConfig; release notes 1.2.)
+19. Lab (user): [Fiji] OpenFijiAtStart=1 starts Fiji (minimised) with the
+   Lab, unless one is listening, so the first "to Fiji" / "Run in Fiji"
+   has no Java start to wait for; on a thread, the Lab does not wait;
+   never the "where is Fiji" dialog at the start; not in a second
+   instance that hands its file over. Default 0. (uFijiLink
+   TFijiStartThread; Readme_Lab, Lab spec §9d.) Checked under Wine with
+   the stand-in Fiji.
+20. The info line (user): too long for the window, its second half was
+   cut off, and the messages (last in it) went unnoticed. Now: a message
+   has a line of its own above the info line (TMView.UpdateInfo; also
+   with no image open), and a line too wide is broken between its parts
+   (uRenderer.WrapAtParts, at the 5-space gaps) in both renderers (CPU:
+   DrawOverlays; GPU: UpdateBar's wrap width, the texture made again
+   when the width changes). Checked under Wine (CPU renderer) at 520 px.
+21. Undo for "Run in Fiji" (user): an image an edition shows
+   (ShowEditionImage: Fiji's result) gets an undo entry (TMView
+   FImageUndo, stamped with NextUndoStamp, so Undo / Ctrl+Z takes back
+   whatever came last: a result, a mark, a copy / move). It brings back
+   what was shown before: the file, or the earlier unsaved image (a
+   crop, a frame, Fiji's previous result - commands run one on another
+   go back step by step). Only the chain leading to the image on screen
+   is kept (at most 10); going to another image frees it. Checked under
+   Wine with a stand-in link (Python, inverting): two runs, two Undos,
+   back at the file, Undo greyed.
+22. Side by side on two screens (user): [Window] SideBySideScreens 0 =
+   the halves on MView's screen (default, as before); 1 = Total Commander
+   goes to another screen (the main one, else the first other), MView
+   stays as it is (fullscreen too); 2 = MView goes there, Total Commander
+   stays. Sizes kept, at the same place relative to the screen's work
+   area (uTotalCommander ShiftIntoWork, MoveWindowToWork: a maximised
+   window maximised there); already on two screens: nothing moves. Done
+   when Total Commander's window is there (also when it was just
+   started, and once more after 600 ms, as before: idempotent). Back:
+   MView returns only if it was moved (its place, maximised /
+   fullscreen). One screen: the halves. Also the settings screen's
+   button. Not tried on two screens (Wine here has one).

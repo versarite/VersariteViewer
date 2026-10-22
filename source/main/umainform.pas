@@ -219,6 +219,12 @@ type
     FSideLeft: TRect;
     FSideWaitUntil: QWord;       { 0 = not waiting }
     FSideAgainAt: QWord;         { place it once more then (it may move itself); 0 = no }
+    { Day 31 (user): [Window] SideBySideScreens 1 / 2 with more than one
+      screen: Total Commander (1) or MView (2) goes to another screen, the
+      sizes kept, instead of the halves. }
+    FSideScreens: Integer;       { 0 = the halves }
+    FSideMovedSelf: Boolean;     { 2: MView was moved (back: it returns) }
+    FSideWasMaximized: Boolean;
     { The same on the settings screen: its own timer (the viewer's isn't
       running there). }
     FEditorSideTimer: TTimer;
@@ -342,6 +348,11 @@ type
     procedure ToggleSideBySide(const AFolder: string = '');
     procedure StartSideBySide(AData: PtrInt);
     procedure PlaceTotalCommander(AWindow: THandle);
+    { Two screens (FSideScreens 1 / 2): Total Commander's window AWindow
+      and MView on different screens; '' = nothing to say, else the note. }
+    function ArrangeTwoScreens(AWindow: THandle): string;
+    function OtherMonitor(AMonitor: TMonitor): TMonitor;
+    procedure MoveSelfToWork(const AFrom, ATo: TRect);
     procedure CheckSideBySideWait;
     procedure SetSlotIcon(ASlot: Integer; const AFile: string);
     function DropOnSortPanel(const FileNames: array of string): Boolean;
@@ -960,8 +971,9 @@ begin
   FreeAndNil(FSortMenu);
   FUndoItem := nil;
   FMakeIconItem := nil;
-  { Leaving the viewer: back to the place before side by side. }
-  if FSideBySide and FSideHaveBounds then
+  { Leaving the viewer: back to the place before side by side (two
+    screens: only if MView was the one moved). }
+  if FSideBySide and FSideHaveBounds and ((FSideScreens = 0) or FSideMovedSelf) then
     BoundsRect := FSideBounds;
   FSideItem := nil;
   FLockFiltersItem := nil;
@@ -1088,12 +1100,14 @@ begin
     Exit;
   Folder := '';
   Configured := '';
+  FSideScreens := 0;
   Config := TConfig.Create;
   try
     try
       Config.Load;
       Folder := Config.LastDirectory;
       Configured := Config.TotalCommander;
+      FSideScreens := Config.SideBySideScreens;
     except
       { Unreadable ini: Documents, and look for Total Commander. }
     end;
@@ -1118,10 +1132,17 @@ begin
   LeftHalf := Rect(Work.Left, Work.Top, Mid, Work.Bottom);
   FSideLeft := LeftHalf;
   FSideRight := Rect(Mid, Work.Top, Work.Right, Work.Bottom);
-  if WindowState <> wsNormal then
-    WindowState := wsNormal;
-  if not PlaceWindow(Handle, LeftHalf) then
-    BoundsRect := LeftHalf;
+  { Two screens (Day 31): nothing is made a half. }
+  if Screen.MonitorCount < 2 then
+    FSideScreens := 0;
+  FSideMovedSelf := False;
+  if FSideScreens = 0 then
+  begin
+    if WindowState <> wsNormal then
+      WindowState := wsNormal;
+    if not PlaceWindow(Handle, LeftHalf) then
+      BoundsRect := LeftHalf;
+  end;
 
   if (Exe <> '') and not OpenInTotalCommander(Exe, Folder) then
   begin
@@ -1137,7 +1158,9 @@ begin
   end;
   if Wnd <> 0 then
   begin
-    if PlaceWindow(Wnd, FSideRight) then
+    if FSideScreens > 0 then
+      FEditor.ShowNote(ArrangeTwoScreens(Wnd) + ', in ' + Folder)
+    else if PlaceWindow(Wnd, FSideRight) then
       FEditor.ShowNote('Total Commander side by side, in ' + Folder)
     else
       FEditor.ShowNote('Total Commander could not be moved (does it run as administrator?)');
@@ -1164,14 +1187,24 @@ begin
   begin
     FEditorSideAgainAt := 0;
     if Wnd <> 0 then
-      PlaceWindow(Wnd, FSideRight);
+    begin
+      if FSideScreens > 0 then
+        ArrangeTwoScreens(Wnd)
+      else
+        PlaceWindow(Wnd, FSideRight);
+    end;
   end;
   if FEditorSideUntil > 0 then
   begin
     if (Wnd <> 0) and IsWindowVisible(Wnd) then
     begin
       FEditorSideUntil := 0;
-      if PlaceWindow(Wnd, FSideRight) then
+      if FSideScreens > 0 then
+      begin
+        if Assigned(FEditor) then
+          FEditor.ShowNote(ArrangeTwoScreens(Wnd));
+      end
+      else if PlaceWindow(Wnd, FSideRight) then
       begin
         if Assigned(FEditor) then
           FEditor.ShowNote('Total Commander side by side');
@@ -2627,7 +2660,7 @@ begin
     fullscreen puts MView back next to Total Commander (its half, and
     Total Commander on its own half again), not at the place before. The
     side-by-side menu entry still goes back to the place before. }
-  if FSideBySide then
+  if FSideBySide and (FSideScreens = 0) then
   begin
     if not FFullscreen then
     begin
@@ -2756,6 +2789,26 @@ begin
     FSideBySide := False;
     FSideWaitUntil := 0;
     FSideAgainAt := 0;
+    { Two screens (Day 31): MView goes back only if it was the one moved. }
+    if FSideScreens > 0 then
+    begin
+      if FSideMovedSelf then
+      begin
+        if FFullscreen then
+          SetFullscreen(False);
+        if WindowState <> wsNormal then
+          WindowState := wsNormal;
+        if FSideHaveBounds then
+          BoundsRect := FSideBounds;
+        if FSideWasMaximized then
+          WindowState := wsMaximized;
+        if FSideWasFullscreen then
+          SetFullscreen(True);
+      end;
+      FSideMovedSelf := False;
+      FMView.ShowNote('back from side by side (Total Commander stays where it is)', 4000);
+      Exit;
+    end;
     if FFullscreen then
     begin
       { Fullscreen meanwhile (1.1): it stays; leaving it later goes to
@@ -2785,7 +2838,19 @@ begin
 
   { The place to go back to. }
   FSideWasFullscreen := FFullscreen;
+  FSideWasMaximized := (WindowState = wsMaximized) and not FFullscreen;
   FSideHaveBounds := CurrentNormalBounds(FSideBounds);
+  if (not FSideHaveBounds) and FSideWasMaximized then
+  begin
+    { Maximised: its normal place, for the way back. }
+    FSideBounds := Rect(RestoredLeft, RestoredTop, RestoredLeft + RestoredWidth,
+      RestoredTop + RestoredHeight);
+    FSideHaveBounds := (RestoredWidth >= MinWindowWidth) and (RestoredHeight >= MinWindowHeight);
+  end;
+  FSideMovedSelf := False;
+  FSideScreens := FMView.Config.SideBySideScreens;
+  if Screen.MonitorCount < 2 then
+    FSideScreens := 0;
 
   Work := Monitor.WorkareaRect;
   Mid := Work.Left + (Work.Right - Work.Left) div 2;
@@ -2793,13 +2858,18 @@ begin
   FSideLeft := LeftHalf;
   FSideRight := Rect(Mid, Work.Top, Work.Right, Work.Bottom);
 
-  if FFullscreen then
-    SetFullscreen(False);
-  if WindowState <> wsNormal then
-    WindowState := wsNormal;
   FSideBySide := True;
-  if not PlaceWindow(Handle, LeftHalf) then
-    BoundsRect := LeftHalf;
+  { The halves (one screen); two screens: the windows as they are, until
+    Total Commander's window is there (ArrangeTwoScreens). }
+  if FSideScreens = 0 then
+  begin
+    if FFullscreen then
+      SetFullscreen(False);
+    if WindowState <> wsNormal then
+      WindowState := wsNormal;
+    if not PlaceWindow(Handle, LeftHalf) then
+      BoundsRect := LeftHalf;
+  end;
 
   { Total Commander: into this image's folder (started if not running). }
   if FMView.Navigator.HasCurrentImage then
@@ -2810,12 +2880,16 @@ begin
   begin
     if not OpenInTotalCommander(Exe, Folder) then
     begin
-      { Nothing happened: MView goes back as well. }
+      { Nothing happened: MView goes back as well (two screens: it has
+        not moved). }
       FSideBySide := False;
-      if FSideHaveBounds then
-        BoundsRect := FSideBounds;
-      if FSideWasFullscreen then
-        SetFullscreen(True);
+      if FSideScreens = 0 then
+      begin
+        if FSideHaveBounds then
+          BoundsRect := FSideBounds;
+        if FSideWasFullscreen then
+          SetFullscreen(True);
+      end;
       FMView.ShowNote('Total Commander could not be started: ' + Exe, 10000);
       Exit;
     end;
@@ -2842,10 +2916,77 @@ end;
 
 procedure TMainForm.PlaceTotalCommander(AWindow: THandle);
 begin
-  if PlaceWindow(AWindow, FSideRight) then
+  if FSideScreens > 0 then
+    FMView.ShowNote(ArrangeTwoScreens(AWindow)
+      + '   (the same menu entry again: back)', 5000)
+  else if PlaceWindow(AWindow, FSideRight) then
     FMView.ShowNote('side by side with Total Commander   (the same menu entry again: back)', 5000)
   else
     FMView.ShowNote('Total Commander could not be moved (does it run as administrator?)', 8000);
+end;
+
+{ Another screen than AMonitor: the main screen if AMonitor isn't it,
+  else the first other one; nil = there is none. }
+function TMainForm.OtherMonitor(AMonitor: TMonitor): TMonitor;
+var
+  I: Integer;
+begin
+  Result := nil;
+  if (Screen.PrimaryMonitor <> nil) and (Screen.PrimaryMonitor <> AMonitor) then
+    Exit(Screen.PrimaryMonitor);
+  for I := 0 to Screen.MonitorCount - 1 do
+    if Screen.Monitors[I] <> AMonitor then
+      Exit(Screen.Monitors[I]);
+end;
+
+{ MView from the screen with work area AFrom to the one with ATo, its
+  size kept; maximised and fullscreen stay so there. }
+procedure TMainForm.MoveSelfToWork(const AFrom, ATo: TRect);
+var
+  WasFull, WasMax: Boolean;
+begin
+  WasFull := FFullscreen;
+  WasMax := (WindowState = wsMaximized) and not WasFull;
+  if WasFull then
+    SetFullscreen(False);
+  if WindowState <> wsNormal then
+    WindowState := wsNormal;
+  BoundsRect := ShiftIntoWork(BoundsRect, AFrom, ATo);
+  if WasMax then
+    WindowState := wsMaximized;
+  if WasFull then
+    SetFullscreen(True);           { on the screen it is on now }
+  FSideMovedSelf := True;
+end;
+
+function TMainForm.ArrangeTwoScreens(AWindow: THandle): string;
+var
+  Mine, Theirs, Other: TMonitor;
+begin
+  Mine := Monitor;
+  Theirs := Screen.MonitorFromWindow(AWindow, mdNearest);
+  if (Mine = nil) or (Theirs = nil) then
+    Exit('Total Commander: its screen is not known');
+  if Mine <> Theirs then
+    Exit('side by side on two screens');
+  if FSideScreens = 2 then
+  begin
+    Other := OtherMonitor(Theirs);
+    if Other = nil then
+      Exit('only one screen');
+    MoveSelfToWork(Mine.WorkareaRect, Other.WorkareaRect);
+    Result := EditionTitle + ' on the other screen, Total Commander stays';
+  end
+  else
+  begin
+    Other := OtherMonitor(Mine);
+    if Other = nil then
+      Exit('only one screen');
+    if MoveWindowToWork(AWindow, Mine.WorkareaRect, Other.WorkareaRect) then
+      Result := 'Total Commander on the other screen'
+    else
+      Result := 'Total Commander could not be moved (does it run as administrator?)';
+  end;
 end;
 
 procedure TMainForm.CheckSideBySideWait;
@@ -2863,7 +3004,12 @@ begin
   begin
     FSideAgainAt := 0;
     if Wnd <> 0 then
-      PlaceWindow(Wnd, FSideRight);   { quietly: the note was given }
+    begin
+      if FSideScreens > 0 then
+        ArrangeTwoScreens(Wnd)        { quietly: the note was given }
+      else
+        PlaceWindow(Wnd, FSideRight);   { quietly: the note was given }
+    end;
     Exit;
   end;
   if FSideWaitUntil = 0 then
