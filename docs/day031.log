@@ -156,3 +156,7 @@ Today (2026-10-22, this chat)
    MView returns only if it was moved (its place, maximised /
    fullscreen). One screen: the halves. Also the settings screen's
    button. Not tried on two screens (Wine here has one).
+23. "Mouse & keys" (user, again): the column was still too narrow on
+   his screen. Each row's name (button or key) now also shows in full as
+   a hint when the mouse rests on it (uMousePage BuildRows,
+   BuildKeyRows).

@@ -791,6 +791,10 @@ begin
       FRows[E].Caption.Parent := FRight;
       FRows[E].Caption.SetBounds(8, Y + 4, FLabelWidth - 12, 22);
       FRows[E].Caption.Caption := MouseEventCaption(E);
+      { Day 31 (user): the whole name also as a hint, should the column
+        still be too narrow for it. }
+      FRows[E].Caption.Hint := MouseEventCaption(E);
+      FRows[E].Caption.ShowHint := True;
       for K := 0 to MaxActionsPerEvent - 1 do
       begin
         FRows[E].Combos[K] := TComboBox.Create(Self);
@@ -1398,6 +1402,8 @@ begin
       FKeyRows[I].Caption.Parent := FRight;
       FKeyRows[I].Caption.SetBounds(8, Y + 4, FLabelWidth - 40, 22);
       FKeyRows[I].Caption.Caption := KeyCaption(Keys[I]);
+      FKeyRows[I].Caption.Hint := KeyCaption(Keys[I]);     { Day 31: the whole name }
+      FKeyRows[I].Caption.ShowHint := True;
       FKeyRows[I].Remove := TButton.Create(Self);
       FKeyRows[I].Remove.Parent := FRight;
       FKeyRows[I].Remove.SetBounds(FLabelWidth - 32, Y, 26, 26);

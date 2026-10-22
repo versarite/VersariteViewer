@@ -82,8 +82,8 @@ Added after the first 1.2 builds:
   other screen and leaves VersariteViewer as it is (fullscreen too); `=2` moves VersariteViewer
   instead. The windows keep their size. Needs Windows' "Extend these displays" (Win+P › Extend);
   `0` (default) or one screen: the halves, as before.
-- **The "Mouse & keys" page:** the first column (buttons and keys) is as wide as the longest name,
-  so names like "Wheel down (towards you)" are no longer cut off at 125 / 150 % display scaling.
+- **The "Mouse & keys" page:** the first column (buttons and keys) is wider, and each name shows
+  in full as a hint when the mouse rests on it.
 
 The full list: [release notes 1.2](docs/release_notes_v1.2.0.md).
 
