@@ -8,7 +8,7 @@ By [Versarite](https://github.com/versarite). Free software under the GNU GPL v3
 Claude and - in the early design phase - ChatGPT helped me greatly to unlock the capabilities of Lazarus/FPC.
 
 **Status: release 1.2 (2026-10-22).** 
-A small number new features has been added following feedback. The development of VersariteViewer stops at 1.2 for now.
+A small number of new features has been added following feedback. The development of VersariteViewer stops at 1.2 for now.
 I concentrate in the future on the Viewer Lab Version, where Versarite is envisioned to become a bridge beween Totalcmd and Fiji/ImageJ.
    
 1.2 adds a **slide show** - of the folder on screen, or of
