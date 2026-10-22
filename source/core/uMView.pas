@@ -285,6 +285,7 @@ type
     Placed: string;          { the copy, or where the file went }
     Caption: string;         { the slot's name, or 'deleted files' }
     Pending: Boolean;        { its undo is under way }
+    Stamp: Int64;            { uExtensions' NextUndoStamp: against the edition's undo (Day 28) }
   end;
 
   { A move under way: the file left the lists at once; if the move
@@ -362,6 +363,10 @@ type
     FScratchTitle: string;       { 'Clipboard image', 'Cropped from x.jpg' }
     FCopyWanted: string;         { copy this file once its full image is there (Day 25) }
     FScratchPrefix: string;      { file name start when saved }
+    { The leave-guard (Day 29): when a step away from an unsaved image was
+      held back first, and the last one held back (NowMs; 0 = none). }
+    FGuardFirstMs: Double;
+    FGuardLastMs: Double;
     FSaveAsDir: string;          { "Save image as": the folder last chosen (session) }
 
     { Edit mode: left drag selects an area of the image, which "Crop
@@ -375,6 +380,21 @@ type
       Auto for every image re-levels on the mouse up, not live). }
     FSelDragging: Boolean;
     FSelDragDone: Boolean;
+    { The aiming loupe (Day 28, user: "rest to show"): an edition's tool
+      aims (its last word, OnAimLoupe), the point aimed at (the loupe's
+      middle, surface pixels), where the mouse came to rest and when,
+      its last move (for its speed), armed (a rest may show it: the
+      mouse moved since it last went), a button down, and when it goes
+      (1 s after the release; 0 = not set). }
+    FAimTool: Boolean;
+    FAimTX, FAimTY: Double;
+    FAimRestX, FAimRestY: Double;
+    FAimRestTick: QWord;
+    FAimMoveX, FAimMoveY: Double;
+    FAimMoveTick: QWord;
+    FAimArmed: Boolean;
+    FAimDown: Boolean;
+    FAimHideAt: QWord;
 
     { Start-up measurement (startup.csv). }
     FStartupWindowMs: Double;
@@ -552,6 +572,10 @@ type
     FDirIndex: Integer;
     FDirCounts: string;
     FDirPeek: TDirPeek;
+    { The slide show of the current folder (Day 29, user): on; when the
+      next image is due (NowMs; 0 = from the image now on screen). }
+    FSlideShow: Boolean;
+    FSlideNextMs: Double;
     FFollowWanted: string;
     { Total Commander answered the last poll: MView follows it now
       ("[TC]" in the info line; subfolders off). }
@@ -588,9 +612,30 @@ type
     procedure CopyImage(const AImage: IDecodedImage);
     procedure CopyToClipboard;
     procedure ShowScratch(const AImage: IDecodedImage; const ATitle, APrefix: string);
+    { A step to another image may leave what is shown: False while an
+      unsaved crop / paste / copy is held (the first step, and the wheel
+      still turning), [Navigation] GuardUnsavedCopy. }
+    function LeaveScratchAllowed: Boolean;
     procedure SetEditMode(AOn: Boolean);
     procedure ClearSelection;
     procedure DragSelection(AX, AY: Double; AStart: Boolean);
+    { The aiming loupe (Day 28, user): in edit mode and while an
+      edition's tool places a point (measuring line, reference
+      measurement, scale bar), resting the mouse [Magnifier] AimRestMs shows a small
+      lens centred on the point, a cross on it (the pointer hidden); it
+      follows the mouse; it goes AimHideMs after a button's release, when
+      the mouse moves on fast (button up), leaves the view or goes over
+      a panel. [Magnifier] AimLoupe=0: never. Not with the magnifier on. }
+    function AimWanted: Boolean;
+    function AimShown: Boolean;
+    procedure AimMouse(AKind: TOverlayMouseKind; AX, AY: Integer);
+    procedure AimTick;
+    procedure AimReleased(ANow: QWord);
+    procedure PlaceAim;
+    procedure HideAim;
+    { uExtensions' OnAimLoupe: an edition's tool aims at (AX, AY) (AOn),
+      or no longer aims. }
+    procedure HandleAimLoupe(AOn: Boolean; AX, AY, AFromX, AFromY: Double);
     procedure CropSelection;
     procedure GoBack;
     procedure ParentFolder;
@@ -705,7 +750,13 @@ type
     procedure PollTotalCommander;
     procedure StartDirPreview(const AFolder: string);
     procedure StopDirPreview;
+    { cmdDirPreviewDelay: DirPreviewDelayMs one DirPreviewStepMs longer
+      (ADir > 0) or shorter, written to the ini at once. }
+    procedure StepDirPreviewDelay(ADir: Integer);
+    { [Sort] TCSlideShowMode on / off (cmdTCSlideShow), written at once. }
+    procedure SetTCSlideShow(AOn: Boolean);
     procedure StepDirPreview;
+    procedure StepSlideShow;
     function DirPreviewQuick: Boolean;
     function DirPreviewPaused: Boolean;
     function DirPreviewPlaysGif: Boolean;
@@ -725,6 +776,14 @@ type
       to a copy" and the SVG figure). }
     function BuildTurnedCopy(const AImg: IDecodedImage; AAngle: Double; out AMap: TBurnInMap;
       var AFullW, AFullH: Integer): TBGRABitmap;
+    { uExtensions' image pixels source (1.1: "Open in Fiji"): the pixels
+      as decoded, no filter, no turn. }
+    { uExtensions' ShowImageInViewer (Day 28: Fiji's result): ABitmap as a
+      new image, as a crop (the view's turn kept). }
+    function ShowEditionImage(ABitmap: TBGRABitmap; const AName, ATitle,
+      ASaveName: string): Boolean;
+    function PixelsSource(out ABitmap: TBGRABitmap; out AImageName, ASourceName, AFolder,
+      AError: string; out AFullWidth, AFullHeight: Integer; out AQuick: Boolean): Boolean;
     { uExtensions' figure source (1.1). }
     function FigureSource(out ABitmap: TBGRABitmap; out AMap: TBurnInMap;
       out AImageName, ASourceName, AFolder, AError: string; out AQuick: Boolean): Boolean;
@@ -830,6 +889,8 @@ type
     procedure DeleteCurrent;
     { Takes back the newest copy / move / delete not yet taken back. }
     procedure UndoLast;
+    { Day 28: the edition's undo (marks) before the newest file undo. }
+    function EditionUndoFirst: Boolean;
     { The menu's text for Undo; '' = nothing to take back. }
     function UndoCaption: string;
     { The panel opened by the menu or a key (stays until the mouse has
@@ -938,6 +999,14 @@ type
       while it is on; back as it was when off). }
     procedure SetDirPreview(AOn: Boolean);
     property DirPreview: Boolean read FDirPreview;
+    { The slide show (Day 29, user): the current folder's images one after
+      another, round and round, each [Sort] DirPreviewDelayMs (the
+      commands DirPreviewLonger / -Shorter change it while it runs). Esc,
+      the command or the menu end it; it waits while an unsaved image or
+      edit mode is on, and gives way to the Total Commander dir preview
+      while that plays a folder. }
+    procedure SetSlideShow(AOn: Boolean);
+    property SlideShow: Boolean read FSlideShow;
 
     { The magnifier (Phase H, G6; user, Day 21 / 23): a round lens that
       follows the mouse; left drag sideways = magnification (relative to
@@ -953,6 +1022,8 @@ type
 implementation
 
 uses
+  LCLIntf,      { GetKeyState: the aiming loupe sees a release (Day 28) }
+  LCLType,
   Forms,
   uMouseEngine,
   uIconFile,
@@ -1059,7 +1130,10 @@ begin
   { No layer repaints a viewer that is going; no figure from it. }
   OnOverlayChanged := nil;
   OnViewerNote := nil;
+  OnAimLoupe := nil;
   UnregisterFigureSource(Self);
+  UnregisterImagePixelsSource(Self);
+  UnregisterShowImage(Self);
 
   Shutdown;
 
@@ -1110,7 +1184,10 @@ begin
   { No layer repaints a viewer that is going; no figure from it. }
   OnOverlayChanged := nil;
   OnViewerNote := nil;
+  OnAimLoupe := nil;
   UnregisterFigureSource(Self);
+  UnregisterImagePixelsSource(Self);
+  UnregisterShowImage(Self);
   StopAnimation;
   CancelStackLoad;
   if Assigned(FIcons) then
@@ -1298,7 +1375,10 @@ begin
   FPanel.OnEntryDetails := @PanelEntryDetails;
   { The edition's overlay layers repaint the view (uExtensions, M0). }
   OnOverlayChanged := @HandleOverlayLayerChanged;
+  OnAimLoupe := @HandleAimLoupe;
   RegisterFigureSource(@FigureSource);
+  RegisterImagePixelsSource(@PixelsSource);
+  RegisterShowImage(@ShowEditionImage);
   OnViewerNote := @StatusNote;
   if FPanel.Pinned then
     FPanel.Show;
@@ -2101,6 +2181,10 @@ procedure TMView.Navigate(ACommand: TCommand);
 var
   Moved, SkimEnded: Boolean;
 begin
+  { A step by hand during the slide show: the new image gets its full
+    time (Day 29). }
+  if FSlideShow then
+    FSlideNextMs := 0;
   { Climbing: the folder above is being read. Steps meanwhile are not
     done in the old tree (they would climb again and again); the last
     one is done once the new tree is there. }
@@ -2260,6 +2344,14 @@ end;
 
 procedure TMView.Execute(ACommand: TCommand; const AArgs: TCommandArgs);
 begin
+  { Day 29 (user): an unsaved image is not lost to a wheel turned by
+    accident. }
+  if (ACommand in [cmdNextImage, cmdPreviousImage, cmdNextDirectory, cmdPreviousDirectory,
+    cmdParentDirectory]) and not LeaveScratchAllowed then
+  begin
+    Refresh;
+    Exit;
+  end;
   case ACommand of
     cmdNextImage,
     cmdPreviousImage,
@@ -2480,6 +2572,15 @@ begin
         RememberPreviewStrip;
       end;
 
+    cmdDirPreviewDelay:
+      StepDirPreviewDelay(Sign(Round(AArgs.Value)));
+    cmdTCSlideShow:
+      SetTCSlideShow(not FConfig.TCSlideShowMode);
+    cmdDirPreviewOnOff:
+      SetDirPreview(not FDirPreview);
+    cmdSlideShow:
+      SetSlideShow(not FSlideShow);
+
     cmdExit:
       begin
         if Assigned(FOnExitRequest) then
@@ -2595,7 +2696,9 @@ begin
           Part := Format('%d / %d', [FNavigator.CurrentIndex + 1, FNavigator.ImageCount]);
           { The dir preview's folder: its counts (1.1). }
           if (FDirFolder <> '') and (FDirCounts <> '') then
-            Part := Part + '   (' + FDirCounts + ')';
+            Part := Part + '   (' + FDirCounts + ')'
+          else if FSlideShow then
+            Part := Part + Format('   (slide show, %.1f s)', [FConfig.DirPreviewDelayMs / 1000]);
         end;
       iiVideos:
         { Videos in this folder: counted, never shown (user, Day 24). }
@@ -3158,6 +3261,30 @@ begin
   ShowScratch(Img, 'Clipboard image', 'clipboard');
 end;
 
+function TMView.ShowEditionImage(ABitmap: TBGRABitmap; const AName, ATitle,
+  ASaveName: string): Boolean;
+var
+  Key: TImageKey;
+  Img: IDecodedImage;
+  Angle: Double;
+begin
+  Result := False;
+  if ABitmap = nil then
+    Exit;
+  Key.FileName := AName;
+  Key.FileSize := 0;
+  Key.FileTime := Now;
+  Img := TDecodedImage.Create(Key, qlFull, ABitmap);
+  { The same way round as the image it came from. }
+  Angle := FRenderer.View.Angle;
+  ShowScratch(Img, ATitle, ASaveName);
+  if Angle <> 0 then
+    FRenderer.RotateBy(Angle);
+  UpdateInfo;
+  Refresh;
+  Result := True;
+end;
+
 { A pasted or cropped image, shown instead of the current file until
   the next step; "Save image" writes it. }
 procedure TMView.ShowScratch(const AImage: IDecodedImage; const ATitle, APrefix: string);
@@ -3167,6 +3294,7 @@ begin
   if FPlayStack <> '' then
     CancelStackLoad;
   FShowingPaste := True;
+  FGuardFirstMs := 0;
   FScratchTitle := ATitle;
   FScratchPrefix := APrefix;
   FPasteSavedAs := '';
@@ -3176,6 +3304,41 @@ begin
   FPendingFile := '';
   FCommandMs := 0;
   Display(AImage);
+end;
+
+const
+  { The leave-guard: a step counts as "leave it" after the wheel rested
+    this long, and within this time of the first step held back. }
+  GuardPauseMs = 600;
+  GuardWindowMs = 6000;
+
+function TMView.LeaveScratchAllowed: Boolean;
+var
+  Now_: Double;
+begin
+  Result := True;
+  if not (FConfig.GuardUnsavedCopy and FShowingPaste and (FPasteSavedAs = '')
+    and not FSavingPaste) then
+  begin
+    FGuardFirstMs := 0;
+    Exit;
+  end;
+  Now_ := NowMs;
+  { The second step, after a pause: leave it. }
+  if (FGuardFirstMs > 0) and (Now_ - FGuardFirstMs < GuardWindowMs)
+    and (Now_ - FGuardLastMs >= GuardPauseMs) then
+  begin
+    FGuardFirstMs := 0;
+    Exit;
+  end;
+  if (FGuardFirstMs = 0) or (Now_ - FGuardFirstMs >= GuardWindowMs) then
+  begin
+    FGuardFirstMs := Now_;
+    ShowStatus('kept - the wheel again leaves it unsaved', GuardWindowMs);
+  end;
+  { Still turning: the pause starts again. }
+  FGuardLastMs := Now_;
+  Result := False;
 end;
 
 function TMView.CanRotateLossless: Boolean;
@@ -3271,6 +3434,7 @@ begin
   FSelAnchorValid := False;
   FSelDragging := False;
   FSelDragDone := False;
+  HideAim;
   Sel := FRenderer.Selection;
   if not Sel.Active then
     Exit;
@@ -3337,6 +3501,217 @@ begin
   Sel.Angle := FSelAngle;
   Sel.Active := (Sel.X1 - Sel.X0 >= 1) and (Sel.Y1 - Sel.Y0 >= 1);
   FRenderer.Selection := Sel;
+end;
+
+const
+  { The aiming loupe (Day 28, user: "just large enough to aim"; "rest to
+    show"): its radius at 96 dpi, its magnification relative to the
+    screen; the rest that shows it (and how far the mouse may drift
+    meanwhile), how long it stays after a release, and the speed of a
+    move that sends it away (button up). }
+  AimRadius96 = 40;
+  AimMag = 4.0;
+  AimRestPx = 4;
+  AimHideMs = 1000;
+  AimLeavePxPerS = 1500;
+
+function TMView.AimWanted: Boolean;
+begin
+  Result := FConfig.AimLoupe and (FEditMode or FAimTool) and not MagnifierOn
+    and Assigned(FSurface) and Assigned(FCurrentImage) and not FCurrentImage.IsError;
+end;
+
+function TMView.AimShown: Boolean;
+begin
+  Result := (FRenderer <> nil) and FRenderer.Aim.Active;
+end;
+
+{ Every mouse event over the view, before anyone else (HandleOverlayMouse):
+  the rest, the speed, the buttons; in edit mode the point is the mouse
+  (an edition's tool says its own point, OnAimLoupe, in this same event
+  later). }
+procedure TMView.AimMouse(AKind: TOverlayMouseKind; AX, AY: Integer);
+var
+  Now_, Dt: QWord;
+  D: Double;
+begin
+  Now_ := GetTickCount64;
+  { Over a panel: not aiming at the image. }
+  if (Assigned(FPanel) and FPanel.Contains(AX, AY))
+    or (Assigned(FFilterPanel) and FFilterPanel.Contains(AX, AY)) then
+  begin
+    FAimArmed := False;
+    HideAim;
+    Exit;
+  end;
+  case AKind of
+    omMove:
+      begin
+        Dt := Now_ - FAimMoveTick;
+        D := Hypot(AX - FAimMoveX, AY - FAimMoveY);
+        FAimMoveX := AX;
+        FAimMoveY := AY;
+        FAimMoveTick := Now_;
+        { Moved on from the resting place: a new rest is timed (and may
+          show it). }
+        if Hypot(AX - FAimRestX, AY - FAimRestY) > AimRestPx then
+        begin
+          FAimRestX := AX;
+          FAimRestY := AY;
+          FAimRestTick := Now_;
+          FAimArmed := True;
+        end;
+        if not FAimTool then
+        begin
+          FAimTX := AX + 0.5;
+          FAimTY := AY + 0.5;
+        end;
+        if AimShown then
+        begin
+          { Off quickly, no button: done aiming here. }
+          if (not FAimDown) and (Dt > 0) and (Dt < 200)
+            and (D * 1000 / Dt > AimLeavePxPerS) then
+            HideAim
+          else if not FAimTool then
+            PlaceAim;   { follows the mouse (a tool's point: in its event) }
+        end;
+      end;
+    omDown:
+      begin
+        FAimDown := True;
+        FAimHideAt := 0;
+      end;
+    omUp:
+      AimReleased(Now_);
+  end;
+end;
+
+{ A button came up (the view tells only a release an overlay took the
+  press for, so AimTick also asks the buttons): the point is set - the
+  loupe goes a second later; a new rest after a move brings it back. }
+procedure TMView.AimReleased(ANow: QWord);
+begin
+  FAimDown := False;
+  FAimArmed := False;
+  if AimShown then
+    FAimHideAt := ANow + AimHideMs;
+end;
+
+{ The form's 50 ms timer (PumpDeliveries): show after a rest, go after
+  the release's second, go when not wanted or the mouse left the view. }
+procedure TMView.AimTick;
+var
+  Now_: QWord;
+  P: TPoint;
+  Inside, Down: Boolean;
+begin
+  Now_ := GetTickCount64;
+  { The buttons as they are (a release the view didn't pass on) - on
+    every tick, also while nothing aims: a press from before (the right
+    click that opened the menu) must not count as an aim's release when
+    a tool starts. }
+  Down := (GetKeyState(VK_LBUTTON) < 0) or (GetKeyState(VK_RBUTTON) < 0)
+    or (GetKeyState(VK_MBUTTON) < 0);
+  if FAimDown and not Down then
+    AimReleased(Now_)
+  else if Down and not FAimDown then
+  begin
+    FAimDown := True;
+    FAimHideAt := 0;
+  end;
+  if not AimWanted then
+  begin
+    HideAim;
+    Exit;
+  end;
+  P := FSurface.ScreenToClient(Mouse.CursorPos);
+  Inside := (P.X >= 0) and (P.Y >= 0) and (P.X < FSurface.ClientWidth)
+    and (P.Y < FSurface.ClientHeight);
+  if AimShown then
+  begin
+    if not Inside then
+    begin
+      FAimHideAt := 0;
+      FAimArmed := False;
+      HideAim;
+    end
+    else if (FAimHideAt <> 0) and (Now_ >= FAimHideAt) then
+    begin
+      { A second after the release. Moved on since (towards a line's
+        second point): a new rest from now brings it back; not moved (a
+        frame done): it stays away. }
+      FAimHideAt := 0;
+      FAimRestTick := Now_;
+      HideAim;
+    end;
+    Exit;
+  end;
+  { [Magnifier] AimRestMs (Day 29, user; default 500). }
+  if FAimArmed and Inside and (Now_ - FAimRestTick >= FConfig.AimRestMs) then
+  begin
+    FAimArmed := False;
+    FAimHideAt := 0;
+    PlaceAim;
+  end;
+end;
+
+{ The loupe on the point aimed at, centred; the pointer hidden (the
+  cross is the pointer). }
+procedure TMView.PlaceAim;
+var
+  A: TLensState;
+  WasShown: Boolean;
+begin
+  if not AimWanted then
+  begin
+    HideAim;
+    Exit;
+  end;
+  WasShown := AimShown;
+  A := Default(TLensState);
+  A.Active := True;
+  A.X := FAimTX;
+  A.Y := FAimTY;
+  A.Radius := AimRadius96 * Max(1.0, Screen.PixelsPerInch / 96);
+  A.Mag := AimMag;
+  A.Sharpen := 0;          { the pixels as they are, for aiming }
+  A.Cross := True;
+  FRenderer.Aim := A;
+  if not WasShown then
+    FSurface.Cursor := crNone;
+  Refresh;
+end;
+
+procedure TMView.HideAim;
+var
+  A: TLensState;
+begin
+  if not AimShown then
+    Exit;
+  A := FRenderer.Aim;
+  A.Active := False;
+  FRenderer.Aim := A;
+  if Assigned(FSurface) then
+    FSurface.Cursor := ViewCursor;
+  Refresh;
+end;
+
+procedure TMView.HandleAimLoupe(AOn: Boolean; AX, AY, AFromX, AFromY: Double);
+begin
+  if AOn then
+  begin
+    FAimTool := True;
+    FAimTX := AX;
+    FAimTY := AY;
+    if AimShown then
+      PlaceAim;
+  end
+  else
+  begin
+    FAimTool := False;
+    if not FEditMode then
+      HideAim;
+  end;
 end;
 
 { The selected area becomes the image shown, fitted to the screen (same
@@ -3505,6 +3880,9 @@ begin
     SortFoldersChanged;
     ShowNote('cut cancelled', 2000);
   end
+  { The slide show (Day 29) ends first: Esc is how a show is stopped. }
+  else if FSlideShow then
+    SetSlideShow(False)
   else if Assigned(FStrip) and FStrip.Visible then
   begin
     SetPreviewStrip(False, False);
@@ -3821,6 +4199,7 @@ var
   NoticeT: Double;
   NoticeShown: Boolean;
 begin
+  AimTick;
   { Debugging saves: report when done. }
   Shot := FRenderer.TakeScreenshotResult;
   if Shot <> '' then
@@ -3982,7 +4361,10 @@ begin
 
   { The dir preview's next image (1.1). }
   if FDirFolder <> '' then
-    StepDirPreview;
+    StepDirPreview
+  { The slide show's (Day 29). }
+  else if FSlideShow then
+    StepSlideShow;
 
   { The pause before the full-size decode is over (the dir preview:
     quick views only, unless it plays everything slowly). }
@@ -4151,6 +4533,8 @@ begin
   Result := False;
   { A selection's drag ends with the button's release (wherever it is):
     Auto for every image re-levels then (Day 26). }
+  { The aiming loupe sees every mouse event over the view (Day 28). }
+  AimMouse(AKind, AX, AY);
   if (AKind = omUp) and FSelDragging then
   begin
     FSelDragging := False;
@@ -4642,10 +5026,24 @@ begin
   E.Placed := APlaced;
   E.Caption := AJob.Caption;
   E.Pending := False;
+  E.Stamp := NextUndoStamp;
   if Length(FUndo) >= MaxUndoEntries then
     DeleteUndo(0);
   SetLength(FUndo, Length(FUndo) + 1);
   FUndo[High(FUndo)] := E;
+end;
+
+{ The edition's undo (the Lab's marks, Day 28) is the one to take back:
+  it has one, newer than the newest file undo. }
+function TMView.EditionUndoFirst: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  if EditionUndoCaption = '' then
+    Exit;
+  I := LastUndo;
+  Result := (I < 0) or (EditionUndoStamp > FUndo[I].Stamp);
 end;
 
 function TMView.UndoCaption: string;
@@ -4653,6 +5051,8 @@ var
   I: Integer;
 begin
   Result := '';
+  if EditionUndoFirst then
+    Exit(EditionUndoCaption);
   I := LastUndo;
   if I < 0 then
     Exit;
@@ -4674,6 +5074,13 @@ var
   I: Integer;
   Job: TFileJob;
 begin
+  { The edition's (a mark) when it is the newer: at once, no file job. }
+  if EditionUndoFirst then
+  begin
+    EditionUndo;
+    Refresh;
+    Exit;
+  end;
   { A copy / move still under way would be the one to take back: wait
     for it. }
   if FJobsInFlight > 0 then
@@ -5096,20 +5503,31 @@ procedure TMView.SetRapidSelection(AOn: Boolean);
 var
   Folders: TSortFolders;
   I, Made: Integer;
+  Paths: array[0..9] of string;
+  FirstMade: string;
 begin
+  FirstMade := '';
   Folders := FConfig.SortFolders;
   if AOn = Folders.Rapid then
     Exit;
   if AOn then
   begin
-    Folders.SetRapid(True, FConfig.ImageFolder);
+    { [Sort] RapidFolder1 .. RapidFolder0 (1.1, user), else Selection<n>
+      in DefaultImageFolder. }
+    for I := 0 to High(Paths) do
+      Paths[I] := FConfig.RapidFolder(I);
+    Folders.SetRapid(True, Paths);
     { The folders are made where they are missing (a rare, user-made
       action: the disk is asked here). }
     Made := 0;
     for I := 0 to Folders.Count - 1 do
-      if not DirectoryExists(Folders.Slot(I).Folder) then
+      if (Folders.Slot(I).Folder <> '') and not DirectoryExists(Folders.Slot(I).Folder) then
         if ForceDirectories(Folders.Slot(I).Folder) then
+        begin
+          if Made = 0 then
+            FirstMade := Folders.Slot(I).Folder;
           Inc(Made);
+        end;
     if Assigned(FPanel) then
     begin
       FRapidPrevPinned := FPanel.Pinned;
@@ -5121,11 +5539,14 @@ begin
     ShowSortPanel(True);
     DirectoryHint('Rapid sorting: keys 1 .. 0 move the image');
     if Made > 0 then
-      ShowStatus(Format('%d folders made in %s', [Made, FConfig.ImageFolder]), 4000);
+      if Made = 1 then
+        ShowStatus('Rapid sorting folder made: ' + FirstMade, 4000)
+      else
+        ShowStatus(Format('%d rapid sorting folders made', [Made]), 4000);
   end
   else
   begin
-    Folders.SetRapid(False, '');
+    Folders.SetRapid(False, []);
     if Assigned(FPanel) then
     begin
       FPanel.Pinned := FRapidPrevPinned;
@@ -5423,7 +5844,9 @@ end;
 
 function TMView.ViewCursor: TCursor;
 begin
-  if MagnifierOn and not FRenderer.Lens.Locked then
+  if AimShown then
+    Result := crNone        { the aiming loupe's cross is the pointer }
+  else if MagnifierOn and not FRenderer.Lens.Locked then
     Result := crCross
   else
     Result := crDefault;
@@ -5839,6 +6262,43 @@ begin
   UpdateInfo;
 end;
 
+{ 1.1 (user): a key or mouse button (DirPreviewLonger / DirPreviewShorter)
+  changes the time per image while the dir preview is on. }
+procedure TMView.StepDirPreviewDelay(ADir: Integer);
+var
+  Old, New: Integer;
+  Text: string;
+begin
+  if ADir = 0 then
+    Exit;
+  if not (FDirPreview or FSlideShow) then
+  begin
+    ShowStatus('No slide show or dir preview is running (right-click menu)', 3000);
+    Exit;
+  end;
+  Old := FConfig.DirPreviewDelayMs;
+  FConfig.SetDirPreviewDelayMs(Old + ADir * FConfig.DirPreviewStepMs);
+  New := FConfig.DirPreviewDelayMs;
+  if New <> Old then
+  begin
+    FConfig.SaveSort;
+    { The image shown keeps the time it had, changed by the step. }
+    if FDirNextMs <> 0 then
+      FDirNextMs := Max(NowMs, FDirNextMs + (New - Old));
+    if FSlideNextMs <> 0 then
+      FSlideNextMs := Max(NowMs, FSlideNextMs + (New - Old));
+  end;
+  if FSlideShow and (FDirFolder = '') then
+    Text := Format('Slide show: %d ms per image', [New])
+  else
+    Text := Format('Dir preview: %d ms per image', [New]);
+  if (New = Old) and (ADir < 0) then
+    Text := Text + ' (the shortest)'
+  else if New = Old then
+    Text := Text + ' (the longest)';
+  ShowStatus(Text, 2500);
+end;
+
 function TMView.DirPreviewQuick: Boolean;
 begin
   Result := (FDirFolder <> '') and not DirPreviewPaused
@@ -5848,10 +6308,24 @@ end;
 { 1.1 (user): with VersariteViewer's own window in front (it has the
   focus, not Total Commander), the dir preview waits: no slide show, and
   the image shown gets its full version as usual, so a GIF plays. Total
-  Commander in front again: the preview goes on. }
+  Commander in front again: the preview goes on. Day 29 (user):
+  [Sort] TCSlideShowMode=1 - it plays on (a slide show). }
 function TMView.DirPreviewPaused: Boolean;
 begin
-  Result := (FDirFolder <> '') and Application.Active;
+  Result := (FDirFolder <> '') and Application.Active and not FConfig.TCSlideShowMode;
+end;
+
+procedure TMView.SetTCSlideShow(AOn: Boolean);
+begin
+  FConfig.TCSlideShowMode := AOn;
+  FConfig.SaveSort;
+  if AOn then
+    ShowStatus('Slide show mode: on - the dir preview plays on with ' + EditionTitle
+      + ' in front', 4000)
+  else
+    ShowStatus('Slide show mode: off - the dir preview waits while ' + EditionTitle
+      + ' has the focus', 4000);
+  UpdateInfo;
 end;
 
 { 1.1 (user): DirPreviewDelayMs above 1000 ms: an animated GIF in the
@@ -5898,6 +6372,69 @@ begin
     Exit;
   FDirIndex := (FDirIndex + 1) mod N;
   if FNavigator.SelectFile(Files[FDirIndex]) then
+    ShowCurrent;
+end;
+
+procedure TMView.SetSlideShow(AOn: Boolean);
+begin
+  if AOn = FSlideShow then
+    Exit;
+  if AOn and not FNavigator.HasCurrentImage then
+  begin
+    ShowStatus('Slide show: no images here', 3000);
+    Exit;
+  end;
+  FSlideShow := AOn;
+  FSlideNextMs := 0;
+  if AOn then
+    ShowStatus(Format('Slide show: on (%d ms per image; Esc ends it)',
+      [FConfig.DirPreviewDelayMs]), 4000)
+  else
+    ShowStatus('Slide show: off', 2500);
+  UpdateInfo;
+  Refresh;
+end;
+
+{ PumpDeliveries: the next image of the current folder, round and round,
+  once the one shown has been there DirPreviewDelayMs (counted from when
+  it is on screen). }
+procedure TMView.StepSlideShow;
+var
+  Files: TStringArray;
+  I, N, Here: Integer;
+  Name: string;
+begin
+  if not FNavigator.HasCurrentImage then
+    Exit;
+  { Waits: an unsaved image is shown (it would be lost), edit mode is on,
+    or the image is still coming. Its time starts afresh after. }
+  if FShowingPaste or FEditMode or (FPendingFile <> '') then
+  begin
+    FSlideNextMs := 0;
+    Exit;
+  end;
+  if FSlideNextMs = 0 then
+  begin
+    FSlideNextMs := NowMs + FConfig.DirPreviewDelayMs;
+    Exit;
+  end;
+  if NowMs < FSlideNextMs then
+    Exit;
+  FSlideNextMs := 0;
+  Files := FNavigator.CurrentFiles;
+  N := Length(Files);
+  if N <= 1 then
+    Exit;
+  Name := FNavigator.CurrentFileName;
+  Here := -1;
+  for I := 0 to N - 1 do
+    if SameText(Files[I], Name) then
+    begin
+      Here := I;
+      Break;
+    end;
+  FCommandMs := NowMs;
+  if FNavigator.SelectFile(Files[(Here + 1) mod N]) then
     ShowCurrent;
 end;
 
@@ -6165,6 +6702,7 @@ function TMView.BuildTurnedCopy(const AImg: IDecodedImage; AAngle: Double; out A
 var
   Turned: TBGRABitmap;
   SrcW, SrcH: Integer;
+  SX0, SY0, SX1, SY1: Double;
 begin
   Result := AImg.Bitmap.Duplicate as TBGRABitmap;
   ApplyFiltersToBitmap(Result, FFilters, True);
@@ -6176,6 +6714,14 @@ begin
   AMap.SourceHeight := Result.Height;
   AMap.Mirror := FFilters.Mirror;
   AMap.Angle := AAngle;
+  { The zoom now: screen pixels per copy pixel (Day 28: the marks burned
+    in at the size they have on screen). A turn keeps the size. }
+  FRenderer.ImageToScreen(0, 0, SX0, SY0);
+  FRenderer.ImageToScreen(1, 0, SX1, SY1);
+  if AMap.ScaleX > 0 then
+    AMap.ViewScale := Hypot(SX1 - SX0, SY1 - SY0) / AMap.ScaleX
+  else
+    AMap.ViewScale := 0;
   { The rotation too (user, Day 24), after the mirror, as on screen;
     the corners of an oblique turn black. }
   if AAngle <> 0 then
@@ -6205,6 +6751,59 @@ begin
   end;
   AMap.Width := Result.Width;
   AMap.Height := Result.Height;
+end;
+
+function TMView.PixelsSource(out ABitmap: TBGRABitmap; out AImageName, ASourceName, AFolder,
+  AError: string; out AFullWidth, AFullHeight: Integer; out AQuick: Boolean): Boolean;
+var
+  Img: IDecodedImage;
+  Reason: string;
+begin
+  Result := False;
+  ABitmap := nil;
+  AImageName := '';
+  ASourceName := '';
+  AFolder := '';
+  AError := '';
+  AFullWidth := 0;
+  AFullHeight := 0;
+  AQuick := False;
+  if (FCurrentImage = nil) or FCurrentImage.IsError then
+  begin
+    AError := 'no image is shown';
+    Exit;
+  end;
+  Img := BestPixels;
+  if Img = nil then
+  begin
+    AError := 'the image is not in memory (yet)';
+    Exit;
+  end;
+  if not DecodeFits(Img.Bitmap.Width, Img.Bitmap.Height, 0, Reason) then
+  begin
+    AError := Reason;
+    Exit;
+  end;
+  AFullWidth := Img.FullWidth;
+  AFullHeight := Img.FullHeight;
+  if (AFullWidth <= 0) or (AFullHeight <= 0) then
+  begin
+    AFullWidth := Img.Bitmap.Width;
+    AFullHeight := Img.Bitmap.Height;
+  end;
+  ABitmap := TBGRABitmap(Img.Bitmap.Duplicate);
+  AImageName := FCurrentImage.Key.FileName;
+  AQuick := Img.Quality < qlFull;
+  if FShowingPaste then
+    ASourceName := FScratchPrefix
+  else
+  begin
+    ASourceName := ItemBaseName(AImageName);
+    AFolder := ItemDirectory(AImageName);
+  end;
+  if (AFolder = '') or not DirectoryExists(AFolder) then
+    AFolder := FConfig.SaveDirectory;
+  Result := True;
 end;
 
 function TMView.FigureSource(out ABitmap: TBGRABitmap; out AMap: TBurnInMap;

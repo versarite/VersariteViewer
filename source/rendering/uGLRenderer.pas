@@ -203,6 +203,9 @@ type
   TGLRenderer = class(TRenderer)
   private
     FControl: TOpenGLControl;
+    { The lens being drawn now (DrawLens, DrawTextures' lens pass, the
+      shader): the magnifier, then the aiming loupe (Day 28). }
+    FDrawLens: TLensState;
     FShown: TGLImageTextures;    { drawn now }
     FPending: TGLImageTextures;  { being uploaded; replaces FShown when done }
     FDeleteQueue: array of GLuint;
@@ -618,10 +621,10 @@ begin
     begin
       FGL2.Uniform1f(LensOn, 1);
       { gl_FragCoord: window pixels from the bottom left, centres at .5. }
-      FGL2.Uniform1f(LensX, Lens.X);
-      FGL2.Uniform1f(LensY, AHeight - Lens.Y);
-      FGL2.Uniform1f(LensR, Lens.Radius);
-      FGL2.Uniform1f(Sharpen, LensSharpenAmount(Lens.Sharpen));
+      FGL2.Uniform1f(LensX, FDrawLens.X + FDrawLens.OffsetX);
+      FGL2.Uniform1f(LensY, AHeight - (FDrawLens.Y + FDrawLens.OffsetY));
+      FGL2.Uniform1f(LensR, FDrawLens.Radius);
+      FGL2.Uniform1f(Sharpen, LensSharpenAmount(FDrawLens.Sharpen));
     end
     else
     begin
@@ -1048,19 +1051,20 @@ begin
 
   Mag := 1;
   if ALens then
-    Mag := Lens.Mag;
+    Mag := FDrawLens.Mag;
   if SX * Mag >= NearestFromScale then
     MagFilter := GL_NEAREST
   else
     MagFilter := GL_LINEAR;
 
   SetupScreenProjection(AWidth, AHeight);
-  { The magnifier: everything Mag times larger around its centre. }
+  { The magnifier: everything Mag times larger around its centre
+    (X, Y), drawn there - or, the aiming loupe (Day 28), beside it. }
   if ALens then
   begin
-    glTranslatef(Lens.X, Lens.Y, 0);
+    glTranslatef(FDrawLens.X + FDrawLens.OffsetX, FDrawLens.Y + FDrawLens.OffsetY, 0);
     glScalef(Mag, Mag, 1);
-    glTranslatef(-Lens.X, -Lens.Y, 0);
+    glTranslatef(-FDrawLens.X, -FDrawLens.Y, 0);
   end;
   glTranslatef(CX, CY, 0);
   glRotatef(FView.Angle, 0, 0, 1);
@@ -1111,12 +1115,15 @@ const
   Segments = 96;
 var
   I, Pass: Integer;
-  A, R: Double;
+  A, R, LX, LY, G, E: Double;
   Round_: Boolean;
 begin
-  R := Lens.Radius;
+  R := FDrawLens.Radius;
   if R < 4 then
     Exit;
+  { Where it is drawn: on (X, Y), or beside it (the aiming loupe). }
+  LX := FDrawLens.X + FDrawLens.OffsetX;
+  LY := FDrawLens.Y + FDrawLens.OffsetY;
   Round_ := EnsureShader;
   SetupScreenProjection(AWidth, AHeight);
   glDisable(GL_TEXTURE_2D);
@@ -1124,24 +1131,24 @@ begin
   if Round_ then
   begin
     glBegin(GL_TRIANGLE_FAN);
-    glVertex2f(Lens.X, Lens.Y);
+    glVertex2f(LX, LY);
     for I := 0 to Segments do
     begin
       A := 2 * Pi * I / Segments;
-      glVertex2f(Lens.X + R * Cos(A), Lens.Y + R * Sin(A));
+      glVertex2f(LX + R * Cos(A), LY + R * Sin(A));
     end;
     glEnd;
   end
   else
   begin
     glBegin(GL_QUADS);
-    glVertex2f(Lens.X - R, Lens.Y - R);
-    glVertex2f(Lens.X + R, Lens.Y - R);
-    glVertex2f(Lens.X + R, Lens.Y + R);
-    glVertex2f(Lens.X - R, Lens.Y + R);
+    glVertex2f(LX - R, LY - R);
+    glVertex2f(LX + R, LY - R);
+    glVertex2f(LX + R, LY + R);
+    glVertex2f(LX - R, LY + R);
     glEnd;
     glEnable(GL_SCISSOR_TEST);
-    glScissor(Round(Lens.X - R), Round(AHeight - Lens.Y - R), Round(2 * R), Round(2 * R));
+    glScissor(Round(LX - R), Round(AHeight - LY - R), Round(2 * R), Round(2 * R));
   end;
   glColor4f(1, 1, 1, 1);
 
@@ -1164,7 +1171,7 @@ begin
     else
     begin
       glLineWidth(1);
-      if Lens.Locked then
+      if FDrawLens.Locked then
         glColor4f(1, 0.75, 0.25, 1)
       else
         glColor4f(1, 1, 1, 1);
@@ -1175,17 +1182,47 @@ begin
       for I := 0 to Segments - 1 do
       begin
         A := 2 * Pi * I / Segments;
-        glVertex2f(Lens.X + R * Cos(A), Lens.Y + R * Sin(A));
+        glVertex2f(LX + R * Cos(A), LY + R * Sin(A));
       end;
       glEnd;
     end
     else
     begin
       glBegin(GL_LINE_LOOP);
-      glVertex2f(Lens.X - R, Lens.Y - R);
-      glVertex2f(Lens.X + R, Lens.Y - R);
-      glVertex2f(Lens.X + R, Lens.Y + R);
-      glVertex2f(Lens.X - R, Lens.Y + R);
+      glVertex2f(LX - R, LY - R);
+      glVertex2f(LX + R, LY - R);
+      glVertex2f(LX + R, LY + R);
+      glVertex2f(LX - R, LY + R);
+      glEnd;
+    end;
+  end;
+  { The aiming cross (Day 28): fine, dark under light, open in the
+    middle so the pixel aimed at stays visible. }
+  if FDrawLens.Cross then
+  begin
+    G := 4;
+    E := Max(G + 2, R - 4);
+    for Pass := 0 to 1 do
+    begin
+      if Pass = 0 then
+      begin
+        glLineWidth(3);
+        glColor4f(0, 0, 0, 1);
+      end
+      else
+      begin
+        glLineWidth(1);
+        glColor4f(1, 1, 1, 1);
+      end;
+      glBegin(GL_LINES);
+      glVertex2f(Round(LX) - E + 0.5, Round(LY) + 0.5);
+      glVertex2f(Round(LX) - G + 0.5, Round(LY) + 0.5);
+      glVertex2f(Round(LX) + G + 0.5, Round(LY) + 0.5);
+      glVertex2f(Round(LX) + E + 0.5, Round(LY) + 0.5);
+      glVertex2f(Round(LX) + 0.5, Round(LY) - E + 0.5);
+      glVertex2f(Round(LX) + 0.5, Round(LY) - G + 0.5);
+      glVertex2f(Round(LX) + 0.5, Round(LY) + G + 0.5);
+      glVertex2f(Round(LX) + 0.5, Round(LY) + E + 0.5);
       glEnd;
     end;
   end;
@@ -1522,7 +1559,10 @@ begin
   end;
   { The magnifier, over the image (the frame below stays on top). }
   if Lens.Active and (FShown <> nil) and (FImage <> nil) and not FImage.IsError then
+  begin
+    FDrawLens := Lens;
     DrawLens(AWidth, AHeight);
+  end;
 
   { Edit mode: the selection as a frame, dark under light so it shows
     on any image. }
@@ -1550,7 +1590,6 @@ begin
     glLineWidth(1);
     glColor4f(1, 1, 1, 1);
   end;
-
   { Plug-in layers (uExtensions, M0: the microscopy edition's scale bar
     and measuring line), over the image, under the texts and panels; a
     texture each, uploaded again when the layer's Version changes. }
@@ -1601,6 +1640,13 @@ begin
         glDisable(GL_BLEND);
       end;
     end;
+  end;
+  { The aiming loupe (Day 28), over the frame and the layers' marks
+    (a measuring line, a scale bar being placed). }
+  if Aim.Active and (FShown <> nil) and (FImage <> nil) and not FImage.IsError then
+  begin
+    FDrawLens := Aim;
+    DrawLens(AWidth, AHeight);
   end;
 
   NewImagePainted := EndImagePart(StartMs);

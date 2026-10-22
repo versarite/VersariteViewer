@@ -135,7 +135,20 @@ type
 
     { The preview strip (Day 27, testers): Value 0 = open / close (a
       command), 1 = opened by the mouse resting at the top edge. }
-    cmdPreviewStrip
+    cmdPreviewStrip,
+
+    { The Total Commander dir preview's time per image (1.1, user): Value
+      +1 = longer, -1 = shorter, by [Sort] DirPreviewStepMs. }
+    cmdDirPreviewDelay,
+
+    { [Sort] TCSlideShowMode on / off (Day 29, user): the dir preview keeps
+      playing with the viewer in front. }
+    cmdTCSlideShow,
+
+    { Day 29 (user): the Total Commander dir preview on / off (as the
+      menu), and the slide show of the current folder on / off. }
+    cmdDirPreviewOnOff,
+    cmdSlideShow
   );
 
   TCommandArgs = record

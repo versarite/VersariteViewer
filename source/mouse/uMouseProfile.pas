@@ -128,6 +128,7 @@ type
     maFilterPanel, maLockFilters, maResetFilters,
     maAutoLevels, maAutoLevelsMode, maApplyFilters, maResizeToShown, maMagnifier,
     maRapidSelection, maRapidKey, maPreviewStrip,
+    maDirPreviewLonger, maDirPreviewShorter, maSlideShowMode, maDirPreview, maSlideShow,
     maBack, maExit
   );
 
@@ -330,6 +331,7 @@ const
     'FilterPanel', 'LockFilters', 'ResetFilters',
     'AutoLevels', 'AutoLevelsMode', 'ApplyFilters', 'ResizeToShown', 'Magnifier',
     'RapidSelection', 'RapidKey', 'TogglePreview',
+    'DirPreviewLonger', 'DirPreviewShorter', 'SlideShowMode', 'DirPreview', 'SlideShow',
     'Back', 'Exit');
   ActionCaptions: array[TMouseAction] of string = (
     '(nothing)',
@@ -351,6 +353,11 @@ const
     'Apply the filters to a copy', 'Resize to the size shown (a copy)', 'Magnifier on / off',
     'Rapid sorting on / off', 'Rapid sorting: move into this digit''s folder',
     'Toggle preview (the strip of the folder''s images)',
+    'Slide show / dir preview: each image longer (+ DirPreviewStepMs)',
+    'Slide show / dir preview: each image shorter (- DirPreviewStepMs)',
+    'Dir preview: slide show mode on / off (plays on in front)',
+    'Total Commander dir preview on / off',
+    'Slide show of this folder on / off',
     'Back (leave a mode, else the settings screen)', 'Exit');
 
   OrderNames: array[TZoneOrder] of string = ('None', 'Date', 'Name');

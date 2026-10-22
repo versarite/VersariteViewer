@@ -286,6 +286,7 @@ const
   VKEY_D = $44;
   VKEY_V = $56;
   VKEY_C = $43;
+  VKEY_Z = $5A;
   VKEY_BROWSER_BACK = $A6;
   VKEY_BROWSER_FORWARD = $A7;
   VKEY_0 = $30;          { .. VKEY_0 + 9: the digit row }
@@ -507,6 +508,11 @@ begin
       if FKeyDigit >= 0 then
         Emit(cmdRapidKey, 0, 0, FKeyDigit);
     maPreviewStrip:  Emit(cmdPreviewStrip);
+    maDirPreviewLonger:  Emit(cmdDirPreviewDelay, 0, 0, 1);
+    maDirPreviewShorter: Emit(cmdDirPreviewDelay, 0, 0, -1);
+    maSlideShowMode:     Emit(cmdTCSlideShow);
+    maDirPreview:        Emit(cmdDirPreviewOnOff);
+    maSlideShow:         Emit(cmdSlideShow);
     { A zoom / rotate mode is the engine's own; everything else (edit
       mode, exit) TMView decides. }
     maBack:
@@ -945,6 +951,10 @@ begin
       Emit(cmdPaste)
     else if AKey = VKEY_C then
       Emit(cmdCopyImage)
+    { Day 29 (user): Ctrl+Z as the menu's Undo (marks, copy / move /
+      delete, whichever came last). }
+    else if AKey = VKEY_Z then
+      Emit(cmdUndo)
     else
       Result := False;
     Exit;

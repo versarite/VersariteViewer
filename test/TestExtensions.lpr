@@ -32,7 +32,9 @@ uses
   zipper,
   BGRABitmapTypes,
   uContainers,
-  uZipContainer;
+  uZipContainer,
+  uConfig,
+  uSafeFile;
 
 var
   PassCount, FailCount: Integer;
@@ -141,6 +143,61 @@ begin
   AMeta.PixelSizeX := 1;
   AMeta.PixelSizeY := 1;
   Result := True;
+end;
+
+{ 1.1: an edition's own keys - written when missing, explained on the
+  settings screen. }
+procedure TestEditionKeys;
+var
+  OldId, OldOldId, OldTitle, OldVersion, Text: string;
+  Config: TConfig;
+begin
+  WriteLn('Edition keys');
+  RegisterEditionKey('FijiTest', 'Path', '', 'Fiji''s program (test).');
+  RegisterEditionKey('FijiTest', 'Shown', '7', 'only explained', False);
+  RegisterEditionKey('FijiTest', 'Path', 'again', 'twice: ignored');
+  Check('help of a registered key', EditionKeyHelp('fijitest', 'path') = 'Fiji''s program (test).',
+    EditionKeyHelp('fijitest', 'path'));
+  Check('registered once', ConfigKeyHelp('FijiTest', 'Path') = 'Fiji''s program (test).',
+    ConfigKeyHelp('FijiTest', 'Path'));
+  Check('a viewer key keeps its own help', Pos('preview strip', ConfigKeyHelp('View', 'PreviewStrip')) > 0,
+    ConfigKeyHelp('View', 'PreviewStrip'));
+  Check('unknown key: no help', ConfigKeyHelp('FijiTest', 'Nothing') = '');
+  OldId := EditionId;
+  OldOldId := EditionOldId;
+  OldTitle := EditionTitle;
+  OldVersion := EditionVersion;
+  SetEdition('KeyTestEdition', 'KeyTestOld', 'Key Test', '0.0');
+  try
+    SysUtils.DeleteFile(EditionIniFileName);
+    Config := TConfig.Create;
+    try
+      Config.Save;
+    finally
+      Config.Free;
+    end;
+    Check('the ini written', ReadTextFile(EditionIniFileName, Text));
+    Check('a missing key written with its default', Pos('[FijiTest]', Text) > 0)
+      ;
+    Check('  Path= (empty)', Pos('Path=' + LineEnding, Text) > 0);
+    Check('  a key not to be written: left out', Pos('Shown=', Text) = 0);
+    { A value set by hand stays. }
+    WriteTextFileSafe(EditionIniFileName, StringReplace(Text, 'Path=' + LineEnding,
+      'Path=C:\Fiji.app\ImageJ-win64.exe' + LineEnding, []));
+    Config := TConfig.Create;
+    try
+      Config.Load;
+      Config.Save;
+    finally
+      Config.Free;
+    end;
+    ReadTextFile(EditionIniFileName, Text);
+    Check('a value set by hand stays', Pos('Path=C:\Fiji.app\ImageJ-win64.exe', Text) > 0);
+  finally
+    SysUtils.DeleteFile(EditionIniFileName);
+    SysUtils.DeleteFile(EditionIniFileName + '.bak');
+    SetEdition(OldId, OldOldId, OldTitle, OldVersion, 'VersariteViewer');
+  end;
 end;
 
 procedure TestMetadata;
@@ -429,6 +486,7 @@ begin
   FailCount := 0;
   WriteLn('VersariteViewer plug-in points test (M0)');
   TestEdition;
+  TestEditionKeys;
   TestMetadata;
   TestLayers;
   TestMenu;

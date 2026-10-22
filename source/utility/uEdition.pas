@@ -60,7 +60,7 @@ unit uEdition;
 interface
 
 const
-  MViewVersion = '1.1';
+  MViewVersion = '1.2';
 
 var
   EditionId: string = 'VersariteViewer';
@@ -83,6 +83,16 @@ function EditionOldIniFileName: string;
   and "VersariteViewer" become its own ini, exe and name. }
 function EditionText(const AText: string): string;
 
+{ An edition's own ini keys (1.1): registered in its units'
+  initialization sections. The settings save (uConfig) writes a key that
+  is missing with its default when AWrite (so the key can be found on the
+  settings screen); the settings screen shows AHelp for it. }
+procedure RegisterEditionKey(const ASection, AKey, ADefault, AHelp: string; AWrite: Boolean = True);
+function EditionKeyCount: Integer;
+procedure EditionKey(AIndex: Integer; out ASection, AKey, ADefault: string; out AWrite: Boolean);
+{ The help of a registered key, '' if none. }
+function EditionKeyHelp(const ASection, AKey: string): string;
+
 implementation
 
 uses
@@ -98,6 +108,53 @@ begin
     EditionCaption := ACaption
   else
     EditionCaption := ATitle;
+end;
+
+type
+  TEditionKey = record
+    Section, Key, Default, Help: string;
+    Write: Boolean;
+  end;
+
+var
+  Keys: array of TEditionKey;
+
+procedure RegisterEditionKey(const ASection, AKey, ADefault, AHelp: string; AWrite: Boolean);
+var
+  I: Integer;
+begin
+  for I := 0 to High(Keys) do
+    if SameText(Keys[I].Section, ASection) and SameText(Keys[I].Key, AKey) then
+      Exit;
+  SetLength(Keys, Length(Keys) + 1);
+  Keys[High(Keys)].Section := ASection;
+  Keys[High(Keys)].Key := AKey;
+  Keys[High(Keys)].Default := ADefault;
+  Keys[High(Keys)].Help := AHelp;
+  Keys[High(Keys)].Write := AWrite;
+end;
+
+function EditionKeyCount: Integer;
+begin
+  Result := Length(Keys);
+end;
+
+procedure EditionKey(AIndex: Integer; out ASection, AKey, ADefault: string; out AWrite: Boolean);
+begin
+  ASection := Keys[AIndex].Section;
+  AKey := Keys[AIndex].Key;
+  ADefault := Keys[AIndex].Default;
+  AWrite := Keys[AIndex].Write;
+end;
+
+function EditionKeyHelp(const ASection, AKey: string): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 0 to High(Keys) do
+    if SameText(Keys[I].Section, ASection) and SameText(Keys[I].Key, AKey) then
+      Exit(Keys[I].Help);
 end;
 
 function EditionIniFileName: string;

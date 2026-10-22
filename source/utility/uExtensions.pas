@@ -45,6 +45,14 @@ unit uExtensions;
     stays).
   - NoteDerivedImage (Day 26): a crop, copy or resized image was made
     from another (the edition carries the scale over).
+  - The aiming loupe (Day 28): an edition's tool tells TMView the point
+    it aims at (ShowAimLoupe) or that it no longer aims (HideAimLoupe);
+    TMView shows the small lens there when the mouse rests.
+  - A new image (Day 28, "Run in Fiji"): an edition hands the viewer a
+    bitmap to show as a crop is shown (ShowImageInViewer).
+  - Undo (Day 28): an edition's own undo (the marks) joins the viewer's
+    (RegisterEditionUndo); NextUndoStamp orders both, so Undo takes back
+    whichever came last.
 
   Does NOT
   --------
@@ -126,6 +134,11 @@ type
     Mirror: Boolean;
     Angle: Double;              { degrees, clockwise }
     Width, Height: Integer;     { the copy }
+    { Screen pixels per copy pixel when the copy was made (Day 28, user:
+      the burned-in marks look as on screen - the same text size, line
+      width, padding at that zoom); 0 = not known (the layer sizes them
+      for the copy). }
+    ViewScale: Double;
   end;
 
 { AX, AY (image pixels, edges at whole numbers) in the copy. }
@@ -205,6 +218,37 @@ procedure UnregisterFigureSource(AOwner: TObject);
 function FigureSourceAvailable: Boolean;
 function MakeFigure(out ABitmap: TBGRABitmap; out AMap: TBurnInMap;
   out AImageName, ASourceName, AFolder, AError: string; out AQuick: Boolean): Boolean;
+
+{ ---- The image's own pixels (1.1: "Open in Fiji") ---- }
+
+type
+  { The current image's pixels as decoded: no display filter, no mirror,
+    no turn (for analysis). ABitmap: a copy (the caller frees it);
+    AFullWidth x AFullHeight: the image's full size (the copy can be
+    smaller: a quick view, or a huge image shown reduced); AImageName,
+    ASourceName, AFolder as for the figure. False and AError if none. }
+  TImagePixelsFunc = function(out ABitmap: TBGRABitmap; out AImageName, ASourceName,
+    AFolder, AError: string; out AFullWidth, AFullHeight: Integer; out AQuick: Boolean): Boolean of object;
+
+procedure RegisterImagePixelsSource(ASource: TImagePixelsFunc);
+procedure UnregisterImagePixelsSource(AOwner: TObject);
+function GetImagePixels(out ABitmap: TBGRABitmap; out AImageName, ASourceName, AFolder,
+  AError: string; out AFullWidth, AFullHeight: Integer; out AQuick: Boolean): Boolean;
+
+{ ---- A new image from an edition (Day 28: Fiji's result) ---- }
+
+type
+  { Shows ABitmap as a new image, as a crop is shown (until the next
+    step; "Save image" writes it): AName its name (the key the layers and
+    the scale know it by), ATitle for the info line, ASaveName the start
+    of its file name when saved. The viewer owns ABitmap from then on.
+    False if there is no viewer (ABitmap is freed). }
+  TShowImageFunc = function(ABitmap: TBGRABitmap; const AName, ATitle,
+    ASaveName: string): Boolean of object;
+
+procedure RegisterShowImage(AFunc: TShowImageFunc);
+procedure UnregisterShowImage(AOwner: TObject);
+function ShowImageInViewer(ABitmap: TBGRABitmap; const AName, ATitle, ASaveName: string): Boolean;
 
 { An edition's popup menu (the left panel's scale list) is open: the
   main form keeps the mouse pointer from hiding meanwhile (Day 26: it
@@ -325,6 +369,41 @@ function QueryImageScale(const AName: string; AWidth, AHeight: Integer;
   out AUmX, AUmY: Double): Boolean;
 procedure NoteDerivedImage(const ANewName, AParentName, AOperation: string;
   AParentWidth, AParentHeight: Integer; AFactorX, AFactorY, ATurn: Double);
+
+{ ---- The aiming loupe (Day 28) ---- }
+
+type
+  { AOn: the tool aims at (AX, AY) (surface pixels; the loupe's middle
+    once the mouse rests there); AFromX / AFromY: where its line or bar
+    starts (kept for the tools, unused since the loupe is centred);
+    False: the tool no longer aims (the loupe goes). }
+  TAimLoupeEvent = procedure(AOn: Boolean; AX, AY, AFromX, AFromY: Double) of object;
+
+var
+  OnAimLoupe: TAimLoupeEvent = nil;   { set by TMView }
+
+{ An edition's tool aims (a click to come) at (AX, AY); HideAimLoupe:
+  not any more. }
+procedure ShowAimLoupe(AX, AY, AFromX, AFromY: Double);
+procedure HideAimLoupe;
+
+{ ---- Undo (Day 28) ---- }
+
+type
+  { The edition's undo: what Undo would take back ('Undo scale bar'; ''
+    = nothing), the stamp of its newest entry (0 = none), and doing it. }
+  TEditionUndoCaption = function: string;
+  TEditionUndoStamp = function: Int64;
+  TEditionUndoProc = procedure;
+
+procedure RegisterEditionUndo(ACaption: TEditionUndoCaption; AStamp: TEditionUndoStamp;
+  AUndo: TEditionUndoProc);
+function EditionUndoCaption: string;
+function EditionUndoStamp: Int64;
+procedure EditionUndo;
+{ A new stamp for an undo entry (the viewer's and the edition's): later
+  is larger. }
+function NextUndoStamp: Int64;
 
 { ---- The image shown (M3b) ---- }
 
@@ -487,6 +566,63 @@ begin
   AError := 'no image';
   Result := Assigned(FigureSource)
     and FigureSource(ABitmap, AMap, AImageName, ASourceName, AFolder, AError, AQuick);
+end;
+
+var
+  PixelsSource: TImagePixelsFunc = nil;
+
+procedure RegisterImagePixelsSource(ASource: TImagePixelsFunc);
+begin
+  PixelsSource := ASource;
+end;
+
+procedure UnregisterImagePixelsSource(AOwner: TObject);
+begin
+  if Assigned(PixelsSource) and (TMethod(PixelsSource).Data = Pointer(AOwner)) then
+    PixelsSource := nil;
+end;
+
+function GetImagePixels(out ABitmap: TBGRABitmap; out AImageName, ASourceName, AFolder,
+  AError: string; out AFullWidth, AFullHeight: Integer; out AQuick: Boolean): Boolean;
+begin
+  ABitmap := nil;
+  AImageName := '';
+  ASourceName := '';
+  AFolder := '';
+  AFullWidth := 0;
+  AFullHeight := 0;
+  AQuick := False;
+  AError := 'no image';
+  Result := Assigned(PixelsSource)
+    and PixelsSource(ABitmap, AImageName, ASourceName, AFolder, AError, AFullWidth,
+      AFullHeight, AQuick);
+end;
+
+var
+  ShowImageFunc: TShowImageFunc = nil;
+
+procedure RegisterShowImage(AFunc: TShowImageFunc);
+begin
+  ShowImageFunc := AFunc;
+end;
+
+procedure UnregisterShowImage(AOwner: TObject);
+begin
+  if Assigned(ShowImageFunc) and (TMethod(ShowImageFunc).Data = Pointer(AOwner)) then
+    ShowImageFunc := nil;
+end;
+
+function ShowImageInViewer(ABitmap: TBGRABitmap; const AName, ATitle, ASaveName: string): Boolean;
+begin
+  Result := False;
+  if ABitmap = nil then
+    Exit;
+  if not Assigned(ShowImageFunc) then
+  begin
+    ABitmap.Free;
+    Exit;
+  end;
+  Result := ShowImageFunc(ABitmap, AName, ATitle, ASaveName);
 end;
 
 procedure BurnInPoint(const AMap: TBurnInMap; AX, AY: Double; out ACopyX, ACopyY: Double);
@@ -753,6 +889,70 @@ begin
   Result := SettingsPages[AIndex];
 end;
 
+procedure ShowAimLoupe(AX, AY, AFromX, AFromY: Double);
+begin
+  if Assigned(OnAimLoupe) then
+    OnAimLoupe(True, AX, AY, AFromX, AFromY);
+end;
+
+procedure HideAimLoupe;
+begin
+  if Assigned(OnAimLoupe) then
+    OnAimLoupe(False, 0, 0, 0, 0);
+end;
+
+var
+  UndoCaptionFunc: TEditionUndoCaption = nil;
+  UndoStampFunc: TEditionUndoStamp = nil;
+  UndoProc: TEditionUndoProc = nil;
+  LastUndoStamp: Int64 = 0;
+
+procedure RegisterEditionUndo(ACaption: TEditionUndoCaption; AStamp: TEditionUndoStamp;
+  AUndo: TEditionUndoProc);
+begin
+  UndoCaptionFunc := ACaption;
+  UndoStampFunc := AStamp;
+  UndoProc := AUndo;
+end;
+
+function EditionUndoCaption: string;
+begin
+  Result := '';
+  if Assigned(UndoCaptionFunc) then
+    try
+      Result := UndoCaptionFunc();
+    except
+      Result := '';
+    end;
+end;
+
+function EditionUndoStamp: Int64;
+begin
+  Result := 0;
+  if Assigned(UndoStampFunc) then
+    try
+      Result := UndoStampFunc();
+    except
+      Result := 0;
+    end;
+end;
+
+procedure EditionUndo;
+begin
+  if Assigned(UndoProc) then
+    try
+      UndoProc();
+    except
+      { An edition's fault never reaches the viewer. }
+    end;
+end;
+
+function NextUndoStamp: Int64;
+begin
+  Inc(LastUndoStamp);
+  Result := LastUndoStamp;
+end;
+
 procedure SetShownImage(const AName: string; AWidth, AHeight: Integer);
 begin
   ShownName := AName;
@@ -790,5 +990,6 @@ end;
 finalization
   OnOverlayChanged := nil;
   OnMenuOpen := nil;
+  OnAimLoupe := nil;
   FreeLayers;
 end.

@@ -105,3 +105,24 @@ the Lab tried under Wine):
     program VersariteImageLab; the references in the units, the specs and
     the architecture document. The viewer and core changes of 12-14 copied
     to the GitHub folder.
+17. Versarite Image Lab: "Open in Fiji" (new units uFijiLink, uFijiFind).
+    The image shown - its own pixels (no display filter, mirror or turn:
+    for analysis) - goes as an ImageJ-calibrated RGB TIFF to
+    %TEMP%\VersariteImageLab\ (cleared after a day), and Fiji is started
+    with it (into the running Fiji with its single instance listener).
+    Fiji is found in the usual places or asked for once; [Fiji] Path in
+    VersariteImageLab.ini. The core gets an image pixels source
+    (uExtensions GetImagePixels, TMView.PixelsSource), next to the
+    figure source. TestCalibrations 53 (11 new, TestFijiFind),
+    TestExtensions 71. Checked under Wine with a stand-in Fiji.exe:
+    found, path stored, the TIFF's pixels identical, unit=micron.
+    Readme_Lab.md and the Lab spec say how.
+18. The edition's own ini keys (user: "[Fiji] Path" should be visible):
+    uEdition.RegisterEditionKey - the settings save writes a registered
+    key that is missing with its default, the settings screen explains it
+    (it called the Lab's [ScaleBar] keys "not a key ... knows" before).
+    Registered: [Fiji] Path, [ScaleBar] Color / Font / FontSize / Bold /
+    SvgReferenceBar, [Calibration] Chosen / Confocal (explained only).
+    TestExtensions 80 (9 new, TestEditionKeys; its project now also
+    finds source\config). Checked under Wine: a new Lab ini has [Fiji]
+    Path=, the mouse over the key shows its help.

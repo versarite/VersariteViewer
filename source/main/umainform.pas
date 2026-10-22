@@ -168,6 +168,8 @@ type
   private
     FMView: TMView;
     FView: TWinControl;          { the drawing surface, CPU or GPU }
+    FQuitting: Boolean;          { a real exit: the close is not turned into a minimize }
+    FCloseMinimizes: Boolean;    { [Window] CloseButtonMinimizes }
     FCpuView: TMediaView;        { one of these two is used }
     FGLView: TGLMediaView;
     FPopupMenu: TPopupMenu;
@@ -197,6 +199,7 @@ type
     FApplyFiltersItem: TMenuItem;
     FResizeItem: TMenuItem;
     FMagnifierItem: TMenuItem;
+    FSlideShowItem: TMenuItem;   { Day 29: the slide show of this folder }
     { Follow Total Commander (Day 23): off / folder / folder and cursor. }
     FFollowItems: array[0..2] of TMenuItem;
     { Total Commander dir preview (1.1, testers): on / off. }
@@ -318,6 +321,7 @@ type
     procedure HandleApplyFiltersMenuClick(Sender: TObject);
     procedure HandleResizeMenuClick(Sender: TObject);
     procedure HandleMagnifierMenuClick(Sender: TObject);
+    procedure HandleSlideShowMenuClick(Sender: TObject);
     procedure HandleFollowMenuClick(Sender: TObject);
     procedure HandleSortRenameClick(Sender: TObject);
     procedure HandleSortMakeFolderClick(Sender: TObject);
@@ -350,7 +354,17 @@ type
     function CurrentNormalBounds(out ARect: TRect): Boolean;
     procedure RememberBounds;
     procedure HandleChangeBounds(Sender: TObject);
+    { 1.1 (testers): the window's X button (and Alt+F4) minimizes;
+      FQuitting is set by the real exits (menu, mouse profile, editor). }
+    procedure HandleCloseQuery(Sender: TObject; var CanClose: Boolean);
+  protected
+    { Windows: the caption's double-click hook goes on every new handle. }
+    procedure CreateWnd; override;
   public
+    { The title bar was double-clicked (Windows, windowed mode): True =
+      handled (the viewer goes to the settings screen, 1.1, user); False =
+      as usual (maximize). }
+    function CaptionDoubleClicked: Boolean;
     { Only one instance: a second MView's file or folder ('' = just come
       to the front); VersariteViewer.lpr hands it to uSingleInstance's listener. }
     procedure HandleHandedOver(const APath: string);
@@ -391,7 +405,7 @@ const
   AboutBody =
     'Written with support from Claude/Opus 5.5 and ChatGPT' + LineEnding +
     LineEnding +
-    'Dedicated by DL1BWA/KD1AEV to Makito Miyano, creator of Hamana (last version 2006) ,' + LineEnding +
+    'Dedicated by DL1BWA to Makito Miyano, creator of Hamana (last version 2006) ,' + LineEnding +
     'the viewer that pioneered how browsing images should feel:' + LineEnding +
     'FAST first, MOUSE first, no frills, never in the way.' + LineEnding +
     LineEnding +
@@ -475,6 +489,8 @@ begin
     ends the process. }
   StartWatchdog;
   OnClose := @HandleFormClose;
+  OnCloseQuery := @HandleCloseQuery;
+  FCloseMinimizes := True;
   OnChangeBounds := @HandleChangeBounds;
 
   { Safety net for results from the worker threads (see TMView,
@@ -592,6 +608,14 @@ begin
   FPopupMenu.Items.Add(FDirPreviewItem);
   AddMenuLine;
 
+  { Undo first (user, Day 28): always there, greyed while there is
+    nothing to undo (the menu keeps its shape); its caption says what
+    (the last move / delete). Also the mouse profile's Undo and a click
+    on the sort panel's bottom line. }
+  FUndoItem := TMenuItem.Create(FPopupMenu);
+  FUndoItem.Caption := 'Undo';
+  FUndoItem.OnClick := @HandleUndoMenuClick;
+  FPopupMenu.Items.Add(FUndoItem);
   { The file. The image at its own resolution to the clipboard (Day 25). }
   Item := TMenuItem.Create(FPopupMenu);
   Item.Caption := 'Copy image     (Ctrl+C)';
@@ -677,6 +701,18 @@ begin
   FPreviewStripItem.Caption := 'Preview strip  (or rest the mouse at the top edge)';
   FPreviewStripItem.OnClick := @HandlePreviewStripMenuClick;
   FPopupMenu.Items.Add(FPreviewStripItem);
+  { On / off (ticked while on). Back in the menu (user, Day 28: hidden
+    on Day 27 by mistake); also the mouse profile's Magnifier. }
+  FMagnifierItem := TMenuItem.Create(FPopupMenu);
+  FMagnifierItem.Caption := 'Magnifier (lens)';
+  FMagnifierItem.OnClick := @HandleMagnifierMenuClick;
+  FPopupMenu.Items.Add(FMagnifierItem);
+  { The slide show of this folder (Day 29, user; ticked while it runs;
+    also the mouse profile's SlideShow). }
+  FSlideShowItem := TMenuItem.Create(FPopupMenu);
+  FSlideShowItem.Caption := 'Slide show  (this folder; Esc ends it)';
+  FSlideShowItem.OnClick := @HandleSlideShowMenuClick;
+  FPopupMenu.Items.Add(FSlideShowItem);
   { The filter panel also opens at the left edge. Lock filters: they stay
     for the next images. }
   { Hidden (user, Day 27: the left edge and the mouse command
@@ -715,8 +751,8 @@ begin
   end;
 
   { Not in the user's menu (Day 27): kept, hidden. Their commands still
-    work (mouse profile: Undo, Magnifier; Undo also by a click on the
-    sort panel's bottom line). }
+    work. Undo (at the top) and the magnifier (with the viewing aids)
+    are back in the menu (user, Day 28). }
   { Lock filters: hidden (user, Day 27: the filter panel has its own
     lock symbol); the command LockFilters stays. }
   FLockFiltersItem := TMenuItem.Create(FPopupMenu);
@@ -724,16 +760,6 @@ begin
   FLockFiltersItem.OnClick := @HandleLockFiltersMenuClick;
   FLockFiltersItem.Visible := False;
   FPopupMenu.Items.Add(FLockFiltersItem);
-  FUndoItem := TMenuItem.Create(FPopupMenu);
-  FUndoItem.Caption := 'Undo';
-  FUndoItem.OnClick := @HandleUndoMenuClick;
-  FUndoItem.Visible := False;
-  FPopupMenu.Items.Add(FUndoItem);
-  FMagnifierItem := TMenuItem.Create(FPopupMenu);
-  FMagnifierItem.Caption := 'Magnifier (lens)';
-  FMagnifierItem.OnClick := @HandleMagnifierMenuClick;
-  FMagnifierItem.Visible := False;
-  FPopupMenu.Items.Add(FMagnifierItem);
 
   { The edition's own entries (uExtensions, M0): a group of their own
     (none in MView). }
@@ -777,6 +803,7 @@ begin
     ViewInput.BottomEdgeMs := FMView.Config.BottomEdgeMs;
     ViewInput.TopEdgeMs := FMView.Config.TopEdgeMs;
   end;
+  FCloseMinimizes := FMView.Config.CloseButtonMinimizes;
   FDeliveryTimer.Enabled := True;
 
   if FMView.Config.StartFullscreen then
@@ -802,6 +829,7 @@ begin
     end;
     if AApplyBounds then
       ApplySavedBounds(Config);
+    FCloseMinimizes := Config.CloseButtonMinimizes;
     { Coming back from the viewer: the editor made at the start is still
       there (hidden); it reads the files again (the viewer may have
       written them). }
@@ -1193,11 +1221,79 @@ end;
 
 procedure TMainForm.HandleEditorExit(Sender: TObject);
 begin
+  FQuitting := True;
   Close;
 end;
 
-{ Every way of closing ends here (Esc, gesture, menu, window button,
-  editor). The shutdown that follows waits for the worker threads; if
+{ 1.1 (testers: VersariteViewer closed by accident): the X button, Alt+F4
+  and the taskbar's "Close window" send it to the taskbar instead
+  ([Window] CloseButtonMinimizes=1, the default). }
+procedure TMainForm.HandleCloseQuery(Sender: TObject; var CanClose: Boolean);
+begin
+  if FQuitting or not FCloseMinimizes then
+    Exit;
+  CanClose := False;
+  WindowState := wsMinimized;
+end;
+
+function TMainForm.CaptionDoubleClicked: Boolean;
+begin
+  Result := (FMView <> nil) and not FFullscreen;
+  if Result then
+    HandleSettingsRequest(Self);
+end;
+
+{$IFDEF WINDOWS}
+{ The title bar's double-click (1.1, user): the LCL lets Windows maximize
+  the window before the form could object, so the window gets a small
+  window procedure of its own in front of the LCL's. }
+const
+  GWLP_WNDPROC_ = -4;
+  WM_NCLBUTTONDBLCLK_ = $00A3;
+  HTCAPTION_ = 2;
+
+{$IFDEF CPU64}
+function VVSetWindowLongPtrW(AWnd: HWND; AIndex: LongInt; ANewLong: PtrInt): PtrInt; stdcall;
+  external 'user32.dll' name 'SetWindowLongPtrW';
+{$ELSE}
+function VVSetWindowLongPtrW(AWnd: HWND; AIndex: LongInt; ANewLong: PtrInt): PtrInt; stdcall;
+  external 'user32.dll' name 'SetWindowLongW';
+{$ENDIF}
+function VVCallWindowProcW(APrev: Pointer; AWnd: HWND; AMsg: LongWord; AWParam: WPARAM;
+  ALParam: LPARAM): LRESULT; stdcall; external 'user32.dll' name 'CallWindowProcW';
+
+var
+  CaptionPrevProc: Pointer = nil;
+  CaptionForm: TMainForm = nil;
+
+function CaptionWndProc(AWnd: HWND; AMsg: LongWord; AWParam: WPARAM; ALParam: LPARAM): LRESULT; stdcall;
+begin
+  if (AMsg = WM_NCLBUTTONDBLCLK_) and (AWParam = HTCAPTION_) and Assigned(CaptionForm)
+    and CaptionForm.HandleAllocated and (AWnd = CaptionForm.Handle)
+    and CaptionForm.CaptionDoubleClicked then
+    Exit(0);
+  Result := VVCallWindowProcW(CaptionPrevProc, AWnd, AMsg, AWParam, ALParam);
+end;
+{$ENDIF}
+
+procedure TMainForm.CreateWnd;
+{$IFDEF WINDOWS}
+var
+  Prev: PtrInt;
+{$ENDIF}
+begin
+  inherited CreateWnd;
+  {$IFDEF WINDOWS}
+  Prev := VVSetWindowLongPtrW(Handle, GWLP_WNDPROC_, PtrInt(@CaptionWndProc));
+  { A handle made again keeps the hook once (never itself as "previous"). }
+  if (Prev <> 0) and (Pointer(Prev) <> Pointer(@CaptionWndProc)) then
+    CaptionPrevProc := Pointer(Prev);
+  CaptionForm := Self;
+  {$ENDIF}
+end;
+
+{ Every way of closing ends here (Esc, gesture, menu, editor; the window
+  button too with [Window] CloseButtonMinimizes=0, HandleCloseQuery). The shutdown that follows waits for the worker threads; if
   one is stuck in a decode, the watchdog ends the process after the
   deadline instead of leaving it running without a window. }
 procedure TMainForm.HandleFormClose(Sender: TObject; var CloseAction: TCloseAction);
@@ -1213,6 +1309,9 @@ begin
     components; make sure it can't paint with a freed renderer. }
   { A return to the settings screen (Esc) may still be waiting. }
   Application.RemoveAsyncCalls(Self);
+  {$IFDEF WINDOWS}
+  CaptionForm := nil;
+  {$ENDIF}
   uExtensions.OnMenuOpen := nil;
   OnResize := nil;
   FDeliveryTimer.Enabled := False;
@@ -1397,7 +1496,9 @@ begin
       P := FView.ClientToScreen(Point(Round(AArgs.X), Round(AArgs.Y)));
       FCropItem.Visible := FMView.CanCrop;
       FUndoItem.Caption := FMView.UndoCaption;
-      FUndoItem.Visible := FUndoItem.Caption <> '';
+      FUndoItem.Enabled := FUndoItem.Caption <> '';
+      if FUndoItem.Caption = '' then
+        FUndoItem.Caption := 'Undo';
       FMakeIconItem.Enabled := FMView.CanMakeIcon;
       FRotateItem.Visible := FMView.CanRotateLossless;
       FSideItem.Checked := FSideBySide;
@@ -1417,6 +1518,7 @@ begin
         FApplyFiltersItem.Caption := 'Apply filters to a copy';
       FResizeItem.Enabled := FMView.CanResizeToShown;
       FMagnifierItem.Checked := FMView.MagnifierOn;
+      FSlideShowItem.Checked := FMView.SlideShow;
       for I := 0 to 2 do
         FFollowItems[I].Checked := FMView.FollowMode = I;
       for Order := Low(TSortMode) to High(TSortMode) do
@@ -1454,6 +1556,7 @@ end;
   interrupted) happens afterwards, while the window is already gone. }
 procedure TMainForm.HandleExitRequest(Sender: TObject);
 begin
+  FQuitting := True;
   Hide;
   Close;
 end;
@@ -1693,6 +1796,12 @@ procedure TMainForm.HandleSortOrderMenuClick(Sender: TObject);
 begin
   if Sender is TMenuItem then
     FMView.SetSortOrder(TSortMode(TMenuItem(Sender).Tag));
+end;
+
+procedure TMainForm.HandleSlideShowMenuClick(Sender: TObject);
+begin
+  if FMView <> nil then
+    FMView.SetSlideShow(not FMView.SlideShow);
 end;
 
 procedure TMainForm.HandleMagnifierMenuClick(Sender: TObject);
@@ -2385,6 +2494,7 @@ end;
 
 procedure TMainForm.HandleExitMenuClick(Sender: TObject);
 begin
+  FQuitting := True;
   Hide;
   Close;
 end;

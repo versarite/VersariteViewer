@@ -1,6 +1,6 @@
 ---
-title: "VersariteViewer 1.1 — Architecture"
-subtitle: "Units, dependencies and how they work together (release 1.1, Day 30, 2026-10-19)"
+title: "VersariteViewer 1.2 — Architecture"
+subtitle: "Units, dependencies and how they work together (release 1.2, Day 31, 2026-10-22)"
 ---
 
 # How to read this
@@ -48,6 +48,13 @@ layering: no unit uses one in a higher layer, still no cycles.
   editions), uDirPeek (counts a folder for the Total Commander dir preview, on threads of its own)
   and uExifRotate (lossless rotation: only the JPEG's EXIF orientation tag changes).
   uSortFolders gained copy / cut / paste of entries between lists.
+- **Release 1.2** (Day 31): no new units, so the dependency picture (redrawn for 1.2) shows the same
+  62 units and 192 uses. TMView gained the slide show, the leave-guard for unsaved images and the
+  aiming loupe (drawn by both renderers); uSortFolders takes the Rapid Sorting folders from the
+  settings; uExtensions gained plug-in points for the Lab: ShowImageInViewer (an edition's image
+  shown as a crop), the aiming loupe, the edition's Undo joined with the viewer's (NextUndoStamp),
+  the image's own pixels (GetImagePixels) and the edition's ini keys (in uEdition:
+  RegisterEditionKey).
 
 # Picture 1 — unit dependencies
 

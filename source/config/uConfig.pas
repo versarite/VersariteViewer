@@ -138,6 +138,7 @@ type
     FWrapAround      : Boolean;
     FClimbUp         : Boolean;
     FRecurseFromRoot : Boolean;
+    FGuardUnsaved    : Boolean;   { [Navigation] GuardUnsavedCopy (Day 29) }
     FWrapScope       : TWrapScope;
     FPlaceholderForBadImages: Boolean;
     FArchives        : Boolean;
@@ -199,6 +200,12 @@ type
     FFollowTC        : Integer;
     FDirPreviewFiles : Integer;
     FDirPreviewDelay : Integer;
+    FDirPreviewStep  : Integer;
+    FTCSlideShow     : Boolean;   { [Sort] TCSlideShowMode (Day 29) }
+    { [Sort] RapidFolder1 .. RapidFolder0 (1.1, user), by slot (0 = key 1
+      .. 9 = key 0): as written; '' = Selection<digit>. }
+    FRapidFolders    : array[0..9] of string;
+    FCloseMinimizes  : Boolean;
 
     { Filters (Phase H) }
 
@@ -210,6 +217,8 @@ type
     FLensMagPercent  : Integer;
     FLensSize        : Integer;
     FLensSharpen     : Integer;
+    FAimLoupe        : Boolean;   { the aiming loupe (Day 28) }
+    FAimRestMs       : Integer;   { [Magnifier] AimRestMs (Day 29) }
 
     { Info line (Day 24) }
 
@@ -303,6 +312,10 @@ type
       subfolders only if this is on; off = the root's own images only
       (a whole drive would be scanned otherwise). }
     property RecurseFromRoot : Boolean    read FRecurseFromRoot;
+    { [Navigation] GuardUnsavedCopy (Day 29, user): an unsaved crop, paste
+      or copy is not left by the first step to the next image (the wheel
+      turned by accident); a second step after a short pause leaves it. }
+    property GuardUnsavedCopy: Boolean    read FGuardUnsaved;
     property WrapScope       : TWrapScope read FWrapScope;
     property PlaceholderForBadImages: Boolean read FPlaceholderForBadImages;
     { [Navigation] Archives (1.1): .zip / .cbz browsed like folders. }
@@ -417,6 +430,27 @@ type
       its first DirPreviewFiles images (0 = all), each DirPreviewDelayMs. }
     property DirPreviewFiles: Integer read FDirPreviewFiles;
     property DirPreviewDelayMs: Integer read FDirPreviewDelay;
+    { [Sort] DirPreviewStepMs (1.1, user): how much the commands
+      DirPreviewLonger / DirPreviewShorter change DirPreviewDelayMs
+      (default 100). }
+    property DirPreviewStepMs: Integer read FDirPreviewStep;
+    { [Sort] TCSlideShowMode (Day 29, user): 1 = the dir preview keeps
+      playing with VersariteViewer in front (a slide show, until the dir
+      preview is switched off); 0 = it waits while VersariteViewer has the
+      focus (default). The command SlideShowMode switches it (SaveSort
+      writes it). }
+    property TCSlideShowMode: Boolean read FTCSlideShow write FTCSlideShow;
+    { DirPreviewDelayMs changed by a command (kept in 200 .. 60000; the
+      caller saves it with SaveSort). }
+    procedure SetDirPreviewDelayMs(AMs: Integer);
+    { Rapid sorting's folder for slot ASlot (0 = key 1 .. 9 = key 0),
+      without trailing delimiter: [Sort] RapidFolder<digit> - a full path,
+      or a name in DefaultImageFolder; empty = Selection<digit> there. }
+    function RapidFolder(ASlot: Integer): string;
+    { [Window] CloseButtonMinimizes (1.1, testers): 1 = the window's X
+      button (and Alt+F4) sends the window to the taskbar; Exit in the
+      menu (or the mouse profile's Exit) still ends VersariteViewer. }
+    property CloseButtonMinimizes: Boolean read FCloseMinimizes;
 
     { The folder "Delete" moves to, without trailing delimiter. }
     function DeletedFilesFolder: string;
@@ -442,6 +476,13 @@ type
     property LensMagPercent  : Integer read FLensMagPercent write FLensMagPercent;
     property LensSize        : Integer read FLensSize write FLensSize;
     property LensSharpen     : Integer read FLensSharpen write FLensSharpen;
+    { [Magnifier] AimLoupe (Day 28, user): the small lens that appears
+      when the mouse rests while a frame, a measuring line or a scale
+      bar is placed; 0 = never. }
+    property AimLoupe        : Boolean read FAimLoupe write FAimLoupe;
+    { [Magnifier] AimRestMs (Day 29, user): how long the mouse rests until
+      the aiming loupe shows (default 500, 100 .. 3000). }
+    property AimRestMs       : Integer read FAimRestMs;
 
     { Info line ([InfoLine], Day 24) }
 
@@ -521,6 +562,7 @@ const
   KEY_ARCHIVES          = 'Archives';
   KEY_CLIMB_UP          = 'ClimbUp';
   KEY_RECURSE_FROM_ROOT = 'RecurseFromDriveRoot';
+  KEY_GUARD_UNSAVED     = 'GuardUnsavedCopy';
   KEY_PRELOAD_COUNT     = 'PreloadCount';
   KEY_PRELOAD_BEHIND    = 'PreloadBehind';
   KEY_DECODE_THREADS    = 'DecodeThreads';
@@ -556,6 +598,10 @@ const
   KEY_FOLLOW_TC         = 'FollowTotalCommander';
   KEY_DIR_PREVIEW_FILES = 'DirPreviewFiles';
   KEY_DIR_PREVIEW_DELAY = 'DirPreviewDelayMs';
+  KEY_DIR_PREVIEW_STEP  = 'DirPreviewStepMs';
+  KEY_TC_SLIDE_SHOW     = 'TCSlideShowMode';
+  KEY_RAPID_FOLDER      = 'RapidFolder';        { + the digit: RapidFolder1 .. RapidFolder0 }
+  KEY_CLOSE_MINIMIZES   = 'CloseButtonMinimizes';
   SEC_FILTERS           = 'Filters';
   KEY_FILTER_PINNED     = 'Pinned';
   KEY_AUTO_FILTER       = 'AutoFilter';
@@ -566,6 +612,8 @@ const
   KEY_LENS_MAG          = 'MagnificationPercent';
   KEY_LENS_SIZE         = 'Size';
   KEY_LENS_SHARPEN      = 'Sharpen';
+  KEY_AIM_LOUPE         = 'AimLoupe';
+  KEY_AIM_REST          = 'AimRestMs';
 
 var
   IniNote: string;
@@ -676,6 +724,7 @@ end;
 procedure TConfig.LoadDefaults;
 var
   It: TInfoItem;
+  I: Integer;
 begin
   FOpenLastSession := True;
   FLastDirectory   := '';
@@ -707,6 +756,7 @@ begin
   FWrapAround      := True;
   FClimbUp         := False;
   FRecurseFromRoot := False;
+  FGuardUnsaved    := True;
   FWrapScope       := wsTree;
   FPlaceholderForBadImages := True;
   FArchives := True;
@@ -750,11 +800,18 @@ begin
   FFollowTC        := 0;      { Day 24 (user): off by default }
   FDirPreviewFiles := 3;
   FDirPreviewDelay := 1000;
+  FDirPreviewStep  := 100;
+  FTCSlideShow     := False;
+  for I := 0 to High(FRapidFolders) do
+    FRapidFolders[I] := '';
+  FCloseMinimizes  := True;
   FFilterPinned    := False;
   FAutoFilter      := True;
   FLensMagPercent  := 300;
   FLensSize        := 300;
   FLensSharpen     := 0;      { user: off by default }
+  FAimLoupe        := True;
+  FAimRestMs       := 500;
   FInfoFont        := '';
   FInfoFontSize    := 0;
   SetLength(FInfoAll, 0);
@@ -773,6 +830,7 @@ var
   Ini: TMemIniFile;
   Text, BakText, BakName, DamagedName, Error: string;
   Lines: TStringList;
+  I: Integer;
 begin
   LoadDefaults;
 
@@ -861,6 +919,7 @@ begin
     FTop    := Ini.ReadInteger(SEC_WINDOW, KEY_TOP, FTop);
     FWidth  := Ini.ReadInteger(SEC_WINDOW, KEY_WIDTH, FWidth);
     FHeight := Ini.ReadInteger(SEC_WINDOW, KEY_HEIGHT, FHeight);
+    FCloseMinimizes := Ini.ReadBool(SEC_WINDOW, KEY_CLOSE_MINIMIZES, FCloseMinimizes);
 
     FShowInfo        := Ini.ReadBool(SEC_VIEW, KEY_SHOW_INFO, FShowInfo);
     FAutoRotate      := Ini.ReadBool(SEC_VIEW, KEY_AUTO_ROTATE, FAutoRotate);
@@ -875,6 +934,7 @@ begin
     FWrapAround := Ini.ReadBool(SEC_NAVIGATION, KEY_WRAP_AROUND, FWrapAround);
     FClimbUp    := Ini.ReadBool(SEC_NAVIGATION, KEY_CLIMB_UP, FClimbUp);
     FRecurseFromRoot := Ini.ReadBool(SEC_NAVIGATION, KEY_RECURSE_FROM_ROOT, FRecurseFromRoot);
+    FGuardUnsaved    := Ini.ReadBool(SEC_NAVIGATION, KEY_GUARD_UNSAVED, FGuardUnsaved);
     FWrapScope  := StringToWrapScope(Ini.ReadString(SEC_NAVIGATION, KEY_WRAP_SCOPE, ''), FWrapScope);
     FPlaceholderForBadImages := Ini.ReadBool(SEC_NAVIGATION, KEY_PLACEHOLDER, FPlaceholderForBadImages);
     FArchives := Ini.ReadBool(SEC_NAVIGATION, KEY_ARCHIVES, FArchives);
@@ -924,6 +984,12 @@ begin
     FDirPreviewFiles := Max(0, Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_FILES, FDirPreviewFiles));
     FDirPreviewDelay := EnsureRange(Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_DELAY, FDirPreviewDelay),
       200, 60000);
+    FDirPreviewStep  := EnsureRange(Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_STEP, FDirPreviewStep),
+      10, 10000);
+    FTCSlideShow     := Ini.ReadBool(SortSection, KEY_TC_SLIDE_SHOW, FTCSlideShow);
+    for I := 0 to High(FRapidFolders) do
+      FRapidFolders[I] := Trim(Ini.ReadString(SortSection,
+        KEY_RAPID_FOLDER + IntToStr((I + 1) mod 10), FRapidFolders[I]));
     if (FFollowTC < 0) or (FFollowTC > 2) then
       FFollowTC := 1;
     FSortFolders.LoadFromIni(Ini);
@@ -934,6 +1000,8 @@ begin
     FLensMagPercent  := Ini.ReadInteger(SEC_MAGNIFIER, KEY_LENS_MAG, FLensMagPercent);
     FLensSize        := Ini.ReadInteger(SEC_MAGNIFIER, KEY_LENS_SIZE, FLensSize);
     FLensSharpen     := Ini.ReadInteger(SEC_MAGNIFIER, KEY_LENS_SHARPEN, FLensSharpen);
+    FAimLoupe        := Ini.ReadBool(SEC_MAGNIFIER, KEY_AIM_LOUPE, FAimLoupe);
+    FAimRestMs       := EnsureRange(Ini.ReadInteger(SEC_MAGNIFIER, KEY_AIM_REST, FAimRestMs), 100, 3000);
     if (FLensMagPercent < 125) or (FLensMagPercent > 3200) then
       FLensMagPercent := 300;
     if (FLensSize < 80) or (FLensSize > 4000) then
@@ -947,6 +1015,22 @@ begin
   end;
 
   Validate;
+end;
+
+{ An edition's own keys that are missing, with their defaults (1.1:
+  [Fiji] Path in the Lab), so the settings screen shows them. }
+procedure WriteEditionKeys(AIni: TCustomIniFile);
+var
+  I: Integer;
+  Section, Key, Default: string;
+  DoWrite: Boolean;
+begin
+  for I := 0 to EditionKeyCount - 1 do
+  begin
+    EditionKey(I, Section, Key, Default, DoWrite);
+    if DoWrite and not AIni.ValueExists(Section, Key) then
+      AIni.WriteString(Section, Key, Default);
+  end;
 end;
 
 procedure TConfig.Save;
@@ -973,6 +1057,7 @@ begin
       Ini.WriteInteger(SEC_WINDOW, KEY_WIDTH, FWidth);
       Ini.WriteInteger(SEC_WINDOW, KEY_HEIGHT, FHeight);
     end;
+    Ini.WriteBool(SEC_WINDOW, KEY_CLOSE_MINIMIZES, FCloseMinimizes);
 
     Ini.WriteBool(SEC_VIEW, KEY_SHOW_INFO, FShowInfo);
     Ini.WriteBool(SEC_VIEW, KEY_AUTO_ROTATE, FAutoRotate);
@@ -987,6 +1072,7 @@ begin
     Ini.WriteBool(SEC_NAVIGATION, KEY_WRAP_AROUND, FWrapAround);
     Ini.WriteBool(SEC_NAVIGATION, KEY_CLIMB_UP, FClimbUp);
     Ini.WriteBool(SEC_NAVIGATION, KEY_RECURSE_FROM_ROOT, FRecurseFromRoot);
+    Ini.WriteBool(SEC_NAVIGATION, KEY_GUARD_UNSAVED, FGuardUnsaved);
     Ini.WriteString(SEC_NAVIGATION, KEY_WRAP_SCOPE, WrapScopeToString(FWrapScope));
     Ini.WriteBool(SEC_NAVIGATION, KEY_PLACEHOLDER, FPlaceholderForBadImages);
     Ini.WriteBool(SEC_NAVIGATION, KEY_ARCHIVES, FArchives);
@@ -1027,6 +1113,8 @@ begin
     Ini.WriteInteger(SEC_MAGNIFIER, KEY_LENS_MAG, FLensMagPercent);
     Ini.WriteInteger(SEC_MAGNIFIER, KEY_LENS_SIZE, FLensSize);
     Ini.WriteInteger(SEC_MAGNIFIER, KEY_LENS_SHARPEN, FLensSharpen);
+    Ini.WriteBool(SEC_MAGNIFIER, KEY_AIM_LOUPE, FAimLoupe);
+    Ini.WriteInteger(SEC_MAGNIFIER, KEY_AIM_REST, FAimRestMs);
 
     { The info line: a key already there keeps its place (the order is
       the user's); a new one goes at the end. }
@@ -1034,6 +1122,7 @@ begin
     Ini.WriteInteger(SEC_INFOLINE, KEY_INFO_FONT_SIZE, FInfoFontSize);
     for I := 0 to High(FInfoAll) do
       Ini.WriteBool(SEC_INFOLINE, InfoItemKeys[FInfoAll[I]], FInfoOn[FInfoAll[I]]);
+    WriteEditionKeys(Ini);
     CommitIni(Ini, FIniFileName, True);
   finally
     Ini.Free;
@@ -1101,6 +1190,8 @@ begin
 end;
 
 procedure TConfig.WriteSort(AIni: TCustomIniFile);
+var
+  I: Integer;
 begin
   AIni.WriteInteger(SortSection, KEY_SORT_EDGE_DELAY, FSortEdgeDelayMs);
   AIni.WriteInteger(SortSection, KEY_SORT_EDGE_WIDTH, FSortEdgeWidth);
@@ -1109,16 +1200,43 @@ begin
   AIni.WriteString(SortSection, KEY_DELETED_FOLDER, FDeletedFolder);
   AIni.WriteString(SortSection, KEY_ICON_FOLDER, FIconFolder);
   AIni.WriteString(SortSection, KEY_IMAGE_FOLDER, FImageFolder);
+  for I := 0 to High(FRapidFolders) do
+    AIni.WriteString(SortSection, KEY_RAPID_FOLDER + IntToStr((I + 1) mod 10), FRapidFolders[I]);
   AIni.WriteBool(SortSection, KEY_SHOW_DIR_HINT, FShowDirHint);
   AIni.WriteString(SortSection, KEY_TOTAL_COMMANDER, FTotalCommander);
   AIni.WriteInteger(SortSection, KEY_FOLLOW_TC, FFollowTC);
   AIni.WriteInteger(SortSection, KEY_DIR_PREVIEW_FILES, FDirPreviewFiles);
   AIni.WriteInteger(SortSection, KEY_DIR_PREVIEW_DELAY, FDirPreviewDelay);
+  AIni.WriteInteger(SortSection, KEY_DIR_PREVIEW_STEP, FDirPreviewStep);
+  AIni.WriteBool(SortSection, KEY_TC_SLIDE_SHOW, FTCSlideShow);
   FSortFolders.SaveToIni(AIni);
   { Containers are never kept (Day 25, user: transient in the panel);
     an old [Containers] section of the first Lab builds goes. }
   if AIni.SectionExists(ContainersSection) then
     AIni.EraseSection(ContainersSection);
+end;
+
+procedure TConfig.SetDirPreviewDelayMs(AMs: Integer);
+begin
+  FDirPreviewDelay := EnsureRange(AMs, 200, 60000);
+end;
+
+function TConfig.RapidFolder(ASlot: Integer): string;
+var
+  Name, Base: string;
+begin
+  Base := IncludeTrailingPathDelimiter(FImageFolder);
+  if (ASlot < 0) or (ASlot > High(FRapidFolders)) then
+    Exit(ExcludeTrailingPathDelimiter(Base));
+  Name := ExcludeTrailingPathDelimiter(FRapidFolders[ASlot]);
+  if Name = '' then
+    Result := Base + 'Selection' + IntToStr((ASlot + 1) mod 10)
+  { A full path (C:\..., \\server\..., /...) as it is; a name (or a
+    relative path) in DefaultImageFolder. }
+  else if (ExtractFileDrive(Name) <> '') or (Copy(Name, 1, 1) = PathDelim) then
+    Result := Name
+  else
+    Result := Base + Name;
 end;
 
 procedure TConfig.SaveSort;
@@ -1339,10 +1457,20 @@ begin
     Exit('1 = the filter panel (left edge) stays open (its pin). Written by VersariteViewer. '
       + 'It opens when the mouse rests at the left edge ([Sort] EdgeDelayMs and EdgeWidth), '
       + 'or with the menu entry "Filters".');
+  if SameText(ASection, SEC_WINDOW) and SameText(AKey, KEY_CLOSE_MINIMIZES) then
+    Exit('1 = the window''s close button (X, top right) and Alt+F4 send VersariteViewer to the '
+      + 'taskbar instead of ending it (default; against closing it by accident). "Exit" in the '
+      + 'right-click menu, the Exit command of the mouse profile and the settings screen''s '
+      + 'Exit still end it. 0 = the close button ends VersariteViewer.');
   if SameText(ASection, SEC_STARTUP) and SameText(AKey, KEY_ONLY_ONE_INSTANCE) then
     Exit('1 = only one VersariteViewer (default): an image or folder opened while VersariteViewer runs (e.g. from '
       + 'Total Commander) opens in the running VersariteViewer, which comes to the front. 0 = a new VersariteViewer '
       + 'each time. Read when VersariteViewer starts.');
+  if SameText(ASection, SEC_NAVIGATION) and SameText(AKey, KEY_GUARD_UNSAVED) then
+    Exit('1 = an image not saved yet (a crop, a pasted image, "Apply filters to a copy", an '
+      + 'image from Fiji) is not left by the first step to another image: the info line says '
+      + 'so, and the wheel (or key) again after a short pause leaves it (default; against '
+      + 'losing it to a wheel turned by accident). 0 = the next step leaves it at once.');
   if SameText(ASection, SEC_NAVIGATION) and SameText(AKey, KEY_RECURSE_FROM_ROOT) then
     Exit('0 = a drive root (C:\, also a network share''s root) is opened without its subfolders, '
       + 'even with Recursive=1: only the images directly in it (default; a whole drive would '
@@ -1376,6 +1504,15 @@ begin
     if SameText(AKey, KEY_LENS_SHARPEN) then
       Exit('The magnifier''s sharpening: 0 off (default), 1 low, 2 high. The wheel changes it; '
         + 'written by VersariteViewer on exit.');
+    if SameText(AKey, KEY_AIM_REST) then
+      Exit('The aiming loupe: how long the mouse must rest, in milliseconds, until it shows '
+        + '(default 500; 100 .. 3000). Shorter = sooner, longer = only when you really stop.');
+    if SameText(AKey, KEY_AIM_LOUPE) then
+      Exit('The aiming loupe: 1 = on (default), 0 = off. While a frame is drawn in edit mode (and, '
+        + 'in the Image Lab, while a measuring line, a reference measurement or a scale bar is '
+        + 'placed), resting the mouse for half a second shows a small lens around the pointer, '
+        + 'with a cross on the exact point; it follows the mouse and goes a second after the '
+        + 'button is released, or when the mouse moves on quickly.');
   end;
   if SameText(ASection, SEC_FILTERS) and SameText(AKey, KEY_AUTO_FILTER) then
     Exit('1 = Auto black / white point for every image from the start (default): each image is '
@@ -1403,7 +1540,27 @@ begin
     if SameText(AKey, KEY_IMAGE_FOLDER) then
       Exit('Rapid sorting (right-click menu) sorts into Selection1 .. Selection9 and '
         + 'Selection0 in this folder (made when missing); keys 1 .. 0 move the image there. '
-        + 'Filled in with your Pictures folder.');
+        + 'Filled in with your Pictures folder. RapidFolder1 .. RapidFolder0 can name other '
+        + 'folders, one per key.');
+    if (Pos(LowerCase(KEY_RAPID_FOLDER), LowerCase(AKey)) = 1)
+      and (Length(AKey) = Length(KEY_RAPID_FOLDER) + 1) then
+      Exit('Rapid sorting: the folder key ' + Copy(AKey, Length(KEY_RAPID_FOLDER) + 1, 1)
+        + ' moves the image into. A full path (D:\Sorted\Good), or a name, which is a folder in '
+        + 'DefaultImageFolder. Empty = Selection' + Copy(AKey, Length(KEY_RAPID_FOLDER) + 1, 1)
+        + ' in DefaultImageFolder (default). Made when missing; read when Rapid sorting is '
+        + 'switched on.');
+    if SameText(AKey, KEY_TC_SLIDE_SHOW) then
+      Exit('Total Commander dir preview: 1 = the folder''s images keep playing also with '
+        + 'VersariteViewer in front (it has the focus: the keys and buttons work on it, e.g. '
+        + 'DirPreviewLonger / DirPreviewShorter) - a slide show, until the dir preview is '
+        + 'switched off in the right-click menu. 0 = the preview waits while VersariteViewer has '
+        + 'the focus, and goes on when Total Commander is in front again (default). The command '
+        + 'SlideShowMode (on the "Mouse & keys" page) switches it; written by VersariteViewer.');
+    if SameText(AKey, KEY_DIR_PREVIEW_STEP) then
+      Exit('Total Commander dir preview: how many milliseconds the commands DirPreviewLonger / '
+        + 'DirPreviewShorter (assign them to a key or mouse button on the "Mouse & keys" page) '
+        + 'add to or take from DirPreviewDelayMs (default 100; 10 .. 10000). The new time is '
+        + 'written to DirPreviewDelayMs at once.');
     if SameText(AKey, KEY_SHOW_DIR_HINT) then
       Exit('1 = a hint in the middle of the view for 3 s when a new, empty folder list comes up '
         + 'or Rapid sorting is switched on / off. 0 = none (default).');
@@ -1441,6 +1598,9 @@ end;
 function ConfigKeyHelp(const ASection, AKey: string): string;
 begin
   Result := EditionText(KeyHelpText(ASection, AKey));
+  { An edition's own key (1.1, uEdition). }
+  if Result = '' then
+    Result := EditionKeyHelp(ASection, AKey);
 end;
 
 {$IFDEF WINDOWS}

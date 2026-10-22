@@ -1,22 +1,30 @@
-# VersariteViewer 1.1
+# VersariteViewer 1.2
 *formerly MView*
 ## Written with support from Claude/Opus5.5 and ChatGPT
 
-A fast native Windows image viewer, driven by the mouse. Made at the microscope bench, for
-browsing whole experiment folders, and good at any other kind of image collection.
+A *very* fast native stand-alone Windows image viewer, driven by the mouse. No external libraries needed. 
+Made for the microscope bench, for browsing whole experiment folders, and not too bad at any other kind of image collection.
 By [Versarite](https://github.com/versarite). Free software under the GNU GPL v3.
-Pascal/Lazarus is underappreciated. It is powerful and beautiful at the same time, but
-not documented well enough. Claude and ChatGPT helped me greatly to unlock the capabilities.
+Claude and - in the early design phase - ChatGPT helped me greatly to unlock the capabilities of Lazarus/FPC.
 
-**Status: release 1.1 (2026-10-19).** 1.1 answers the first testers: sort orders, several folder
-lists, Rapid Sorting for very fast sorting, single keys on the key page, a scan bar for long series,
-many more image formats through Windows' own codecs, ZIP / CBZ archives, a Total Commander dir
-preview and lossless JPEG rotation (see [What 1.1 brings](#what-11-brings)). With 1.1 the program
-got its new name, VersariteViewer; the settings of an earlier version are taken over.
+**Status: release 1.2 (2026-10-22).** 
+A small number new features has been added following feedback. The development of VersariteViewer stops at 1.2 for now.
+I concentrate in the future on the Viewer Lab Version, where Versarite is envisioned to become a bridge beween Totalcmd and Fiji/ImageJ.
+   
+1.2 adds a **slide show** - of the folder on screen, or of
+the folders Total Commander's cursor passes - with its speed changed live from a key or mouse
+button, and answers the next testers' reports: the X button no longer ends the program by
+accident (note: it is also no longer possible to kill the program from the taskbar, only the program-internal exits close the application for good),
+an unsaved crop survives a stray turn of the wheel, Ctrl+Z, Rapid Sorting folders of
+your own (see [What 1.2 brings](#what-12-brings)). 1.1 brought sort orders, several folder lists,
+Rapid Sorting, single keys, a scan bar for long series, many more image formats, ZIP / CBZ
+archives, the Total Commander dir preview and lossless JPEG rotation (see
+[What 1.1 brings](#what-11-brings)); with 1.1 the program got its new name, VersariteViewer, and
+the settings of an earlier version are taken over.
 Microscopy-specific work continues in a separate **microscopy edition**, Versarite Image Lab
 (see [What comes next](#what-comes-next-the-microscopy-edition)).
 
-![VersariteViewer Overview](docs/VersariteViewer_welcome.png)
+![VersariteViewer 1.1 welcome screen: a map of the window over a confocal image - the filter panel at the left edge, the sort panel at the right edge, the four mouse zones (Edit, Browse by name, Browse by date, Inspect), the icon preview and the info line, with the mouse controls below](docs/VersariteViewer_welcome.png)
 
 > **Dedicated to Hamana** - written by Makito Miyano (last version 1.48, 2006),
 > the viewer that showed how browsing images should feel:
@@ -26,6 +34,42 @@ Microscopy-specific work continues in a separate **microscopy edition**, Versari
 > 2006 and its source was never published, so its bugs could never be fixed. VersariteViewer carries its
 > ideas forward in code anyone can read, fix and extend.
 > See [From Hamana to VersariteViewer](docs/From_Hamana_to_VersariteViewer.md).
+
+## What 1.2 brings
+
+The slide show, and the next testers' reports (day 31):
+
+- **Slide show** (right-click menu "Slide show", or the command **SlideShow** on a key or mouse
+  button): the images of the current folder one after another, round and round, each for
+  `[Sort] DirPreviewDelayMs` (default 1000 ms). The info line says "slide show" and the time. A
+  step with the wheel shows the next image at once and the show goes on from there; **Esc** (or the
+  command again) ends it. It waits while an unsaved image or edit mode is on.
+- **The speed, live:** the commands **DirPreviewLonger / DirPreviewShorter** (on a key or button,
+  "Mouse & keys" page) make each image stay longer or shorter by `[Sort] DirPreviewStepMs`
+  (default 100 ms), in the slide show and in the Total Commander dir preview alike; the new time is
+  written to the ini at once.
+- **The Total Commander dir preview as a slide show** (`[Sort] TCSlideShowMode=1`, or the command
+  **SlideShowMode**): the folder under Total Commander's cursor keeps playing also when
+  VersariteViewer has the focus, so its keys and buttons work on it. With `0` (default) it waits
+  while VersariteViewer has the focus, as in 1.1. Either way the dir preview stays on; back in
+  Total Commander it goes on with the folder under the cursor. The command **DirPreview** switches
+  the dir preview on and off, like the menu entry.
+- **The window's X button sends VersariteViewer to the taskbar** instead of ending it (testers
+  closed it by accident); so do Alt+F4 and the taskbar's "Close window". Exit in the right-click
+  menu, the mouse profile's Exit and the settings screen's Exit still end it;
+  `[Window] CloseButtonMinimizes=0` brings back the old X.
+- **An unsaved image is not lost to the wheel:** a crop, a pasted image or a copy with the filters
+  is not left by the first turn of the wheel (the info line says "kept"); the wheel again after a
+  short pause goes on. `[Navigation] GuardUnsavedCopy=0` switches it off.
+- **Ctrl+Z** is Undo (the last copy / move / delete), like the menu's first entry.
+- **Rapid Sorting folders of your own:** `[Sort] RapidFolder1` … `RapidFolder0` give a key its own
+  folder: a full path (`D:\Sorted\Good`) or a name inside `DefaultImageFolder`; empty =
+  `Selection<n>` as before. The panel shows each folder's name.
+- **A double-click on the title bar** (in a window) goes straight to the settings screen, like Esc.
+- `[Magnifier] AimRestMs` (default 500): how long the mouse rests in edit mode until the aiming
+  loupe shows.
+
+The full list: [release notes 1.2](docs/release_notes_v1.2.0.md).
 
 ## What 1.1 brings
 
@@ -274,7 +318,7 @@ Tested with Total Commander 11.03 (64-bit).
 - `docs\dayNNN.log` — the development log, one file per day
 - `docs\Strategy_Phase_G.md` — the plan for sorting, metadata, magnifier and filters
 - `docs\release_notes_*.md` — what each release brings (`release_notes_v1.0.0.md`, `release_notes_v1.0.1.md`,
-  `release_notes_v1.1.0.md`)
+  `release_notes_v1.1.0.md`, `release_notes_v1.2.0.md`)
 - `docs\Hamana_Research.md`, `docs\Hamana_Commands.md` — what was learned from Hamana
 - `docs\From_Hamana_to_VersariteViewer.md` — the homage: what VersariteViewer kept, what it changed, and why
 

@@ -143,9 +143,10 @@ type
       Day 27). False while there is no occupied list at all. }
     function NextIsNew(ADir: Integer): Boolean;
 
-    { Rapid Selection (Day 27): on = the ten fixed slots in ABaseFolder
-      (Selection1 .. Selection9, Selection0); off = the list before. }
-    procedure SetRapid(AOn: Boolean; const ABaseFolder: string);
+    { Rapid Selection (Day 27): on = the ten fixed slots, AFolders[0] for
+      key 1 .. AFolders[9] for key 0 (full paths; [Sort] RapidFolder1 ..
+      RapidFolder0, 1.1); off = the list before (AFolders not used). }
+    procedure SetRapid(AOn: Boolean; const AFolders: array of string);
     property Rapid: Boolean read FRapid;
 
     { AIndex = Count adds a slot (when there is room); otherwise the
@@ -358,23 +359,28 @@ begin
   Result := (Pos = Occupied) and (Occupied < MaxSortLists);
 end;
 
-procedure TSortFolders.SetRapid(AOn: Boolean; const ABaseFolder: string);
+procedure TSortFolders.SetRapid(AOn: Boolean; const AFolders: array of string);
 const
   Colors: array[0..RapidSlots - 1] of TSlotColor =
     (scGreen, scBlue, scRed, scYellow, scOrange, scPurple, scCyan, scGrey, scPink, scBrown);
 var
   I: Integer;
-  Base: string;
+  Folder: string;
 begin
   if AOn then
   begin
     StoreCurrent;
-    Base := IncludeTrailingPathDelimiter(Trim(ABaseFolder));
     SetLength(FSlots, RapidSlots);
     for I := 0 to RapidSlots - 1 do
     begin
-      FSlots[I].Folder := Base + 'Selection' + IntToStr((I + 1) mod 10);
-      FSlots[I].Name := 'Selection' + IntToStr((I + 1) mod 10);
+      if I <= High(AFolders) then
+        Folder := ExcludeTrailingPathDelimiter(Trim(AFolders[I]))
+      else
+        Folder := '';
+      FSlots[I].Folder := Folder;
+      FSlots[I].Name := ExtractFileName(Folder);
+      if FSlots[I].Name = '' then
+        FSlots[I].Name := Folder;
       FSlots[I].Color := Colors[I];
       FSlots[I].Icon := '-';           { the numbered folder, never an icon }
     end;

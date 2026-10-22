@@ -1,0 +1,105 @@
+Day 31 (2026-10-20 .. 2026-10-22) - VersariteViewer 1.2, the Lab's round trip
+with Fiji
+
+The work of these days was done in a second chat; this log was written
+afterwards (2026-10-22) from the code, the release notes and Readme_Lab.md.
+The unit headers written then call these days "Day 27", "Day 28" and
+"Day 29" (the second chat's own count); in this log's count they are
+Day 31.
+
+VersariteViewer 1.2 (MViewVersion = '1.2'; docs\release_notes_v1.2.0.md)
+
+1. Slide show (right-click "Slide show (this folder; Esc ends it)",
+   command SlideShow): the current folder round and round in the viewer's
+   order, each image [Sort] DirPreviewDelayMs counted from when it is on
+   screen; a step shows the next at once and the show goes on; Esc ends it
+   first; it waits for an unsaved image or edit mode, and gives way to the
+   Total Commander dir preview.
+2. The speed live: commands DirPreviewLonger / DirPreviewShorter, by
+   [Sort] DirPreviewStepMs (100), for the slide show and the dir preview;
+   written to the ini at once.
+3. The Total Commander dir preview as a slide show: [Sort] TCSlideShowMode
+   (command SlideShowMode) keeps the folder under TC's cursor playing
+   while VersariteViewer has the focus; command DirPreview switches the
+   dir preview.
+4. Testers' reports:
+   - the X button (Alt+F4, the taskbar's Close) sends the program to the
+     taskbar; [Window] CloseButtonMinimizes=0 = the old X;
+   - an unsaved crop / paste / filtered copy (and an image from Fiji) is
+     not left by the first step of the wheel: "kept"; the wheel again
+     after a pause of 0.6 s (within 6 s) leaves it; [Navigation]
+     GuardUnsavedCopy;
+   - Ctrl+Z = Undo (fixed keys now: Esc, arrows, Ctrl+V, Ctrl+C, Ctrl+Z);
+     Undo is the menu's first entry, always there (greyed when empty);
+   - Rapid Sorting folders of one's own: [Sort] RapidFolder1 .. 0 (a full
+     path, or a name in DefaultImageFolder; empty = Selection<n>);
+     TSortFolders.SetRapid takes the ten folders (TConfig.RapidFolder);
+   - a double-click on the title bar opens the settings screen;
+   - "Magnifier (lens)" back in the right-click menu (hidden by mistake).
+5. The aiming loupe: in edit mode, and while a Lab tool places a point,
+   the mouse resting [Magnifier] AimRestMs (500) shows a small lens (x4)
+   centred on the point with a fine cross; it goes 1 s after a release,
+   on a fast move, off the view or over a panel. [Magnifier] AimLoupe=0:
+   never. Not with the magnifier on.
+6. New settings, all written at the first start and explained on the
+   settings screen: [Sort] DirPreviewStepMs, TCSlideShowMode,
+   RapidFolder1..0; [Navigation] GuardUnsavedCopy; [Window]
+   CloseButtonMinimizes; [Magnifier] AimLoupe, AimRestMs. New commands:
+   SlideShow, DirPreview, SlideShowMode, DirPreviewLonger,
+   DirPreviewShorter.
+7. Core plug-in points (uExtensions) for the Lab: ShowImageInViewer (an
+   edition shows a bitmap as a new image, as a crop), the aiming loupe
+   (ShowAimLoupe / HideAimLoupe), the edition's Undo joined with the
+   viewer's (RegisterEditionUndo, NextUndoStamp: Undo takes back what came
+   last), TBurnInMap.ViewScale (burned-in marks look as on screen).
+
+Versarite Image Lab 0.2 (Readme_Lab.md)
+
+8. To Fiji: "Save original to Fiji" (the image's own pixels, for
+   analysis; the measuring lines go along as line selections in Fiji's ROI
+   Manager, "Line 1: 56.32 µm") and "Save screen to Fiji" (as shown,
+   filters, turn and marks burned in, '_screen'). Both calibrated TIFFs.
+9. The link (uFijiChannel, fiji\Versarite_Lab_Link.js): Fiji's own
+   single-instance listener is not started by the 2025 launcher, so the
+   Lab installs a small script into <Fiji>\scripts\Plugins\AutoRun\ that
+   listens on 127.0.0.1:57317: PING, OPEN <file>, EVAL <macro> (errors
+   with ImageJ's message, the line and the Log). Images go to the Fiji
+   already running; the first time the Lab starts Fiji (a second request
+   within a minute waits).
+10. Back from Fiji: Plugins > Versarite > Send to Versarite Lab
+   (fiji\Send_to_Versarite_Lab.js) sends Fiji's image as shown,
+   calibrated, to the Lab running (its path in
+   %TEMP%\VersariteImageLab\VersariteImageLab.path).
+11. Fiji as the engine: "Run in Fiji ..." (uFijiRun): a favourite ImageJ
+   macro line (editable; [FijiCommands] Name=macro, "Remember") runs on
+   the image's own pixels in batch mode, without Fiji windows, on a thread
+   (the Lab stays usable); the result comes back as a new image with the
+   parent's scale; Fiji's error and Log are shown; the user's own images
+   in Fiji are not touched.
+12. Marks:
+   - remembered per image for the session (uMarkMemory): the measuring
+     lines, scale bar and labels come back with their image;
+   - undoable (uMarkUndo), in the viewer's Undo and Ctrl+Z;
+   - their look in the left panel (uMarkStylePanel): Color, Font (and
+     Bold), Size rows while a mark tool is on; kept as [ScaleBar] Color /
+     Font / FontSize / Bold;
+   - drawn plain (single lines, text without outline or box), in their
+     own colour (white by default), the same on screen, in copies and in
+     the SVG.
+
+Today (2026-10-22, this chat)
+
+13. Brought this chat's working copy up to the project folder (42 files).
+   Both editions build; the Windows cross compiler here needed fcl-net
+   (ssockets) for uFijiChannel - Lazarus on Windows has it.
+14. Tests the second chat had not updated: TestSort did not compile
+   (SetRapid takes the ten folders now) - updated, plus a check that a
+   folder of one's own shows its own name; TestCalibrations' Fiji test
+   left a stand-in Fiji behind and failed on a second run - it removes it
+   first now. All pass: TestNavigation 153, TestSort 136, TestMouse 97,
+   TestExif 61, TestLif 82, TestCalibrations 53, TestExtensions 80.
+15. The old VersariteViewerLab.* project files deleted (user).
+16. Docs: this log; the viewer spec v1.5 (§9.12 for 1.2, §14); the Lab
+   spec v0.2; the architecture picture of the units regenerated for 1.2
+   (unchanged units, 192 uses); the architecture text; LabVersion 0.2.0
+   (Readme_Lab says 0.2); uFijiLink's header (the ROIs are sent).

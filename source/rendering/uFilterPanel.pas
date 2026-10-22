@@ -563,6 +563,10 @@ function TFilterPanel.Bitmap: TBGRABitmap;
 begin
   if not FVisible then
     Exit(nil);
+  { The edition's rows came or went (Day 28: the marks' Font / Size while
+    a tool is on): laid out again. }
+  if PanelSectionRowCount <> FExtraRows then
+    SetViewSize(FViewW, FViewH, FScale);
   if FDirty or (FBitmap = nil) or ((FExtraRows > 0) and (PanelSectionsVersion <> FExtrasVersion)) then
     Redraw;
   Result := FBitmap;
@@ -570,7 +574,8 @@ end;
 
 function TFilterPanel.ExtrasChanged: Boolean;
 begin
-  Result := FVisible and (FExtraRows > 0) and (PanelSectionsVersion <> FExtrasVersion);
+  Result := FVisible and ((PanelSectionRowCount <> FExtraRows)
+    or ((FExtraRows > 0) and (PanelSectionsVersion <> FExtrasVersion)));
 end;
 
 procedure TFilterPanel.DrawRow(AKind: TFilterKind; const R: TRect);

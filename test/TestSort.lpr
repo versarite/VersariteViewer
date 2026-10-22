@@ -276,6 +276,7 @@ var
   Ini: TMemIniFile;
   I: Integer;
   Keys: TStringList;
+  RapidPaths: array[0..9] of string;
 begin
   WriteLn('TSortFolders');
   F := TSortFolders.Create;
@@ -376,19 +377,27 @@ begin
     Check('old [Sort] slots moved to [DirList1]', (not Ini.ValueExists(SortSection, 'Slot1Folder'))
       and (Ini.ReadString(ListSectionPrefix + '1', 'Slot1Folder', '') = 'D:\Old'));
 
-    { Rapid Selection: ten fixed slots, keys 1 .. 0; the list before comes back. }
-    G.SetRapid(True, 'D:\Pics');
+    { Rapid Selection: ten fixed slots, keys 1 .. 0; the list before comes
+      back. 1.2: the folders come from the settings (TConfig.RapidFolder:
+      [Sort] RapidFolder1 .. 0, else Selection<n>); one of them a folder
+      of the user's own. }
+    for I := 0 to 9 do
+      RapidPaths[I] := 'D:\Pics\Selection' + IntToStr((I + 1) mod 10);
+    RapidPaths[2] := 'D:\Sorted\Good\';
+    G.SetRapid(True, RapidPaths);
     Check('rapid: ten slots', (G.Count = RapidSlots) and G.Rapid);
     Check('rapid: Selection1 first, Selection0 last',
-      (G.Slot(0).Folder = IncludeTrailingPathDelimiter('D:\Pics') + 'Selection1')
+      (G.Slot(0).Folder = 'D:\Pics\Selection1')
       and (G.Slot(9).Name = 'Selection0'), G.Slot(0).Folder);
     Check('rapid: labels 1 .. 0', (G.SlotLabel(0) = '1') and (G.SlotLabel(9) = '0'));
+    Check('rapid: a folder of one''s own, its own name (1.2)',
+      (G.Slot(2).Folder = 'D:\Sorted\Good') and (G.Slot(2).Name = 'Good'), G.Slot(2).Folder);
     Check('rapid: not changed by hand', G.SetFolder(G.Count, 'D:\X') = -1);
     G.CycleList(1);
     Check('rapid: the arrows do nothing', G.Count = RapidSlots);
     G.SaveToIni(Ini);
     Check('rapid: never written', Ini.ReadString(ListSectionPrefix + '1', 'Slot1Folder', '') = 'D:\Old');
-    G.SetRapid(False, '');
+    G.SetRapid(False, []);
     Check('rapid off: the list before', (not G.Rapid) and (G.Count = 1) and (G.Slot(0).Folder = 'D:\Old'));
     Check('FolderDisplayName', FolderDisplayName('D:\Sorted\Good') = 'Good',
       FolderDisplayName('D:\Sorted\Good'));

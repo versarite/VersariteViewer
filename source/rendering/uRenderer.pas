@@ -137,7 +137,10 @@ type
   { The magnifier (Phase H, G6): a round lens at (X, Y) on screen,
     showing what is under it Mag times larger than on screen (user:
     "relative to screen"), Radius px; Sharpen 0 off, 1 low, 2 high;
-    Locked: it stays where it is (the mouse is free). }
+    Locked: it stays where it is (the mouse is free).
+    OffsetX / OffsetY (Day 28, the aiming loupe): the lens is drawn that
+    far from (X, Y) - it shows what is around (X, Y), beside it (0: on
+    it, the magnifier); Cross: a fine cross at its middle marks (X, Y). }
   TLensState = record
     Active: Boolean;
     Locked: Boolean;
@@ -145,6 +148,8 @@ type
     Radius: Double;
     Mag: Double;
     Sharpen: Integer;
+    OffsetX, OffsetY: Double;
+    Cross: Boolean;
   end;
 
   { ALatencyMs: from the command to the end of this paint.
@@ -184,6 +189,10 @@ type
     FFilters: TFilterSettings;
     FFilterVersion: Cardinal;
     FLens: TLensState;
+    { The aiming loupe (Day 28): a small lens beside the mouse while an
+      edit-mode frame is drawn; TMView sets it, both renderers draw it
+      over the frame. }
+    FAim: TLensState;
     { A mode badge in the bottom right corner (user, Day 23: "TC" bold and
       blinking while MView follows Total Commander); BadgeOn: the blink's
       phase. The picture is made once per text. }
@@ -395,6 +404,8 @@ type
     property NoticeVersion: Cardinal read FNoticeVersion;
     { The magnifier: drawn over the image (under the texts and panels). }
     property Lens: TLensState read FLens write FLens;
+    { The aiming loupe (Day 28): over the edit-mode frame. }
+    property Aim: TLensState read FAim write FAim;
     property OnImagePainted: TImagePaintedEvent read FOnImagePainted write FOnImagePainted;
     property View: TViewState read FView;
   end;
@@ -418,7 +429,7 @@ type
     procedure ClearRotated;
     procedure RebuildRotated;
     procedure DrawImage(ACanvas: TCanvas; AWidth, AHeight: Integer);
-    procedure DrawLens(ACanvas: TCanvas; AWidth, AHeight: Integer);
+    procedure DrawLens(ACanvas: TCanvas; AWidth, AHeight: Integer; const ALens: TLensState);
     procedure DrawCenteredText(ACanvas: TCanvas; AWidth, AHeight: Integer; const ALines: array of string);
     function DrawBar(ACanvas: TCanvas; AWidth, ABottom: Integer; const AText: string;
       ASolid: Boolean = False): Integer;
@@ -1393,7 +1404,7 @@ begin
     DrawImage(ACanvas, AWidth, AHeight);
     { The magnifier, over the image (the frame stays on top, as on the
       GPU). }
-    DrawLens(ACanvas, AWidth, AHeight);
+    DrawLens(ACanvas, AWidth, AHeight, Lens);
     { Edit mode: the selection, dark and light so it shows on any image. }
     if SelectionCorners(Corners) then
     begin
@@ -1420,6 +1431,9 @@ begin
       if LayerBmp <> nil then
         LayerBmp.Draw(ACanvas, LayerLeft, LayerTop, False);
     end;
+    { The aiming loupe (Day 28), over the frame and the layers' marks
+      (a measuring line, a scale bar being placed). }
+    DrawLens(ACanvas, AWidth, AHeight, Aim);
   end;
 
   { Measured before the overlays, so the numbers can be shown in this
@@ -1601,7 +1615,8 @@ end;
   screen, from the full image (not the screen-sized copy: the point is
   to see its real pixels), sharpened, filtered, cut round, with a dark
   and a light rim. Small (the lens' size), made again every paint. }
-procedure TCpuRenderer.DrawLens(ACanvas: TCanvas; AWidth, AHeight: Integer);
+procedure TCpuRenderer.DrawLens(ACanvas: TCanvas; AWidth, AHeight: Integer;
+  const ALens: TLensState);
 const
   NearestFrom = 4.0;       { as the GPU: from 4 x on, pixels are squares }
   MaxPartPixels = 4000000; { more source pixels than this: sampled, not resampled }
@@ -1610,10 +1625,11 @@ var
   Src: TBGRACustomBitmap;
   Part, Scaled, LensBmp: TBGRABitmap;
   LogW, LogH, D, SX0, SY0, SX1, SY1, RX, RY, RW, RH, X, Y, SXI, SYI: Integer;
-  Scale, S2, X0, Y0, LX0, LY0, R, DX, DY: Double;
+  Scale, S2, X0, Y0, LX0, LY0, R, DX, DY, CX, CY: Double;
+  G, E, Pass: Integer;
   P, SrcRow: PBGRAPixel;
 begin
-  L := Lens;
+  L := ALens;
   if (not L.Active) or (FImage = nil) or FImage.IsError or (L.Radius < 4) or (L.Mag <= 0) then
     Exit;
   if (FRotatedTurns <> QuarterTurns) or (FRotatedMirror <> Filters.Mirror) then
@@ -1734,7 +1750,10 @@ begin
       end;
     end;
     LensBmp.InvalidateBitmap;
-    LensBmp.Draw(ACanvas, Round(L.X - D / 2), Round(L.Y - D / 2), False);
+    { Drawn where it shows (beside (X, Y) for the aiming loupe). }
+    CX := L.X + L.OffsetX;
+    CY := L.Y + L.OffsetY;
+    LensBmp.Draw(ACanvas, Round(CX - D / 2), Round(CY - D / 2), False);
   finally
     LensBmp.Free;
   end;
@@ -1744,13 +1763,37 @@ begin
   ACanvas.Pen.Style := psSolid;
   ACanvas.Pen.Color := clBlack;
   ACanvas.Pen.Width := 3;
-  ACanvas.Ellipse(Round(L.X - D / 2), Round(L.Y - D / 2), Round(L.X + D / 2), Round(L.Y + D / 2));
+  ACanvas.Ellipse(Round(CX - D / 2), Round(CY - D / 2), Round(CX + D / 2), Round(CY + D / 2));
   if L.Locked then
     ACanvas.Pen.Color := RGBToColor(255, 190, 60)
   else
     ACanvas.Pen.Color := clWhite;
   ACanvas.Pen.Width := 1;
-  ACanvas.Ellipse(Round(L.X - D / 2), Round(L.Y - D / 2), Round(L.X + D / 2), Round(L.Y + D / 2));
+  ACanvas.Ellipse(Round(CX - D / 2), Round(CY - D / 2), Round(CX + D / 2), Round(CY + D / 2));
+  { The aiming cross (Day 28): fine, dark under light, open in the
+    middle so the pixel aimed at stays visible. }
+  if L.Cross then
+  begin
+    G := 4;
+    E := Max(G + 2, D div 2 - 4);
+    for Pass := 0 to 1 do
+    begin
+      if Pass = 0 then
+      begin
+        ACanvas.Pen.Color := clBlack;
+        ACanvas.Pen.Width := 3;
+      end
+      else
+      begin
+        ACanvas.Pen.Color := clWhite;
+        ACanvas.Pen.Width := 1;
+      end;
+      ACanvas.Line(Round(CX) - E, Round(CY), Round(CX) - G, Round(CY));
+      ACanvas.Line(Round(CX) + G, Round(CY), Round(CX) + E, Round(CY));
+      ACanvas.Line(Round(CX), Round(CY) - E, Round(CX), Round(CY) - G);
+      ACanvas.Line(Round(CX), Round(CY) + G, Round(CX), Round(CY) + E);
+    end;
+  end;
   ACanvas.Brush.Style := bsSolid;
 end;
 
