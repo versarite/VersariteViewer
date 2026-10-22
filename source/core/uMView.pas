@@ -2467,6 +2467,9 @@ begin
       SetSort(smDateDescending);
     cmdSortByName:
       SetSort(smFileNameAscending);
+    cmdSortRandomKeep:
+      if FNavigator.SortMode <> smRandom then
+        SetSort(smRandom);
 
     cmdParentDirectory:
       begin

@@ -114,7 +114,7 @@ unit uMouseEngine;
   - X1 / X2 act on the press (LCL 4.6 never reports their release).
     Some mice send them as Browser Back / Forward keys; those count as
     X1 / X2, except right after a real side button (the driver's echo).
-  - Navigation from a zone with an order (Date / Name) first switches
+  - Navigation from a zone with an order (Date / Name / Random) first switches
     to that order (TMView keeps the current image).
   - ZoomMode / RotateMode are switches: while one is on, the wheel
     zooms / turns everywhere; Back (Esc) or the same switch ends it.
@@ -416,6 +416,7 @@ begin
   case FProfile.ZoneOrder(AZone) of
     zoDate: Emit(cmdSortByDate);
     zoName: Emit(cmdSortByName);
+    zoRandom: Emit(cmdSortRandomKeep);
   end;
 end;
 

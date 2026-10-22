@@ -82,8 +82,11 @@ Added after the first 1.2 builds:
   other screen and leaves VersariteViewer as it is (fullscreen too); `=2` moves VersariteViewer
   instead. The windows keep their size. Needs Windows' "Extend these displays" (Win+P › Extend);
   `0` (default) or one screen: the halves, as before.
-- **The "Mouse & keys" page:** the first column (buttons and keys) is wider, and each name shows
-  in full as a hint when the mouse rests on it.
+- **The "Mouse & keys" page:** the command boxes grow with the display scaling (long commands
+  were cut off at 125 / 150 %), an open list is as wide as its longest command, and resting the
+  mouse on a box (or on a button or key name) shows it in full.
+- **A zone can browse in random order:** "Browsing from this zone" offers **random** besides by
+  date and by name; "unchanged" (before: "any order") leaves the order as it is.
 
 The full list: [release notes 1.2](docs/release_notes_v1.2.0.md).
 

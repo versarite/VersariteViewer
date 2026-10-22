@@ -182,6 +182,8 @@ type
     FLazy: array[TMouseEvent, 0..MaxActionsPerEvent - 1] of Integer;
     FRowsBuilt: Boolean;         { BuildRows done (the page was shown) }
     FLabelWidth: Integer;        { the first column: buttons / keys (MeasureLabelWidth) }
+    FComboWidth: Integer;        { the command boxes, scaled to the screen (Day 31) }
+    FComboGap: Integer;
     FHeadings: array[0..MaxActionsPerEvent] of TLabel;  { the boxes' columns, then 'Button / key' }
     FActions: array of TMouseAction;   { the choosable commands, list order }
 
@@ -218,6 +220,10 @@ type
     procedure BuildRows;
     procedure HandleComboOpen(Sender: TObject);
     procedure HandleFitDropDown(Sender: TObject);
+    { Day 31 (user): a command box's hint is the command chosen in it, in
+      full (a long one does not fit the box). }
+    procedure HandleComboHint(Sender: TObject; HintInfo: PHintInfo);
+    procedure SetComboHint(ACombo: TComboBox);
     { The box's index in the full list (also while it is lazy). }
     function ComboIndex(AEvent: TMouseEvent; K: Integer): Integer;
     function FirstBase: Integer;
@@ -272,6 +278,7 @@ function KeyLabel(AKey: Word): string;
 implementation
 
 uses
+  LCLIntf,
   uEdition,
   uSafeFile;
 
@@ -348,8 +355,8 @@ const
 
   RowHeight = 30;
   MinLabelWidth = 200;          { at 96 dpi; widened to the longest caption }
-  ComboWidth = 250;
-  ComboGap = 8;
+  MinComboWidth = 250;          { at 96 dpi (FComboWidth: scaled, Day 31) }
+  MinComboGap = 8;
   StripHeight = 34;
   { The column headings, then the event rows. }
   HeadingTop = 116;
@@ -545,6 +552,10 @@ begin
   { Measured when the page is first shown (PageShown): Windows' key names
     are asked for then, not while the program starts. }
   FLabelWidth := MulDiv(MinLabelWidth, Screen.PixelsPerInch, 96);
+  { Day 31 (user): the command boxes were 250 pixels at any scaling; at
+    125 / 150 % long commands did not fit. }
+  FComboWidth := MulDiv(MinComboWidth, Screen.PixelsPerInch, 96);
+  FComboGap := MulDiv(MinComboGap, Screen.PixelsPerInch, 96);
 
   { The choosable commands: all but "None". }
   N := 0;
@@ -676,7 +687,10 @@ begin
   FOrderGroup.Parent := FRight;
   FOrderGroup.Caption := 'Browsing from this zone';
   FOrderGroup.Columns := 3;
-  FOrderGroup.Items.Add('any order');
+  { Day 31 (user): "Random" in place of "any order". A zone without an
+    order (the profile's None, e.g. Inspect) has none of them ticked: it
+    leaves the order as it is (ShowSelection, HandleOrderClick). }
+  FOrderGroup.Items.Add('Random');
   FOrderGroup.Items.Add('by date');
   FOrderGroup.Items.Add('by name');
   FOrderGroup.OnClick := @HandleOrderClick;
@@ -764,14 +778,14 @@ procedure TMouseProfilePage.PlaceHeader;
 var
   K: Integer;
 begin
-  FIntro.SetBounds(8, 8, FLabelWidth + 3 * (ComboWidth + ComboGap), 50);
+  FIntro.SetBounds(8, 8, FLabelWidth + 3 * (FComboWidth + FComboGap), 50);
   for K := 0 to MaxActionsPerEvent - 1 do
-    FHeadings[K].SetBounds(FLabelWidth + K * (ComboWidth + ComboGap) + 2, HeadingTop,
-      ComboWidth, 20);
+    FHeadings[K].SetBounds(FLabelWidth + K * (FComboWidth + FComboGap) + 2, HeadingTop,
+      FComboWidth, 20);
   FHeadings[MaxActionsPerEvent].SetBounds(8, HeadingTop, FLabelWidth - 12, 20);
   FTitleLabel.SetBounds(8, 74, FLabelWidth - 8, 24);
-  FTitleEdit.SetBounds(FLabelWidth, 70, ComboWidth, 26);
-  FOrderGroup.SetBounds(FLabelWidth + ComboWidth + ComboGap, 60, 2 * ComboWidth, 46);
+  FTitleEdit.SetBounds(FLabelWidth, 70, FComboWidth, 26);
+  FOrderGroup.SetBounds(FLabelWidth + FComboWidth + FComboGap, 60, 2 * FComboWidth, 46);
 end;
 
 procedure TMouseProfilePage.BuildRows;
@@ -801,12 +815,13 @@ begin
         FRows[E].Combos[K].Parent := FRight;
         FRows[E].Combos[K].Style := csDropDownList;
         FRows[E].Combos[K].DropDownCount := 24;
-        FRows[E].Combos[K].SetBounds(FLabelWidth + K * (ComboWidth + ComboGap), Y,
-          ComboWidth, 26);
+        FRows[E].Combos[K].SetBounds(FLabelWidth + K * (FComboWidth + FComboGap), Y,
+          FComboWidth, 26);
         FRows[E].Combos[K].Tag := Ord(E) * 10 + K;
         FRows[E].Combos[K].OnChange := @HandleComboChange;
         FRows[E].Combos[K].OnDropDown := @HandleComboOpen;
         FRows[E].Combos[K].OnEnter := @HandleComboOpen;
+        SetComboHint(FRows[E].Combos[K]);
         FLazy[E, K] := -1;
       end;
     end;
@@ -1027,6 +1042,7 @@ begin
     case FProfile.ZoneOrder(Z) of
       zoDate: OrderText := '(by date)';
       zoName: OrderText := '(by name)';
+      zoRandom: OrderText := '(random)';
     else
       OrderText := '';
     end;
@@ -1164,10 +1180,12 @@ end;
   than the room above and below it, so Windows put it at the top of the
   screen, away from its box). }
 procedure FitDropDown(ACombo: TComboBox);
+const
+  CB_SETDROPPEDWIDTH_ID = $0160;
 var
   P: TPoint;
   Area: TRect;
-  ItemH, Room, Rows: Integer;
+  ItemH, Room, Rows, W, I: Integer;
 begin
   if (ACombo = nil) or not ACombo.HandleAllocated then
     Exit;
@@ -1180,12 +1198,36 @@ begin
   Rows := EnsureRange(Room div ItemH, 4, 24);
   if ACombo.DropDownCount <> Rows then
     ACombo.DropDownCount := Rows;
+  { Day 31 (user): the open list as wide as its longest command (not
+    beyond the screen's right edge). }
+  {$IFDEF WINDOWS}
+  W := 0;
+  for I := 0 to ACombo.Items.Count - 1 do
+    W := Max(W, ACombo.Canvas.TextWidth(ACombo.Items[I]));
+  W := W + 16 + GetSystemMetrics(SM_CXVSCROLL);
+  W := Min(W, Area.Right - P.X);
+  SendMessage(ACombo.Handle, CB_SETDROPPEDWIDTH_ID, Max(W, ACombo.Width), 0);
+  {$ENDIF}
 end;
 
 procedure TMouseProfilePage.HandleComboOpen(Sender: TObject);
 begin
   EnsureFilled(TComboBox(Sender));
   FitDropDown(TComboBox(Sender));
+end;
+
+procedure TMouseProfilePage.SetComboHint(ACombo: TComboBox);
+begin
+  ACombo.Hint := ' ';           { a hint at all; its text: HandleComboHint }
+  ACombo.ShowHint := True;
+  ACombo.OnShowHint := @HandleComboHint;
+end;
+
+procedure TMouseProfilePage.HandleComboHint(Sender: TObject; HintInfo: PHintInfo);
+begin
+  HintInfo^.HintStr := TComboBox(Sender).Text;
+  if Trim(HintInfo^.HintStr) = '' then
+    HintInfo^.HintStr := ' ';
 end;
 
 procedure TMouseProfilePage.HandleFitDropDown(Sender: TObject);
@@ -1333,7 +1375,13 @@ begin
     if IsZoneSelected then
     begin
       FTitleEdit.Text := FProfile.ZoneTitle(SelectedZone);
-      FOrderGroup.ItemIndex := Ord(FProfile.ZoneOrder(SelectedZone));
+      case FProfile.ZoneOrder(SelectedZone) of
+        zoRandom: FOrderGroup.ItemIndex := 0;
+        zoDate:   FOrderGroup.ItemIndex := 1;
+        zoName:   FOrderGroup.ItemIndex := 2;
+      else
+        FOrderGroup.ItemIndex := -1;
+      end;
     end;
 
     if FRowsBuilt then
@@ -1420,8 +1468,9 @@ begin
         FKeyRows[I].Combos[K].Style := csDropDownList;
         FKeyRows[I].Combos[K].DropDownCount := 24;
         FKeyRows[I].Combos[K].OnDropDown := @HandleFitDropDown;
-        FKeyRows[I].Combos[K].SetBounds(FLabelWidth + K * (ComboWidth + ComboGap), Y,
-          ComboWidth, 26);
+        SetComboHint(FKeyRows[I].Combos[K]);
+        FKeyRows[I].Combos[K].SetBounds(FLabelWidth + K * (FComboWidth + FComboGap), Y,
+          FComboWidth, 26);
         if K = 0 then
           FKeyRows[I].Combos[K].Items.Add('(nothing)')
         else
@@ -1439,12 +1488,12 @@ begin
     end;
     { "Add a key": the keys not set yet. }
     Y := FirstRowTop + Length(Keys) * RowHeight + 12;
-    FAddKeyLabel.SetBounds(8, Y + 4, FLabelWidth + ComboWidth, 22);
+    FAddKeyLabel.SetBounds(8, Y + 4, FLabelWidth + FComboWidth, 22);
     Inc(Y, 26);
-    FAddKeyBounds := Rect(8, Y, 8 + FLabelWidth + ComboWidth - 8 - 80, Y + 26);
-    FAddKeyCombo.SetBounds(8, Y, FLabelWidth + ComboWidth - 8 - 80, 26);
-    FAddKeyButton.SetBounds(FLabelWidth + ComboWidth - 76, Y, 76, 26);
-    FDigitNote.SetBounds(8, Y + 40, FLabelWidth + 2 * ComboWidth, 60);
+    FAddKeyBounds := Rect(8, Y, 8 + FLabelWidth + FComboWidth - 8 - 80, Y + 26);
+    FAddKeyCombo.SetBounds(8, Y, FLabelWidth + FComboWidth - 8 - 80, 26);
+    FAddKeyButton.SetBounds(FLabelWidth + FComboWidth - 76, Y, 76, 26);
+    FDigitNote.SetBounds(8, Y + 40, FLabelWidth + 2 * FComboWidth, 60);
     All := AssignableKeys;
     FAddKeyCombo.Items.BeginUpdate;
     try
@@ -1576,11 +1625,20 @@ begin
 end;
 
 procedure TMouseProfilePage.HandleOrderClick(Sender: TObject);
+var
+  Order: TZoneOrder;
 begin
-  if FUpdating or not IsZoneSelected or (FOrderGroup.ItemIndex < 0)
-    or (TZoneOrder(FOrderGroup.ItemIndex) = FProfile.ZoneOrder(SelectedZone)) then
+  if FUpdating or not IsZoneSelected or (FOrderGroup.ItemIndex < 0) then
     Exit;
-  FProfile.SetZoneOrder(SelectedZone, TZoneOrder(FOrderGroup.ItemIndex));
+  case FOrderGroup.ItemIndex of
+    0: Order := zoRandom;
+    1: Order := zoDate;
+  else
+    Order := zoName;
+  end;
+  if Order = FProfile.ZoneOrder(SelectedZone) then
+    Exit;
+  FProfile.SetZoneOrder(SelectedZone, Order);
   FZoneBox.Invalidate;
   MarkChanged;
 end;

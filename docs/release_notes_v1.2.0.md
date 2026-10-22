@@ -56,6 +56,13 @@ The slide show, and the next round of testers' reports (day 31, 2026-10-22).
   leaves Total Commander. The windows keep their size (a maximised one is maximised there);
   nothing moves when they are on two screens already. Back: VersariteViewer returns to where it
   was. `0` (default) and one screen: the halves, as before. Also on the settings screen.
+- **The "Mouse & keys" page** (user): the command boxes grow with the display scaling (they
+  were 250 pixels at any scaling, so long commands were cut off at 125 / 150 %); an open list is
+  as wide as its longest command; resting the mouse on a box shows its command in full, and on a
+  button or key name the name in full.
+- **A zone can browse in random order** (user): "Browsing from this zone" offers **random**
+  besides by date / by name; "unchanged" (before: "any order") leaves the order as it is. In a
+  profile file: `Order=Random`.
 - **The info line in a small window**: what doesn't fit goes on a second (third …) line,
   broken between its parts, instead of being cut off at the right edge. **Messages** ("Slide show:
   on", "Sent to Fiji", "Saved …") have a line of their own above it, so they are seen at once;

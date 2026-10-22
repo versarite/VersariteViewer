@@ -65,6 +65,9 @@ type
     cmdToggleSortMode,
     cmdSortByDate,
     cmdSortByName,
+    { Day 31 (user): random order, kept as it is when it is random already
+      (a zone set to "random"; the menu's entry shuffles again). }
+    cmdSortRandomKeep,
     cmdParentDirectory,  { browse from the parent of the opened folder }
     cmdRescan,
 

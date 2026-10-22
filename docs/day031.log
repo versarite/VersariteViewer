@@ -160,3 +160,15 @@ Today (2026-10-22, this chat)
    his screen. Each row's name (button or key) now also shows in full as
    a hint when the mouse rests on it (uMousePage BuildRows,
    BuildKeyRows).
+24. "Mouse & keys" (user): it was the command column, not the names.
+   The command boxes are scaled with the display (FComboWidth, FComboGap:
+   250 / 8 px at 96 dpi), an open list is as wide as its longest command
+   (CB_SETDROPPEDWIDTH, not beyond the screen), and each box's hint is
+   its command in full (OnShowHint). Checked under Wine.
+25. Zone order "random" (user): TZoneOrder zoRandom ('Random' in the
+   profile file), the radio group "unchanged / by date / by name /
+   random" ("any order" renamed: it leaves the order as it is, the
+   Inspect zone's default); browsing from the zone emits
+   cmdSortRandomKeep (random, without shuffling again when it is random
+   already - the menu's entry still shuffles anew). TestMouse: saved and
+   read (98).

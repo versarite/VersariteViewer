@@ -145,6 +145,14 @@ begin
       SameActions(Q.ActionsFor(mzBottomRight, meWheelDown), [maZoomIn])
       and (Q.ZoneOrder(mzTopRight) = zoName));
 
+    { Day 31: a zone browsing in random order, written and read again. }
+    P.SetZoneOrder(mzTopLeft, zoRandom);
+    P.SaveToStrings(A);
+    Q.LoadFromStrings(A);
+    Check('random order: saved and read', (Q.ZoneOrder(mzTopLeft) = zoRandom) and (Q.Errors.Count = 0),
+      Q.Errors.Text);
+    P.LoadDefaults;
+
     Q.Assign(P);
     P.SetZoneBinding(mzTopLeft, meX1, nil);
     P.SetAnywhereBinding(meX1, nil);

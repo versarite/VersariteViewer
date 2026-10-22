@@ -66,7 +66,7 @@ unit uMouseProfile;
   The screen has four zones (the quarters). Each zone has a name (shown
   on screen when the mouse enters it, while the diagnostics line D is
   on), an optional browsing order
-  (Date / Name: navigation from that zone uses that order), and its own
+  (Date / Name / Random: navigation from that zone uses that order), and its own
   table "event -> commands". A table [Anywhere] holds what a zone
   doesn't set itself. [Keys] holds single keys (Day 27, testers: any
   easily reached key, no combinations; Esc, the arrows, Ctrl+V and
@@ -132,7 +132,8 @@ type
     maBack, maExit
   );
 
-  TZoneOrder = (zoNone, zoDate, zoName);
+  { zoRandom (Day 31, user): browsing from the zone shuffles the order. }
+  TZoneOrder = (zoNone, zoDate, zoName, zoRandom);
 
   { Up to MaxActionsPerEvent commands. nil = not set (a zone then uses
     the Anywhere entry); [maNone] = switched off. }
@@ -360,7 +361,7 @@ const
     'Slide show of this folder on / off',
     'Back (leave a mode, else the settings screen)', 'Exit');
 
-  OrderNames: array[TZoneOrder] of string = ('None', 'Date', 'Name');
+  OrderNames: array[TZoneOrder] of string = ('None', 'Date', 'Name', 'Random');
 
 function MouseZoneName(AZone: TMouseZone): string;
 begin
