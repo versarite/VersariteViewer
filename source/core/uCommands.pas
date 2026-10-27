@@ -151,7 +151,10 @@ type
     { Day 29 (user): the Total Commander dir preview on / off (as the
       menu), and the slide show of the current folder on / off. }
     cmdDirPreviewOnOff,
-    cmdSlideShow
+    cmdSlideShow,
+
+    { 1.3 (user): "Open file ..." - a file dialog (the form shows it). }
+    cmdOpenFile
   );
 
   TCommandArgs = record

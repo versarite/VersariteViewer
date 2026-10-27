@@ -205,6 +205,170 @@ begin
   end;
 end;
 
+{ Day 32: the same image there already. }
+procedure TestDuplicates;
+var
+  Src, Target, Deleted: string;
+  R: TFileJobResult;
+  J: TFileJob;
+begin
+  WriteLn('Duplicates');
+  Src := Root + 'dsrc' + PathDelim;
+  Target := Root + 'dtarget';
+  Deleted := Root + 'ddeleted';
+  ForceDirectories(Src);
+  ForceDirectories(Target);
+  WriteFile(Src + 'x.jpg', 'pixels of x');
+  WriteFile(IncludeTrailingPathDelimiter(Target) + 'x.jpg', 'pixels of x');
+  WriteFile(Src + 'y.jpg', 'pixels of y');
+  WriteFile(IncludeTrailingPathDelimiter(Target) + 'y.jpg', 'pixels of Y');   { same size, other bytes }
+  WriteFile(Src + 'z.jpg', 'pixels of z');
+  WriteFile(IncludeTrailingPathDelimiter(Target) + 'z.jpg', 'something else');
+  WriteFile(IncludeTrailingPathDelimiter(Target) + 'z_1.jpg', 'pixels of z');  { an earlier copy }
+
+  Check('SameFileContent: identical', SameFileContent(Src + 'x.jpg',
+    IncludeTrailingPathDelimiter(Target) + 'x.jpg'));
+  Check('SameFileContent: one byte differs', not SameFileContent(Src + 'y.jpg',
+    IncludeTrailingPathDelimiter(Target) + 'y.jpg'));
+  Check('FindIdenticalFile: finds the _1 copy',
+    FindIdenticalFile(Target, 'z.jpg', Src + 'z.jpg') = IncludeTrailingPathDelimiter(Target) + 'z_1.jpg');
+  Check('DuplicateFileName: dup1_', DuplicateFileName(Deleted, 'x.jpg')
+    = IncludeTrailingPathDelimiter(Deleted) + 'dup1_x.jpg');
+
+  { Copy of an identical one: nothing copied. }
+  J := MakeJob(faCopy, Src + 'x.jpg', Target);
+  J.DuplicateDir := Deleted;
+  R := ExecuteFileJob(J, '');
+  Check('copy, identical there: OK, a duplicate, nothing new',
+    R.OK and R.Duplicate and not FileExists(IncludeTrailingPathDelimiter(Target) + 'x_1.jpg')
+    and FileExists(Src + 'x.jpg'), R.Message);
+
+  { Same name, other bytes: copied as _1, as before. }
+  J := MakeJob(faCopy, Src + 'y.jpg', Target);
+  J.DuplicateDir := Deleted;
+  R := ExecuteFileJob(J, '');
+  Check('copy, other bytes: y_1.jpg', R.OK and not R.Duplicate
+    and (ExtractFileName(R.ResultFile) = 'y_1.jpg'), R.ResultFile);
+
+  { Move of an identical one: into the deleted-files folder as dup1_. }
+  J := MakeJob(faMove, Src + 'x.jpg', Target);
+  J.DuplicateDir := Deleted;
+  R := ExecuteFileJob(J, '');
+  Check('move, identical there: to deleted files as dup1_x.jpg',
+    R.OK and R.Duplicate and (R.ResultFile = IncludeTrailingPathDelimiter(Deleted) + 'dup1_x.jpg')
+    and FileExists(R.ResultFile) and not FileExists(Src + 'x.jpg')
+    and FileExists(IncludeTrailingPathDelimiter(Target) + 'x.jpg'), R.ResultFile + ' ' + R.Message);
+
+  WriteFile(Src + 'x.jpg', 'pixels of x');
+  R := ExecuteFileJob(J, '');
+  Check('move again: dup2_x.jpg', R.OK and (ExtractFileName(R.ResultFile) = 'dup2_x.jpg'),
+    R.ResultFile);
+
+  { Without DuplicateDir (delete, undo, older callers): as before. }
+  WriteFile(Src + 'x.jpg', 'pixels of x');
+  R := ExecuteFileJob(MakeJob(faCopy, Src + 'x.jpg', Target), '');
+  Check('no duplicate check: x_1.jpg', R.OK and not R.Duplicate
+    and (ExtractFileName(R.ResultFile) = 'x_1.jpg'), R.ResultFile);
+end;
+
+{ Day 32: dynamic lists and pinned folders. }
+procedure TestDynamic;
+var
+  F, G: TSortFolders;
+  Ini: TMemIniFile;
+  Low_, High_: Integer;
+  Reason: string;
+
+  function Order(AF: TSortFolders): string;
+  var
+    I: Integer;
+  begin
+    Result := '';
+    for I := 0 to AF.Count - 1 do
+      Result := Result + AF.Slot(I).Name + ' ';
+    Result := Trim(Result);
+  end;
+
+begin
+  WriteLn('Dynamic lists, pinned folders');
+  F := TSortFolders.Create;
+  G := TSortFolders.Create;
+  Ini := TMemIniFile.Create(Root + 'dyn.ini');
+  try
+    F.SetFolder(0, 'D:\A');
+    F.SetFolder(1, 'D:\B');
+    F.SetFolder(2, 'D:\C');
+    F.SetFolder(3, 'D:\D');
+    Check('not dynamic at first', not F.Dynamic);
+    F.NoteUsed('D:\D');
+    Check('not dynamic: nothing noted', not F.HasUse);
+    F.SetDynamic(True);
+    Check('dynamic', F.Dynamic);
+    F.NoteUsed('D:\D');
+    Check('noted, not moved yet', F.HasUse and (Order(F) = 'A B C D'), Order(F));
+    Check('applied: one place up', F.ApplyUse and (Order(F) = 'A B D C'), Order(F));
+    F.NoteUsed('D:\D');
+    F.NoteUsed('D:\D');
+    F.ApplyUse;
+    Check('two uses: two places up', Order(F) = 'D A B C', Order(F));
+    F.NoteUsed('D:\D');
+    Check('on top: stays', (not F.ApplyUse) and (Order(F) = 'D A B C'), Order(F));
+
+    { Pinning. }
+    Check('pin C: below the last pinned (none: on top)', F.SetPinned(3, True) = 0);
+    Check('  C first', Order(F) = 'C D A B', Order(F));
+    Check('pin B: second', (F.SetPinned(3, True) = 1) and (Order(F) = 'C B D A'), Order(F));
+    Check('two pinned', F.PinnedCount = 2);
+    F.NoteUsed('D:\D');
+    F.ApplyUse;
+    Check('a used one does not climb above the pinned', Order(F) = 'C B D A', Order(F));
+    F.NoteUsed('D:\B');
+    F.ApplyUse;
+    Check('a pinned one is not moved by use', Order(F) = 'C B D A', Order(F));
+    F.SlotRange(0, Low_, High_);
+    Check('range of a pinned one: 0..1', (Low_ = 0) and (High_ = 1));
+    F.SlotRange(3, Low_, High_);
+    Check('range of the others: 2..3', (Low_ = 2) and (High_ = 3));
+    F.Move(3, 0);
+    Check('move to top: only to the top of its part', Order(F) = 'C B A D', Order(F));
+    F.Move(0, 1);
+    Check('the pinned ones among themselves', Order(F) = 'B C A D', Order(F));
+    F.Move(1, 3);
+    Check('a pinned one not into the rest', Order(F) = 'B C A D', Order(F));
+    Check('unpin B: first below the pinned', (F.SetPinned(0, False) = 1) and (Order(F) = 'C B A D'),
+      Order(F));
+
+    { Written and read again. }
+    F.SaveToIni(Ini);
+    Check('ini: Dynamic=1', Ini.ReadBool('DirList1', 'Dynamic', False));
+    Check('ini: Slot1Pinned=1', Ini.ReadBool('DirList1', 'Slot1Pinned', False));
+    Check('ini: no Pinned for the others', not Ini.ValueExists('DirList1', 'Slot2Pinned'));
+    G.LoadFromIni(Ini);
+    Check('read: dynamic, the same order, C pinned', G.Dynamic and (Order(G) = 'C B A D')
+      and G.Slot(0).Pinned and not G.Slot(1).Pinned, Order(G));
+
+    { Another list: not dynamic; cycling back keeps it dynamic. }
+    G.CycleList(1);
+    Check('the new list: not dynamic', not G.Dynamic);
+    G.SetFolder(0, 'E:\X');
+    G.CycleList(-1);
+    Check('back on list 1: dynamic', G.Dynamic and (Order(G) = 'C B A D'), Order(G));
+    G.CycleList(1);
+    Check('list 2: still not dynamic', not G.Dynamic and (Order(G) = 'X'), Order(G));
+
+    { A pinned slot pasted after an unpinned one: on top among the pinned. }
+    G.CycleList(-1);
+    G.CopySlot(0, False);
+    G.CycleList(1);
+    Check('paste of a pinned one: on top', (G.PasteSlot(0, Reason) = 0) and (Order(G) = 'C X')
+      and G.Slot(0).Pinned, Order(G) + ' ' + Reason);
+  finally
+    Ini.Free;
+    G.Free;
+    F.Free;
+  end;
+end;
+
 type
   TCollector = class
     Results: array of TFileJobResult;
@@ -779,6 +943,8 @@ begin
   try
     TestUniqueName;
     TestJobs;
+    TestDuplicates;
+    TestDynamic;
     TestThread;
     TestFolders;
     TestWrite;

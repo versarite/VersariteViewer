@@ -112,7 +112,8 @@ type
     never hit in MView (no containers). }
   TPanelPart = (ppNone, ppPanel, ppSlot, ppSlotMenu, ppAdd, ppPin, ppFooter,
     ppContainer, ppContainerMenu, ppBack, ppEntry,
-    ppListPrev, ppListNext);   { the header's arrows: other folder lists (Day 27) }
+    ppListPrev, ppListNext,    { the header's arrows: other folder lists (Day 27) }
+    ppTitle);                  { the header's title: double-click = dynamic (Day 32) }
 
   TPanelHit = record
     Part: TPanelPart;
@@ -300,6 +301,8 @@ type
     function PanelLeft: Integer;
 
     property Visible: Boolean read FVisible;
+    { The mouse is on the open panel (Day 32: the slide show waits). }
+    function MouseOnPanel: Boolean;
     property Pinned: Boolean read FPinned write SetPinned;
     { [Sort] PanelLines (Day 27): rows laid out for; 0 = elastic (as
       before). MaxPanelLines: as many as fit at the smallest row. }
@@ -757,7 +760,14 @@ begin
     Result.Part := ppFooter;
     Exit;
   end;
-  if (PY < FHeaderH) or (FRowH <= 0) then
+  if PY < FHeaderH then
+  begin
+    { The title (Day 32): double-click = dynamic sorting on / off. }
+    if (FMode = pmSlots) and not FFolders.Rapid then
+      Result.Part := ppTitle;
+    Exit;
+  end;
+  if FRowH <= 0 then
     Exit;
   Row := FFirstRow + (PY - FHeaderH) div FRowH;
   if (Row - FFirstRow >= FRowsShown) or (Row >= RowCount) then
@@ -1013,6 +1023,11 @@ begin
   end;
 end;
 
+function TSortPanel.MouseOnPanel: Boolean;
+begin
+  Result := FVisible and (FHover.Part <> ppNone);
+end;
+
 function TSortPanel.Scroll(ANotches: Integer): Boolean;
 var
   Old: Integer;
@@ -1242,7 +1257,7 @@ end;
 
 procedure TSortPanel.Redraw;
 var
-  Row, SlotIndex, Pad, IconW, TextX, TextW, Y2: Integer;
+  Row, SlotIndex, Pad, IconW, TextX, TextW, Y2, TitleX: Integer;
   R, M, P: TRect;
   Slot: TSortSlot;
   C: LongWord;
@@ -1291,12 +1306,22 @@ begin
     if FBusy then
       Line := Line + '   (working ...)';
   end;
+  { A dynamic list (Day 32, user): a small red star before the title. }
+  TitleX := Pad;
+  if (FMode = pmSlots) and FFolders.Dynamic then
+  begin
+    DrawStar(Pad + FHeaderH * 0.22, FHeaderH / 2, FHeaderH * 0.22, BGRA(235, 60, 50, 255));
+    TitleX := Pad + Round(FHeaderH * 0.44) + ScaleI(4, FScale);
+  end;
+  if FHover.Part = ppTitle then
+    FBitmap.FillRect(Rect(1, 0, TitleX + FBitmap.TextSize(Line).cx + Pad, FHeaderH),
+      BGRA(255, 255, 255, 30), dmDrawWithTransparency);
   { Not into the arrows or the pin. }
   if ShowsArrows then
-    Line := FitText(FBitmap, Line, ArrowRect(-1).Left - Pad)
+    Line := FitText(FBitmap, Line, ArrowRect(-1).Left - TitleX)
   else
-    Line := FitText(FBitmap, Line, PinRect.Left - Pad);
-  FBitmap.TextOut(Pad, (FHeaderH - FBitmap.TextSize(Line).cy) div 2, Line, Dim);
+    Line := FitText(FBitmap, Line, PinRect.Left - TitleX);
+  FBitmap.TextOut(TitleX, (FHeaderH - FBitmap.TextSize(Line).cy) div 2, Line, Dim);
   { The arrows: other lists (Day 27, testers). }
   if ShowsArrows then
     for I := -1 to 1 do
@@ -1400,6 +1425,10 @@ begin
     end
     else
       DrawFolder(Pad, R.Top + Pad div 2, IconW, R.Height - Pad, Col, FFolders.SlotLabel(SlotIndex));
+    { Pinned to the top (Day 32, user): a red frame round its picture. }
+    if Slot.Pinned then
+      FBitmap.RectangleAntialias(Pad - 1.5, R.Top + Pad div 2 - 1.5, Pad + IconW + 0.5,
+        R.Bottom - Pad div 2 + 0.5, BGRA(235, 50, 40, 255), Max(1.5, FScale * 1.5));
     M := MenuRect(R);
     TextX := Pad + IconW + Pad;
     TextW := M.Left - TextX - 2;
@@ -1461,6 +1490,12 @@ begin
     Line := 'click: back to the folders'
   else if FHover.Part = ppPin then
     Line := 'pin: stay open'
+  else if (FHover.Part = ppTitle) and FFolders.Dynamic then
+    Line := 'dynamic: a folder used goes up' + LineEnding + '(once the mouse has left)'
+      + LineEnding + 'double-click: off'
+  else if FHover.Part = ppTitle then
+    Line := 'double-click: dynamic sorting' + LineEnding + '(folders used go up;'
+      + LineEnding + 'pinned ones stay on top)'
   else if FHover.Part = ppListPrev then
     Line := 'the previous folder list'
   else if FHover.Part = ppListNext then

@@ -1,0 +1,39 @@
+Day 32 (2026-10-23) - sorting, polished (VersariteViewer 1.2)
+
+1. Dynamic folder lists (user): TSortFolders keeps a flag per list
+   (FDynamic beside FLists; [DirList<n>] Dynamic=1). NoteUsed(folder)
+   after every successful copy / move into the list (TMView
+   HandleFileJobDone); ApplyUse moves each noted folder up one place -
+   called only once the mouse is off the panel (TSortPanel.MouseOnPanel;
+   on a move, on leaving the window, when the job ends with the mouse
+   elsewhere) and before another list or Rapid sorting is shown. So the
+   list never moves under a resting mouse (user: repeated double-clicks
+   stay safe). Switched by a double-click on the panel's title (new hit
+   part ppTitle) or the right-click menu's "Dynamic sorting"; a red star
+   before the title marks it.
+2. Pin to top (user): TSortSlot.Pinned (Slot<n>Pinned=1), the first line
+   of the folder menu ("Pin to top" / "Unpin"), in every list. The pinned
+   ones come first (PinnedFirst on reading and after a paste); SetPinned
+   puts a pinned one below the last pinned, an unpinned one first below
+   them; Move and the menu's Move to top / up / down stay within a slot's
+   part (SlotRange); ApplyUse never moves a pinned one nor above them.
+   Drawn with a red frame round its picture.
+3. Slide show / dir preview while sorting (user): a copy / move starts
+   the time afresh (FSlideNextMs, FDirNextMs := 0: the next image gets its
+   full time); the show waits while the mouse is on the sort panel.
+4. After a copy / move (user): the magnifier off, the zoom / rotate mode
+   ends (TMouseEngine.LeaveMode via TMView.OnEndModes).
+5. Duplicates (user): a sort job carries DuplicateDir (the deleted-files
+   folder). uFileMover.FindIdenticalFile looks at the name and its _1,
+   _2 ... copies: same size and identical bytes (SameFileContent, 1 MB
+   chunks; no pixel comparison). Found: a copy is not made (OK,
+   Duplicate; no undo entry; "already in ... (identical)"); a move goes
+   to the deleted-files folder as dup1_<name> (DuplicateFileName: dup2_
+   ...), undoable. Other content under the same name: _1 as before.
+6. Tests: TestSort 172 (duplicates; dynamic lists, pinning, the ini).
+   TestNavigation 153, TestMouse 98, TestExtensions 80. Checked under
+   Wine: the star and the red frames; a copy into SortD with the mouse
+   resting left the list as it was, a second copy said "identical: not
+   copied", leaving the panel moved SortD up two places below the pinned
+   SortA; Pin to top on SortB; a move of the identical image went to the
+   deleted files as dup1_cells.png and Ctrl+Z brought it back.

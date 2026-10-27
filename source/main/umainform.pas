@@ -188,6 +188,8 @@ type
     FRapidItem: TMenuItem;
     { The sort panel and the scan bar, on / off (ticked while open). }
     FSortPanelItem: TMenuItem;
+    { Dynamic sorting of the folder list shown (Day 32, user). }
+    FDynamicItem: TMenuItem;
     FPreviewStripItem: TMenuItem;
     FMakeIconItem: TMenuItem;
     { Side by side with Total Commander (Phase G, user): on, the place to
@@ -204,6 +206,7 @@ type
     FFollowItems: array[0..2] of TMenuItem;
     { Total Commander dir preview (1.1, testers): on / off. }
     FDirPreviewItem: TMenuItem;
+    FCombineGifsItem: TMenuItem;    { 1.3: only side by side with Total Commander }
     { The order of the images (Day 27, testers): Tag = the TSortMode. }
     FSortOrderItems: array[TSortMode] of TMenuItem;
     { The edition's own entries (uExtensions, M0), before "About";
@@ -295,11 +298,17 @@ type
     procedure HandleExtensionMenuClick(Sender: TObject);
     procedure HandleSaveMenuClick(Sender: TObject);
     procedure HandleSaveAsMenuClick(Sender: TObject);
+    { 1.3 (user): "Open file ..." (menu, or the command OpenFile). }
+    procedure HandleOpenFileMenuClick(Sender: TObject);
+    procedure OpenFileDialog;
     procedure HandleSaveDebugMenuClick(Sender: TObject);
     procedure HandlePasteMenuClick(Sender: TObject);
     procedure HandleCopyMenuClick(Sender: TObject);
     procedure HandleCropMenuClick(Sender: TObject);
     procedure HandleSortPanelMenuClick(Sender: TObject);
+    procedure HandleDynamicMenuClick(Sender: TObject);
+    procedure HandleSortPinClick(Sender: TObject);
+    procedure HandleEndModes(Sender: TObject);
     procedure HandleDeleteMenuClick(Sender: TObject);
     procedure HandleUndoMenuClick(Sender: TObject);
     { Sorting (Phase G): the slot menu and what it does. }
@@ -314,6 +323,7 @@ type
     procedure HandleSortRemoveClick(Sender: TObject);
     procedure HandleSortClipClick(Sender: TObject);
     procedure HandleDirPreviewMenuClick(Sender: TObject);
+    procedure HandleCombineGifsMenuClick(Sender: TObject);
     procedure HandleRotateMenuClick(Sender: TObject);
     procedure HandleSortIconClick(Sender: TObject);
     procedure HandleSortOpenClick(Sender: TObject);
@@ -398,7 +408,9 @@ uses
   uMousePage,
   uEdition,
   uExtensions,
-  uContainers;
+  uContainers,
+  uImageFormats,
+  uGifJoin;
 
 {$R *.lfm}
 
@@ -421,6 +433,7 @@ const
     'FAST first, MOUSE first, no frills, never in the way.' + LineEnding +
     LineEnding +
     'Built with Free Pascal and Lazarus.' + LineEnding +
+    'Copyright © 2026 DL1BWA/AC1WW' + LineEnding +
     'Free software under the GNU GPL v3.' + LineEnding +
     'Kryptonite, if it ever hangs: ' + EmergencyExitKeyText + '.';
 
@@ -574,6 +587,7 @@ begin
   FMView.OnToggleFullscreen := @HandleToggleFullscreen;
   FMView.OnSettingsRequest := @HandleSettingsRequest;
   FMView.OnSortMenu := @HandleSortMenu;
+  FMView.OnEndModes := @HandleEndModes;
 
   { The menu (spec §3.1), opened by the mouse profile's Menu command
     (right click by default). Its order and grouping are the user's
@@ -617,6 +631,23 @@ begin
   FDirPreviewItem.Caption := 'Total Commander dir preview  (a folder under its cursor plays)';
   FDirPreviewItem.OnClick := @HandleDirPreviewMenuClick;
   FPopupMenu.Items.Add(FDirPreviewItem);
+  { The two animated GIFs under Total Commander's cursors into one (1.3,
+    user): enabled only side by side with a running Total Commander. Two
+    ways (user): the frames as they are, or the smaller one scaled to fit
+    the larger (Tag = Ord(TGifJoinSize)). }
+  FCombineGifsItem := TMenuItem.Create(FPopupMenu);
+  FCombineGifsItem.Caption := 'Combine GIFs  (Total Commander: left, then right)';
+  FPopupMenu.Items.Add(FCombineGifsItem);
+  Item := TMenuItem.Create(FPopupMenu);
+  Item.Caption := 'Original sizes';
+  Item.Tag := Ord(gjOriginal);
+  Item.OnClick := @HandleCombineGifsMenuClick;
+  FCombineGifsItem.Add(Item);
+  Item := TMenuItem.Create(FPopupMenu);
+  Item.Caption := 'Scaled to largest GIF  (resolution loss!)';
+  Item.Tag := Ord(gjScaleToLarger);
+  Item.OnClick := @HandleCombineGifsMenuClick;
+  FCombineGifsItem.Add(Item);
   AddMenuLine;
 
   { Undo first (user, Day 28): always there, greyed while there is
@@ -627,6 +658,12 @@ begin
   FUndoItem.Caption := 'Undo';
   FUndoItem.OnClick := @HandleUndoMenuClick;
   FPopupMenu.Items.Add(FUndoItem);
+  { 1.3 (user): for a start without a file, and for anyone who browses
+    without Total Commander or Explorer. Also the command OpenFile. }
+  Item := TMenuItem.Create(FPopupMenu);
+  Item.Caption := 'Open file ...';
+  Item.OnClick := @HandleOpenFileMenuClick;
+  FPopupMenu.Items.Add(Item);
   { The file. The image at its own resolution to the clipboard (Day 25). }
   Item := TMenuItem.Create(FPopupMenu);
   Item.Caption := 'Copy image     (Ctrl+C)';
@@ -707,6 +744,12 @@ begin
   FSortPanelItem.Caption := 'Sort panel (side menu)';
   FSortPanelItem.OnClick := @HandleSortPanelMenuClick;
   FPopupMenu.Items.Add(FSortPanelItem);
+  { Day 32 (user): the folder list shown sorts itself (ticked when on;
+    also a double-click on the panel's title). }
+  FDynamicItem := TMenuItem.Create(FPopupMenu);
+  FDynamicItem.Caption := 'Dynamic sorting  (this folder list: folders used go up)';
+  FDynamicItem.OnClick := @HandleDynamicMenuClick;
+  FPopupMenu.Items.Add(FDynamicItem);
   { On / off (ticked while open; it also opens at the top edge). }
   FPreviewStripItem := TMenuItem.Create(FPopupMenu);
   FPreviewStripItem.Caption := 'Preview strip  (or rest the mouse at the top edge)';
@@ -1516,6 +1559,12 @@ begin
     ToggleSideBySide;
     Exit;
   end;
+  { A dialog is the window's business too. }
+  if ACommand = cmdOpenFile then
+  begin
+    OpenFileDialog;
+    Exit;
+  end;
   { The menu is the window's business; X, Y are surface pixels. }
   if ACommand = cmdShowMenu then
   begin
@@ -1536,8 +1585,11 @@ begin
       FRotateItem.Visible := FMView.CanRotateLossless;
       FSideItem.Checked := FSideBySide;
       FSortPanelItem.Checked := FMView.SortPanelVisible;
+      FDynamicItem.Checked := FMView.SortListDynamic;
+      FDynamicItem.Enabled := not FMView.RapidSelection;
       FPreviewStripItem.Checked := FMView.PreviewStripPinned;
       FDirPreviewItem.Checked := FMView.DirPreview;
+      FCombineGifsItem.Enabled := FSideBySide and (FindTotalCommanderWindow <> 0);
       FLockFiltersItem.Checked := FMView.FiltersLocked;
       FApplyFiltersItem.Enabled := FMView.CanApplyFilters;
       { What goes into the copy (Day 26: the measurement too). }
@@ -1653,6 +1705,66 @@ begin
     ViewInput.NoteActivity(GetTickCount64);
 end;
 
+procedure TMainForm.HandleOpenFileMenuClick(Sender: TObject);
+begin
+  OpenFileDialog;
+end;
+
+{ "Open file ..." (1.3, user): a file dialog in the folder shown (else the
+  last session's); the file chosen is opened as from the command line or
+  a drop: its folder becomes the browsing root. Images, 3D models and
+  archives are offered; "All files" lets anything be tried. }
+procedure TMainForm.OpenFileDialog;
+var
+  Dialog: TOpenDialog;
+  Dir, Mask: string;
+  I: Integer;
+
+  procedure AddExt(const AExt: string);
+  begin
+    if Mask <> '' then
+      Mask := Mask + ';';
+    Mask := Mask + '*' + AExt;
+  end;
+
+begin
+  if FMView = nil then
+    Exit;
+  Mask := '';
+  for I := Low(SupportedImageExtensions) to High(SupportedImageExtensions) do
+    AddExt(SupportedImageExtensions[I]);
+  for I := Low(WicOnlyExtensions) to High(WicOnlyExtensions) do
+    AddExt(WicOnlyExtensions[I]);
+  for I := 0 to ContainerReaderCount - 1 do
+    AddExt(ContainerReaderExtension(I));
+  Dir := '';
+  if FMView.Navigator.CurrentFileName <> '' then
+    Dir := RealFolderOf(FMView.Navigator.CurrentFileName);
+  if Dir = '' then
+    Dir := FMView.Navigator.CurrentDirectory;
+  if Dir = '' then
+    Dir := FMView.Config.LastDirectory;
+  Dialog := TOpenDialog.Create(nil);
+  try
+    Dialog.Title := 'Open file';
+    Dialog.InitialDir := Dir;
+    Dialog.Filter := 'Images, 3D models and archives|' + Mask + '|All files (*.*)|*.*';
+    Dialog.FilterIndex := 1;
+    Dialog.Options := Dialog.Options + [ofFileMustExist, ofEnableSizing];
+    if Dialog.Execute then
+    begin
+      FMView.OpenMedia(Dialog.FileName);
+      if Assigned(FView) and FView.CanFocus then
+        FView.SetFocus;
+    end;
+  finally
+    Dialog.Free;
+  end;
+  { Time in the dialog doesn't count towards hiding the cursor. }
+  if Assigned(ViewInput) then
+    ViewInput.NoteActivity(GetTickCount64);
+end;
+
 procedure TMainForm.HandleSaveDebugMenuClick(Sender: TObject);
 begin
   FMView.Execute(cmdSaveDebug);
@@ -1708,6 +1820,39 @@ end;
 procedure TMainForm.HandleSortPanelMenuClick(Sender: TObject);
 begin
   FMView.ShowSortPanel(not FMView.SortPanelVisible);
+end;
+
+procedure TMainForm.HandleDynamicMenuClick(Sender: TObject);
+begin
+  FMView.SetSortListDynamic(not FMView.SortListDynamic);
+end;
+
+{ Pin to top / unpin (Day 32, user): pinned folders stay on top. }
+procedure TMainForm.HandleSortPinClick(Sender: TObject);
+var
+  Folders: TSortFolders;
+  Index: Integer;
+begin
+  if (FMView = nil) or (FSortMenuSlot < 0) then
+    Exit;
+  Folders := FMView.Config.SortFolders;
+  if FSortMenuSlot >= Folders.Count then
+    Exit;
+  Index := Folders.SetPinned(FSortMenuSlot, not Folders.Slot(FSortMenuSlot).Pinned);
+  FSortMenuSlot := Index;
+  UpdateSortMoveItems;
+  FMView.SortFoldersChanged(Index);
+  if Folders.Slot(Index).Pinned then
+    FMView.StatusNote(Folders.Slot(Index).Name + ' pinned to the top', 2500)
+  else
+    FMView.StatusNote(Folders.Slot(Index).Name + ' no longer pinned', 2500);
+end;
+
+{ A copy / move was started (Day 32): the zoom / rotate mode ends. }
+procedure TMainForm.HandleEndModes(Sender: TObject);
+begin
+  if Assigned(ViewInput) then
+    ViewInput.LeaveMode;
 end;
 
 procedure TMainForm.AddMenuLine;
@@ -1943,6 +2088,11 @@ begin
 
   if ASlot >= 0 then
   begin
+    { On the very top (Day 32, user): pinned folders stay on top. }
+    if Folders.Slot(ASlot).Pinned then
+      NewItem(nil, 'Unpin  (pinned to the top)', @HandleSortPinClick, SlotMenuStrongTag)
+    else
+      NewItem(nil, 'Pin to top', @HandleSortPinClick, SlotMenuStrongTag);
     Item := NewItem(nil, MenuText(Folders.Slot(ASlot).Folder), nil);
     Item.Enabled := False;
     { Into the folder (also: a swipe left or right over the button, or a
@@ -2082,17 +2232,18 @@ end;
 { Move to top / up / down: enabled where the slot can go. }
 procedure TMainForm.UpdateSortMoveItems;
 var
-  N: Integer;
+  Low_, High_: Integer;
 begin
   if FMView = nil then
     Exit;
-  N := FMView.Config.SortFolders.Count;
+  { Within its part (Day 32: pinned / not pinned). }
+  FMView.Config.SortFolders.SlotRange(FSortMenuSlot, Low_, High_);
   if Assigned(FMoveTopItem) then
-    FMoveTopItem.Enabled := FSortMenuSlot > 0;
+    FMoveTopItem.Enabled := FSortMenuSlot > Low_;
   if Assigned(FMoveUpItem) then
-    FMoveUpItem.Enabled := FSortMenuSlot > 0;
+    FMoveUpItem.Enabled := FSortMenuSlot > Low_;
   if Assigned(FMoveDownItem) then
-    FMoveDownItem.Enabled := (FSortMenuSlot >= 0) and (FSortMenuSlot < N - 1);
+    FMoveDownItem.Enabled := (FSortMenuSlot >= 0) and (FSortMenuSlot < High_);
 end;
 
 { "<name>_001", "<name>_002" ...: the first free one beside the slot's
@@ -2220,16 +2371,18 @@ end;
 
 procedure TMainForm.HandleSortMoveClick(Sender: TObject);
 var
-  Target: Integer;
+  Target, Low_, High_: Integer;
 begin
   if FSortMenuSlot < 0 then
     Exit;
+  { Within its part (Day 32): the pinned ones among themselves, the
+    others below them; "to top" = the top of its part. }
+  FMView.Config.SortFolders.SlotRange(FSortMenuSlot, Low_, High_);
   if TMenuItem(Sender).Tag = MoveToTopTag then
-    Target := 0
+    Target := Low_
   else
     Target := FSortMenuSlot + TMenuItem(Sender).Tag;
-  if (Target < 0) or (Target >= FMView.Config.SortFolders.Count)
-    or (Target = FSortMenuSlot) then
+  if (Target < Low_) or (Target > High_) or (Target = FSortMenuSlot) then
     Exit;
   FMView.Config.SortFolders.Move(FSortMenuSlot, Target);
   { The menu stays open (Day 27): it now is for the slot's new place. }
@@ -2270,6 +2423,12 @@ procedure TMainForm.HandleRotateMenuClick(Sender: TObject);
 begin
   if FMView <> nil then
     FMView.RotateLossless(TOrientOp(TMenuItem(Sender).Tag));
+end;
+
+procedure TMainForm.HandleCombineGifsMenuClick(Sender: TObject);
+begin
+  if FSideBySide then
+    FMView.CombineGifs(TGifJoinSize(TMenuItem(Sender).Tag));
 end;
 
 procedure TMainForm.HandleDirPreviewMenuClick(Sender: TObject);

@@ -55,6 +55,10 @@ unit uMediaLoader;
     rows it needs (2 of every S), a quarter of the file at S = 8.
   - LZW strip TIFF, both qualities: uTiffQuick's own LZW decoder
     (Day 19; WIC took about 4.5 s for a 108 MP file).
+  - 3D models (.stl, 1.3, uStlModel): drawn as the model starts, at
+    twice the screen size (at most about 4K) with a screen-size copy,
+    as qlFull at once (RenderStlImage; TMView draws it again when it
+    is turned or cut).
   - GIF (Day 19, uGifDecoder): Screen quality is the first frame only
     (read from the start of the file); it says qlScreen if more frames
     follow, qlFull for a still GIF. Full quality is every frame, as a
@@ -144,6 +148,7 @@ uses
   uTypes,
   uImageFormats,
   uDecodedImage,
+  uStlModel,
   uJpegDecoder,
   uExifOrientation,
   uJpegHeader,
@@ -209,6 +214,16 @@ type
     property UseWicQuickView: Boolean read FUseWicQuickView write FUseWicQuickView;
   end;
 
+{ A 3D model (.stl, 1.3) as a picture for a screen (or window) of
+  AScreenWidth x AScreenHeight. AQuality: drawn at twice that size (at
+  most about 4K) with a screen-size copy, as qlFull; else quickly at
+  the screen size, as qlScreen (TMView while the model is turned). Both
+  say the same full size, so the view stays when one replaces the
+  other. An error entry if the file can't be read. Any thread. }
+function RenderStlImage(const AKey: TImageKey; const AView: TStlView;
+  AScreenWidth, AScreenHeight: Integer; AQuality: Boolean;
+  ACancel: TCancelCheck = nil): IDecodedImage;
+
 { True if a qlPreview request can succeed for this file at all (JPEG
   by name; whether it has a thumbnail is only known after reading). }
 function MayHavePreview(const AFileName: string): Boolean;
@@ -268,6 +283,61 @@ end;
 
 function LoadOther(const AKey: TImageKey; ACancel: TCancelCheck;
   APreviewWidth, APreviewHeight: Integer; APriorityRead: Boolean): IDecodedImage; forward;
+
+function RenderStlImage(const AKey: TImageKey; const AView: TStlView;
+  AScreenWidth, AScreenHeight: Integer; AQuality: Boolean;
+  ACancel: TCancelCheck): IDecodedImage;
+const
+  MaxFullPixels = 3840 * 2160;
+var
+  Model: IStlModel;
+  Bitmap: TBGRABitmap;
+  Preview: TBGRACustomBitmap;
+  W, H, FullW, FullH: Integer;
+  Scale, StartMs, DecodeMs, PreviewStartMs: Double;
+begin
+  StartMs := NowMs;
+  W := AScreenWidth;
+  H := AScreenHeight;
+  if (W <= 0) or (H <= 0) then
+  begin
+    W := 1920;
+    H := 1080;
+  end;
+  Scale := 2;
+  if Double(W) * H * Scale * Scale > MaxFullPixels then
+    Scale := Max(1, Sqrt(MaxFullPixels / (Double(W) * H)));
+  FullW := Round(W * Scale);
+  FullH := Round(H * Scale);
+  Bitmap := nil;
+  Preview := nil;
+  try
+    Model := StlModelFor(AKey, ACancel);
+    if AQuality then
+      Bitmap := Model.Render(AView, FullW, FullH, Scale, ACancel)
+    else
+      Bitmap := Model.Render(AView, W, H, 1, ACancel);
+    if Bitmap = nil then
+      Exit(TDecodedImage.CreateError(AKey, 'Cancelled'));
+    DecodeMs := NowMs - StartMs;
+    if AQuality then
+    begin
+      PreviewStartMs := NowMs;
+      Preview := MakePreview(Bitmap, W, H);
+      Result := TDecodedImage.Create(AKey, qlFull, Bitmap, Preview, DecodeMs,
+        NowMs - PreviewStartMs);
+    end
+    else
+      Result := TDecodedImage.Create(AKey, qlScreen, Bitmap, nil, DecodeMs, 0, FullW, FullH);
+  except
+    on E: Exception do
+    begin
+      Preview.Free;
+      Bitmap.Free;
+      Result := TDecodedImage.CreateError(AKey, E.Message, NowMs - StartMs);
+    end;
+  end;
+end;
 function OrientBitmap(ABitmap: TBGRABitmap; AOrientation: Integer): TBGRABitmap; forward;
 
 function MayHavePreview(const AFileName: string): Boolean;
@@ -1242,6 +1312,9 @@ begin
     else
       Result := TDecodedImage.CreateError(Key, NoPreviewMessage);
   end
+  { A 3D model (1.3): drawn as the model starts (StlStartView). }
+  else if IsStlFileName(AFileName) then
+    Result := RenderStlImage(Key, StlStartView, APreviewWidth, APreviewHeight, True, ACancel)
   else if IsJpegFileName(AFileName) then
     Result := LoadJpeg(Key, AQuality, ACancel, APreviewWidth, APreviewHeight,
       APriorityRead, FAutoRotate, FUseWic, FUseWicQuickView)

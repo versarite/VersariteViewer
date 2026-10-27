@@ -27,6 +27,7 @@ unit uImageFormats;
     the file) and camera raw files. Some need a codec from the Microsoft
     Store (HEIF, AV1, JPEG XL, Raw Image Extension); without it the
     file is listed and says which one is missing (CodecHint).
+    Since 1.3 also 3D models (.stl, uStlModel): drawn as a picture.
   - IsSupportedImageFile: True if a file name ends in one of them
     (case does not matter).
   - IsVideoFile (Day 24): a video, by its extension only. MView never
@@ -67,12 +68,13 @@ uses
   SysUtils;
 
 const
-  SupportedImageExtensions: array[0..7] of string = (
+  SupportedImageExtensions: array[0..8] of string = (
     '.tif', '.tiff',
     '.jpg', '.jpeg', '.jpe',
     '.png',
     '.bmp',
-    '.gif'
+    '.gif',
+    '.stl'
   );
 
   { Read only through WIC, Windows' codecs (1.1). }

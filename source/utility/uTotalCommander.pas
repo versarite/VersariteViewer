@@ -224,6 +224,18 @@ begin
     Exit;
   Params := '/O /S';
   Folder := Trim(AFolder);
+  { 1.3 (user: started side by side, Total Commander didn't come - the
+    last session's folder had been renamed): a folder that isn't there
+    is not handed on (Total Commander stops at it); the nearest folder
+    above it that is, else none. }
+  while (Folder <> '') and not DirectoryExists(Folder) do
+  begin
+    if SameText(ExtractFileDir(ExcludeTrailingPathDelimiter(Folder)),
+      ExcludeTrailingPathDelimiter(Folder)) then
+      Folder := ''
+    else
+      Folder := ExtractFileDir(ExcludeTrailingPathDelimiter(Folder));
+  end;
   if Folder <> '' then
   begin
     { A drive's root keeps its backslash; "D:\" in quotes would end in \"

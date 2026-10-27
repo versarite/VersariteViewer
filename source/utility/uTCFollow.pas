@@ -40,6 +40,9 @@ unit uTCFollow;
     ".." or a folder name can't be told apart: the caller checks the
     extension). False when Total Commander isn't running or answers
     nothing.
+  - PanelItems (1.3, "Combine GIFs"): the files under the cursors of
+    both panels (LP / LN, RP / RN; else the path lines 9 / 10 and the
+    file lists 1 / 2 with the cursor indexes 1007 / 1008).
   - CursorSupported: False once the cursor question went unanswered
     (then only the folder is followed, and the caller can say so).
   - Paths that aren't folders on a disk (archives, FTP, plugins:
@@ -84,14 +87,19 @@ type
     FCursorTried: Boolean;       { the cursor question was answered once }
     FInfo: string;
     function Ask(ATC: THandle; const AQuestion: AnsiString; out AAnswer: string): TTCAsk;
-    function PathFromPathLine(ATC: THandle): string;
-    function NameFromFileList(ATC: THandle; out AName: string): Boolean;
+    function PathFromPathLine(ATC: THandle; ASide: Integer = 0): string;
+    function NameFromFileList(ATC: THandle; out AName: string; ASide: Integer = 0): Boolean;
+    function PanelItem(ATC: THandle; ASide: Integer): string;
   public
     constructor Create;
     destructor Destroy; override;
     { AWantFile: also the file under the cursor. }
     function Poll(AWantFile: Boolean; out AFolder, AFile: string): Boolean;
     property CursorSupported: Boolean read FCursorSupported;
+    { "Combine GIFs" (1.3): the files under the cursors of the left and
+      the right panel (full names; '' for a folder, "..", or a panel in
+      an archive). False: Total Commander isn't running. }
+    function PanelItems(out ALeft, ARight: string): Boolean;
     { For the D line: how the last answers came ("folder: question,
       cursor: list 'x.jpg'"). }
     property Info: string read FInfo;
@@ -249,8 +257,9 @@ begin
   end;
 end;
 
-{ Method 2: the active panel's path line ("C:\Images\*.*"). }
-function TTCFollower.PathFromPathLine(ATC: THandle): string;
+{ Method 2: the active panel's path line ("C:\Images\*.*"); ASide 1 /
+  2: the left / right one. }
+function TTCFollower.PathFromPathLine(ATC: THandle; ASide: Integer): string;
 var
   Active, Line: PtrUInt;
   Buffer: array[0..1023] of WideChar;
@@ -259,8 +268,9 @@ var
   Slash: Integer;
 begin
   Result := '';
-  Active := 0;
-  if TCSendMessageTimeoutW(ATC, WmUser50, 1000, 0, SMTO_ABORTIFHUNG, TimeoutMs, @Active) = 0 then
+  Active := ASide;
+  if (ASide = 0) and (TCSendMessageTimeoutW(ATC, WmUser50, 1000, 0, SMTO_ABORTIFHUNG,
+    TimeoutMs, @Active) = 0) then
     Exit;
   Line := 0;
   if Active = 2 then
@@ -289,7 +299,7 @@ end;
   text across for list boxes). The line may hold more than the name,
   separated by tabs: the name comes first; "show the extension apart"
   gives "name<tab>ext". Folders come as "[name]". }
-function TTCFollower.NameFromFileList(ATC: THandle; out AName: string): Boolean;
+function TTCFollower.NameFromFileList(ATC: THandle; out AName: string; ASide: Integer): Boolean;
 const
   LbGetText = $0189;
   LbGetTextLen = $018A;
@@ -303,11 +313,16 @@ var
 begin
   AName := '';
   Result := False;
-  Active := 0;
-  if TCSendMessageTimeoutW(ATC, WmUser50, 1000, 0, SMTO_ABORTIFHUNG, TimeoutMs, @Active) = 0 then
+  Active := ASide;
+  if (ASide = 0) and (TCSendMessageTimeoutW(ATC, WmUser50, 1000, 0, SMTO_ABORTIFHUNG,
+    TimeoutMs, @Active) = 0) then
     Exit;
   List := 0;
-  TCSendMessageTimeoutW(ATC, WmUser50, 3, 0, SMTO_ABORTIFHUNG, TimeoutMs, @List);
+  { 3: the active panel's list; 1 / 2: the left / right one. }
+  if ASide = 0 then
+    TCSendMessageTimeoutW(ATC, WmUser50, 3, 0, SMTO_ABORTIFHUNG, TimeoutMs, @List)
+  else
+    TCSendMessageTimeoutW(ATC, WmUser50, ASide, 0, SMTO_ABORTIFHUNG, TimeoutMs, @List);
   Index := LbErr;
   if Active = 2 then
     TCSendMessageTimeoutW(ATC, WmUser50, 1008, 0, SMTO_ABORTIFHUNG, TimeoutMs, @Index)
@@ -404,6 +419,51 @@ begin
       Start := I + 1;
     end;
   Result := True;
+end;
+
+{ The file under the cursor of the left (1) or right (2) panel: the
+  questions LP / LN, RP / RN; else its path line and its file list. }
+function TTCFollower.PanelItem(ATC: THandle; ASide: Integer): string;
+var
+  Folder, Name: string;
+  Letter: AnsiString;
+begin
+  Result := '';
+  if ASide = 1 then
+    Letter := 'L'
+  else
+    Letter := 'R';
+  if (Ask(ATC, Letter + 'P', Folder) <> taAnswered) or (Folder = '') then
+    Folder := PathFromPathLine(ATC, ASide);
+  if Folder = '' then
+    Exit;
+  Folder := IncludeTrailingPathDelimiter(Folder);
+  if not IsDiskFolder(Folder) then
+    Exit;
+  if (Ask(ATC, Letter + 'N', Name) <> taAnswered) or (Name = '') or IsNumber(Name) then
+    if not NameFromFileList(ATC, Name, ASide) then
+      Name := '';
+  Name := Trim(Name);
+  if (Name = '') or (Name = '..') then
+    Exit;
+  if ((Length(Name) > 2) and (Name[2] = ':')) or (Copy(Name, 1, 2) = '\\') then
+    Result := Name
+  else if Pos('\', Name) = 0 then
+    Result := Folder + Name;
+end;
+
+function TTCFollower.PanelItems(out ALeft, ARight: string): Boolean;
+var
+  TC: THandle;
+begin
+  ALeft := '';
+  ARight := '';
+  TC := FindTotalCommanderWindow;
+  Result := TC <> 0;
+  if not Result then
+    Exit;
+  ALeft := PanelItem(TC, 1);
+  ARight := PanelItem(TC, 2);
 end;
 
 function TTCFollower.Poll(AWantFile: Boolean; out AFolder, AFile: string): Boolean;
@@ -518,14 +578,26 @@ begin
   Result := taNoAnswer;
 end;
 
-function TTCFollower.PathFromPathLine(ATC: THandle): string;
+function TTCFollower.PathFromPathLine(ATC: THandle; ASide: Integer): string;
 begin
   Result := '';
 end;
 
-function TTCFollower.NameFromFileList(ATC: THandle; out AName: string): Boolean;
+function TTCFollower.NameFromFileList(ATC: THandle; out AName: string; ASide: Integer): Boolean;
 begin
   AName := '';
+  Result := False;
+end;
+
+function TTCFollower.PanelItem(ATC: THandle; ASide: Integer): string;
+begin
+  Result := '';
+end;
+
+function TTCFollower.PanelItems(out ALeft, ARight: string): Boolean;
+begin
+  ALeft := '';
+  ARight := '';
   Result := False;
 end;
 

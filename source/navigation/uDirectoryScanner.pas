@@ -120,6 +120,7 @@ type
     FRequestPath: string;
     FRequestSelect: string;
     FRequestRecursive: Boolean;
+    FRequestUrgent: Boolean;
     FResultStart: TScanStart;
     FResultTree: TDirectoryTree;
     FResultGeneration: Cardinal;
@@ -128,6 +129,7 @@ type
 
     { Scanner thread only }
     FWorkingGeneration: Cardinal;
+    FWorkingUrgent: Boolean;     { scanner thread only: the request in work is urgent }
 
     { UI thread only }
     FOnStartReady: TStartReadyEvent;
@@ -148,7 +150,12 @@ type
     { UI thread. Opens APath (file or folder); ASelectFile: a file to
       resume on inside a folder. Cancels any older request. Returns
       the generation number. }
-    function Request(const APath, ASelectFile: string; ARecursive: Boolean): Cardinal;
+    { AUrgent (1.3): the scan doesn't give way to the image on screen
+      (I/O gate): the image the user waits for comes only with the tree
+      (climbing one level up), so waiting for the old one's read would
+      put it last. }
+    function Request(const APath, ASelectFile: string; ARecursive: Boolean;
+      AUrgent: Boolean = False): Cardinal;
 
     { UI thread: ms since the thread last came back from the file
       system while working on a request; 0 when idle. }
@@ -213,7 +220,8 @@ begin
   FLock.Free;
 end;
 
-function TDirectoryScanner.Request(const APath, ASelectFile: string; ARecursive: Boolean): Cardinal;
+function TDirectoryScanner.Request(const APath, ASelectFile: string; ARecursive: Boolean;
+  AUrgent: Boolean): Cardinal;
 begin
   FLock.Acquire;
   try
@@ -221,6 +229,7 @@ begin
     FRequestPath := APath;
     FRequestSelect := ASelectFile;
     FRequestRecursive := ARecursive;
+    FRequestUrgent := AUrgent;
     FHasRequest := True;
     Result := FLatestGeneration;
   finally
@@ -259,7 +268,11 @@ function TDirectoryScanner.ScanCancelled: Boolean;
 begin
   if Terminated then
     Exit(True);
-  IOGate.WaitWhileRaised(1000);
+  { Not for an urgent scan (1.3, user: climbing one level up waited
+    seconds - up to 1 s per folder - while the old image was still being
+    read, and the new image comes only with the tree). }
+  if not FWorkingUrgent then
+    IOGate.WaitWhileRaised(1000);
   if Terminated then
     Exit(True);
   FLock.Acquire;
@@ -358,6 +371,7 @@ begin
         Path := FRequestPath;
         Select := FRequestSelect;
         Recursive := FRequestRecursive;
+        FWorkingUrgent := FRequestUrgent;
         FWorkingGeneration := FLatestGeneration;
         FHasRequest := False;
         FBusy := True;

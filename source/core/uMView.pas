@@ -25,6 +25,12 @@ unit uMView;
     freed (only the list is).
   - FSaveThread (TImageSaveThread): a "Save image" in progress.
   - Animation playback: FAnimTimer (TTimer), FAnimCursor, FAnimClock.
+  - 3D models (1.3, .stl): FStlSection (their controls in the filter
+    panel, owned by uExtensions' registry), FStlTimer; the rotate mode
+    turns a model (StlTurn) instead of the picture, a left drag turns
+    and tilts it (StlOrbit) instead of moving the picture; every change is
+    drawn again (RenderStlImage), quickly at once, sharp a moment
+    later.
   - The lists FNoRoom and FNoPreview (TStringList).
   - Sorting (Phase G): FPanel (TSortPanel, the panel at the right
     edge), FMover (TFileMover, its worker thread; made at the first
@@ -272,6 +278,9 @@ uses
   uDirPeek,
   uExifOrientation,
   uImageFormats,
+  uStlModel,
+  uStlPanel,
+  uGifJoin,
   uExtensions;   { TBurnInMap (1.1: the figure source) }
 
 type
@@ -527,6 +536,9 @@ type
     FPanelViewW, FPanelViewH: Integer;
     FPanelScale: Double;
     FOnSortMenu: TSortMenuEvent;
+    { Day 32 (user): after a copy / move the zoom / rotate mode ends (the
+      mouse engine's, the main form's business). }
+    FOnEndModes: TNotifyEvent;
     { Stage 2: the buttons' icons and the missing-folder check (read on
       their own thread), and whether the panel was open at the last
       UpdatePanel (opening reads the icon folder again). }
@@ -542,6 +554,56 @@ type
     FKeepFilters: Boolean;
     FFilterPress: Boolean;
     FFilterExtraPress: Integer;   { the edition's row pressed in the filter panel; -1 none }
+    { A slider row of a panel section being dragged (1.3): the row
+      (all sections counted; -1 none), where the drag started. }
+    FFilterExtraDrag: Integer;
+    FFilterExtraDragX: Integer;
+    FFilterExtraDragPos: Double;
+
+    { A 3D model shown (1.3, .stl): its file, its controls in the
+      filter panel (FStlSection; the view is kept there), the info
+      line's text. FStlOwn: drawn here as set (not the loader's start
+      view). FStlTimer: a change is drawn quickly at once (stage 1),
+      sharp a moment later (stage 2). }
+    FStlActive: Boolean;
+    FStlKey: TImageKey;
+    FStlSection: TStlSection;
+    FStlInfo: string;
+    FStlOwn: Boolean;
+    FStlTimer: TTimer;
+    FStlStage: Integer;
+    { 1.3: the renderer draws the model live (the graphics card); the
+      sharp picture of it (for copy, save, the magnifier ...) is made by
+      a thread meanwhile (TStlPictureThread), FStlRedo: again when it is
+      done (the view changed while it ran). }
+    FStlThread: TThread;
+    FStlRedo: Boolean;
+    { Combine GIFs on a thread (1.3): the thread, the two GIFs' sizes and
+      frames for the note, how it was asked, when the progress was last
+      said. }
+    FGifThread: TThread;
+    FGifJoinL, FGifJoinR: TGifInfo;
+    FGifJoinSize: TGifJoinSize;
+    FGifJoinNoteMs: Double;
+    { The panel's Elevation row follows a drag at most this often (1.3,
+      speed); the last value when the model rests (FStlPanelLate). }
+    FStlPanelMs: Double;
+    FStlPanelLate: Boolean;
+    { 1.3: the next OpenMedia's scan is urgent (ClimbUp: the new image
+      waits for the tree; the scan must not give way to the old one). }
+    FUrgentScan: Boolean;
+    { 1.3 (user: after "Not found" and while "scanning folders" the
+      gestures did nothing): FRequested: the last path asked for (the
+      parent gesture's start when nothing could be opened); FNotFound:
+      the path that wasn't there - its parents are tried one by one
+      (FTryingParent: OpenMedia keeps FNotFound for that); FTreeStep: a
+      step that came while the folders were still being read, done
+      when they are. }
+    FRequested: string;
+    FNotFound: string;
+    FTryingParent: Boolean;
+    FTreeStep: TCommand;
+    FTreeStepWaiting: Boolean;
     { Esc to the settings (Day 25): BeginClose saved the settings (the
       destructor doesn't again: the settings screen may have written
       them since) and released the read gate once the workers were back. }
@@ -652,9 +714,13 @@ type
     procedure CropSelection;
     procedure GoBack;
     procedure ParentFolder;
+    function TryParentOf(const APath: string): Boolean;
     { While MView follows Total Commander, Total Commander decides the
       folder: steps to other folders are refused (user, Day 24). }
     function TCFolderLock: Boolean;
+    { No image on screen (an empty folder): the folder shown opened again,
+      with or without subfolders as UseRecursive says now (1.3). }
+    procedure ReopenEmptyFolder;
     { A short notice in the middle of the view, flashing twice, then
       steady; gone after NoticeMs. }
     procedure FlashNotice(const AText: string; AStyle: Integer = 0);
@@ -666,6 +732,9 @@ type
       DiskLowBytes free: a red notice, again every DiskWarnEveryMs. }
     procedure CheckDiskSpace;
     procedure CycleSortList(ADir: Integer);
+    { Day 32: a dynamic list's used folders go up, once the mouse has
+      left the panel (never under a resting mouse). }
+    procedure ApplySortUse;
     procedure SetPreviewStrip(AShow, AByEdge: Boolean);
     { [View] PreviewStrip (1.1): written when the pinned strip changed. }
     procedure RememberPreviewStrip;
@@ -689,6 +758,19 @@ type
     procedure StartAnimation(const AImage: IDecodedImage);
     procedure StopAnimation;
     procedure HandleAnimationTimer(Sender: TObject);
+    { 3D models (1.3). }
+    procedure StlNewImage(const AImage: IDecodedImage);
+    procedure StlRender(AQuality: Boolean);
+    procedure StlViewChanged;
+    procedure StlTurn(ADegrees: Double);
+    procedure StlOrbit(ADX, ADY: Double);
+    procedure HandleStlSectionChange(Sender: TObject);
+    procedure HandleStlTimer(Sender: TObject);
+    procedure StartStlPicture;
+    procedure PollStlPicture;
+    procedure StopStlPicture;
+    procedure PollGifJoin;
+    function StopGifJoin(AWait: Boolean): Boolean;
     function AnimationDelay(AIndex: Integer): Integer;
     procedure SkipBadImage;
     procedure Navigate(ACommand: TCommand);
@@ -919,6 +1001,9 @@ type
       keys 1 .. 0 move the image there. Off: the list and pin before. }
     procedure SetRapidSelection(AOn: Boolean);
     function RapidSelection: Boolean;
+    { Dynamic sorting of the folder list shown (Day 32, user). }
+    function SortListDynamic: Boolean;
+    procedure SetSortListDynamic(AOn: Boolean);
     { The scan bar is open (the menu ticks it, Day 27). }
     function PreviewStripVisible: Boolean;
     { Opened from the menu / a key: stays when the mouse leaves. }
@@ -941,6 +1026,13 @@ type
     procedure SortPanelMouseGone;
     { A note in the info line (the main form's window actions). }
     procedure ShowNote(const AText: string; ADurationMs: Double);
+    { "Combine GIFs" (1.3, user; the menu, side by side with Total
+      Commander): the animated GIFs under the cursors of Total
+      Commander's left and right panel into one - left first, a short
+      pause, right, a short pause - saved in the folder shown here as
+      "<left>_<right>.gif" and shown. Two that are not animated GIFs, or
+      the same: nothing done, a note says why. }
+    procedure CombineGifs(ASize: TGifJoinSize = gjOriginal);
     { The settings screen's Ctrl+V with an image in the clipboard: the
       viewer starts with it (the last session opens behind it). }
     procedure StartWithPaste;
@@ -955,6 +1047,7 @@ type
       else Documents). ASlot -1: a new slot. }
     function SortStartFolder(ASlot: Integer): string;
     property OnSortMenu: TSortMenuEvent read FOnSortMenu write FOnSortMenu;
+    property OnEndModes: TNotifyEvent read FOnEndModes write FOnEndModes;
 
     { Icons (stage 2, spec §9.7). SlotIconFile: the icon file slot ASlot
       uses: its own (Slot<n>Icon, a name in the icon folder or a full
@@ -1052,6 +1145,109 @@ uses
   uEdition,
   uZipContainer;      { ZIP / CBZ as containers (1.1): registers itself }
 
+type
+  { Combine GIFs (1.3), on its own thread: scaling a long animation takes
+    a while. Done / Frames: how far (read by the UI thread; whole
+    numbers, a moment's lag is fine); CancelWanted stops it. }
+  TGifJoinThread = class(TThread)
+  private
+    procedure Progress(ADone, AFrames: Integer; var ACancel: Boolean);
+  protected
+    procedure Execute; override;
+  public
+    Left, Right, Output: string;
+    PauseMs: Integer;
+    Size: TGifJoinSize;
+    Ok: Boolean;
+    Error: string;
+    Done, Frames: Integer;
+    CancelWanted: Boolean;
+    constructor Create(const ALeft, ARight, AOutput: string; APauseMs: Integer;
+      ASize: TGifJoinSize);
+  end;
+
+constructor TGifJoinThread.Create(const ALeft, ARight, AOutput: string; APauseMs: Integer;
+  ASize: TGifJoinSize);
+begin
+  Left := ALeft;
+  Right := ARight;
+  Output := AOutput;
+  PauseMs := APauseMs;
+  Size := ASize;
+  FreeOnTerminate := False;
+  inherited Create(False);
+end;
+
+procedure TGifJoinThread.Progress(ADone, AFrames: Integer; var ACancel: Boolean);
+begin
+  Done := ADone;
+  Frames := AFrames;
+  ACancel := CancelWanted or Terminated;
+end;
+
+procedure TGifJoinThread.Execute;
+begin
+  try
+    Ok := JoinGifs(Left, Right, Output, PauseMs, Size, Error, @Progress);
+  except
+    on E: Exception do
+    begin
+      Ok := False;
+      Error := E.Message;
+    end;
+  end;
+end;
+
+type
+  { The sharp picture of a 3D model as set (1.3), drawn in software while
+    the graphics card shows the model live: what copy, save, the
+    magnifier and the filters' copy use. Cancelled when the view changes
+    again (a newer one is made then). }
+  TStlPictureThread = class(TThread)
+  private
+    FCancelled: Boolean;
+    function IsCancelled: Boolean;
+  protected
+    procedure Execute; override;
+  public
+    Key: TImageKey;
+    View: TStlView;
+    Width, Height: Integer;
+    Picture: IDecodedImage;      { set when done; nil or an error: none }
+    constructor Create(const AKey: TImageKey; const AView: TStlView; AWidth, AHeight: Integer);
+    procedure Cancel;
+  end;
+
+constructor TStlPictureThread.Create(const AKey: TImageKey; const AView: TStlView;
+  AWidth, AHeight: Integer);
+begin
+  Key := AKey;
+  View := AView;
+  Width := AWidth;
+  Height := AHeight;
+  FreeOnTerminate := False;
+  inherited Create(False);
+end;
+
+function TStlPictureThread.IsCancelled: Boolean;
+begin
+  Result := FCancelled or Terminated;
+end;
+
+procedure TStlPictureThread.Cancel;
+begin
+  FCancelled := True;
+end;
+
+procedure TStlPictureThread.Execute;
+begin
+  try
+    Picture := RenderStlImage(Key, View, Width, Height, True, @IsCancelled);
+  except
+    Picture := nil;
+  end;
+end;
+
 const
   { Upper limit for skipping undecodable files in one go (only used
     when PlaceholderForBadImages is off). }
@@ -1129,6 +1325,13 @@ begin
   FAbandonedScanners := TFPList.Create;
   FMouseProfile := TMouseProfile.Create;
   FMouseProfile.LoadDefaults;
+  FFilterExtraPress := -1;
+  FFilterExtraDrag := -1;
+  { The controls of a 3D model, in the filter panel (1.3); the
+    registry owns them. }
+  FStlSection := TStlSection.Create;
+  FStlSection.OnChange := @HandleStlSectionChange;
+  RegisterPanelSection(FStlSection);
 end;
 
 destructor TMView.Destroy;
@@ -1160,6 +1363,9 @@ begin
     they may still use, the scheduler, is not freed). }
   FCurrentImage := nil;
   FAnimTimer.Free;
+  FStlTimer.Free;
+  FStlSection.OnChange := nil;
+  FStlSection.Active := False;
   CancelStackLoad;
   FPlayTimer.Free;
   FScanner.Free;
@@ -1270,6 +1476,10 @@ begin
     FSaveThread.WaitFor;
     FreeAndNil(FSaveThread);
   end;
+  { A 3D model's picture being drawn: cancelled (1.3). }
+  StopStlPicture;
+  { GIFs being combined: cancelled (1.3). }
+  StopGifJoin(True);
 
   { Waiting for the threads below runs queued calls; they must not
     reach the viewer any more. (The scheduler clears its own event.) }
@@ -1516,6 +1726,11 @@ begin
   FKeepScratch := False;   { StartWithPaste sets it again, after this }
   FClimbing := False;      { ClimbUp sets it again, after this }
   FClimbFrom := '';
+  FRequested := APath;
+  if not FTryingParent then
+    FNotFound := '';
+  FTryingParent := False;
+  FTreeStepWaiting := False;   { a step for the old tree }
   { The scanner is stuck in an earlier request: a new one wouldn't be
     looked at. }
   if FScanner.LastAliveAgeMs > ScannerStuckMs then
@@ -1537,7 +1752,8 @@ begin
     and not FOpenFlat;
   FOpenFlat := False;
   FNavigator.Recursive := Recurse;
-  FScanGeneration := FScanner.Request(APath, ASelectFile, Recurse);
+  FScanGeneration := FScanner.Request(APath, ASelectFile, Recurse, FUrgentScan);
+  FUrgentScan := False;
 
   ShowStatus('opening ' + APath + ' ...', 0);
   if not FNavigator.HasCurrentImage then
@@ -1552,27 +1768,43 @@ end;
 procedure TMView.HandleStartReady(AStart: TScanStart);
 var
   I: Integer;
+  FromFollow: Boolean;
 begin
   try
     if AStart.Generation <> FScanGeneration then
       Exit;   { from an older request }
     { Following Total Commander: the folder asked for is answered (also
       when it wasn't found). }
+    FromFollow := FFollowOpening;
     FFollowOpening := False;
     ShowStatus('', 0);
     if not AStart.Found then
     begin
       FClimbing := False;
+      { 1.3 (user: the last session's folder was gone - "Not found" and
+        nothing worked): the nearest folder above that is there. Not for
+        Total Commander's folder (it decides) or a pasted image. }
+      if not (FKeepScratch and FShowingPaste) and not FromFollow
+        and TryParentOf(AStart.RequestedPath) then
+        Exit;
+      if FNotFound = '' then
+        FNotFound := AStart.RequestedPath;
       if FKeepScratch and FShowingPaste then
-        ShowStatus('not found: ' + AStart.RequestedPath, 6000)
+        ShowStatus('not found: ' + FNotFound, 6000)
       else
-        ShowMessageText('Not found:   ' + AStart.RequestedPath);
+        ShowMessageText('Not found:   ' + FNotFound);
+      FNotFound := '';
       FKeepScratch := False;
       Exit;
     end;
 
     FNavigator.OpenListed(AStart.Root, AStart.TargetDirectory, AStart.Listing,
       AStart.TargetFile);
+    if FNotFound <> '' then
+    begin
+      ShowStatus('not found: ' + FNotFound + '   - browsing ' + AStart.Root + ' instead', 8000);
+      FNotFound := '';
+    end;
     { Following Total Commander: its cursor moved on meanwhile. }
     if (FFollowWanted <> '') and not SameText(FFollowWanted, FNavigator.CurrentFileName) then
       FNavigator.SelectFile(FFollowWanted);
@@ -1882,7 +2114,18 @@ end;
   view, and it doesn't count as a new image for the measurements. }
 procedure TMView.Display(const AImage: IDecodedImage; AUpgrade: Boolean);
 begin
+  { A 3D model turned or cut here (1.3): a better version of its file
+    is the start view; the model is drawn again as it is set (for the
+    window's new size, say). }
+  if AUpgrade and FStlActive and FStlOwn and Assigned(AImage)
+    and SameImageKey(AImage.Key, FStlKey) then
+  begin
+    StlViewChanged;
+    Exit;
+  end;
   FCurrentImage := AImage;
+  if not AUpgrade then
+    StlNewImage(AImage);
   Inc(FHistGen);
   { Another file: unfiltered again, unless the filters are locked. }
   if not AUpgrade then
@@ -1920,6 +2163,262 @@ begin
 
   if (not AUpgrade) and AImage.IsError and not FConfig.PlaceholderForBadImages then
     SkipBadImage;
+end;
+
+{ ---- 3D models (1.3) ---- }
+
+{ Another image on screen: a model gets its controls (the start view),
+  anything else none. }
+procedure TMView.StlNewImage(const AImage: IDecodedImage);
+var
+  Model: IStlModel;
+begin
+  if Assigned(FStlTimer) then
+    FStlTimer.Enabled := False;
+  FStlStage := 0;
+  FStlOwn := False;
+  FStlInfo := '';
+  FStlActive := Assigned(AImage) and not AImage.IsError and not FShowingPaste
+    and IsStlFileName(AImage.Key.FileName);
+  if FStlActive then
+  begin
+    FStlKey := AImage.Key;
+    FStlSection.View := FStlSection.StartView;
+    try
+      Model := StlModelFor(FStlKey);
+      FStlInfo := Format('%d triangles   %s', [Model.TriangleCount, Model.SizeText]);
+    except
+      FStlInfo := '';
+    end;
+  end;
+  FStlSection.Active := FStlActive;
+  FRenderer.ModelShown := FStlActive;
+  FRenderer.ModelTurn := FStlSection.View.Turn;
+  { Drawn live by the graphics card, if it can (1.3). }
+  if FStlActive then
+    FRenderer.Model := Model
+  else
+  begin
+    FRenderer.Model := nil;
+    StopStlPicture;
+  end;
+  FRenderer.ModelView := FStlSection.View;
+end;
+
+{ The model drawn as set, in place of the picture shown (the zoom and
+  the place stay). AQuality: sharp (twice the size); else quick. }
+procedure TMView.StlRender(AQuality: Boolean);
+var
+  Img: IDecodedImage;
+begin
+  if not FStlActive then
+    Exit;
+  Img := RenderStlImage(FStlKey, FStlSection.View, FPreviewWidth, FPreviewHeight, AQuality);
+  if Img.IsError then
+  begin
+    ShowStatus('3D model: ' + Img.ErrorMessage, 4000);
+    Exit;
+  end;
+  FStlOwn := True;
+  FCurrentImage := Img;
+  Inc(FHistGen);
+  FRenderer.SetImage(Img, True);
+  UpdateInfo;
+  UpdateDiagnostics;
+  Refresh;
+end;
+
+{ The view changed: drawn quickly as soon as the pending input is
+  through (many wheel notches: one picture), sharp a moment later. }
+procedure TMView.StlViewChanged;
+begin
+  if not FStlActive then
+    Exit;
+  FRenderer.ModelTurn := FStlSection.View.Turn;
+  FRenderer.ModelView := FStlSection.View;
+  { 1.3: the graphics card draws the model as set at the next frame;
+    the picture (stage 2, a moment later) is made by a thread. }
+  if FRenderer.DrawsModel and (FRenderer.Model <> nil) then
+  begin
+    FStlOwn := True;
+    if FStlThread <> nil then
+      TStlPictureThread(FStlThread).Cancel;
+  end;
+  { The panel (open: drawn again for a changed row) at most every 150 ms
+    while the model is being turned. }
+  if NowMs - FStlPanelMs >= 150 then
+  begin
+    FStlPanelMs := NowMs;
+    FStlPanelLate := False;
+    UpdateFilterPanel;
+  end
+  else
+    FStlPanelLate := True;
+  if FStlTimer = nil then
+  begin
+    FStlTimer := TTimer.Create(nil);
+    FStlTimer.Enabled := False;
+    FStlTimer.OnTimer := @HandleStlTimer;
+  end;
+  FStlStage := 1;
+  FStlTimer.Enabled := False;
+  FStlTimer.Interval := 1;
+  FStlTimer.Enabled := True;
+  Refresh;
+end;
+
+procedure TMView.HandleStlTimer(Sender: TObject);
+var
+  Live: Boolean;
+begin
+  FStlTimer.Enabled := False;
+  { Drawn live (1.3): no quick picture; the sharp one by a thread. }
+  Live := FRenderer.DrawsModel and (FRenderer.Model <> nil);
+  if FStlPanelLate and (NowMs - FStlPanelMs >= 150) then
+  begin
+    FStlPanelMs := NowMs;
+    FStlPanelLate := False;
+    UpdateFilterPanel;
+  end;
+  case FStlStage of
+    1:
+      begin
+        if not Live then
+          StlRender(False);
+        FStlStage := 2;
+        { Live: the sharp picture is only for copy / save / the filters'
+          copy - made once the model has rested a while, so it doesn't
+          take a processor core between two turns (speed, user). }
+        if Live then
+          FStlTimer.Interval := 1500
+        else
+          FStlTimer.Interval := 400;
+        FStlTimer.Enabled := True;
+      end;
+    2:
+      begin
+        FStlStage := 0;
+        if FStlPanelLate then
+        begin
+          FStlPanelLate := False;
+          UpdateFilterPanel;
+        end;
+        if Live then
+          StartStlPicture
+        else
+          StlRender(True);
+      end;
+  end;
+end;
+
+{ The sharp picture of the model as set, by a thread (1.3); one at a
+  time: a running one is cancelled and this one follows when it ends. }
+procedure TMView.StartStlPicture;
+begin
+  if not FStlActive then
+    Exit;
+  if FStlThread <> nil then
+  begin
+    TStlPictureThread(FStlThread).Cancel;
+    FStlRedo := True;
+    Exit;
+  end;
+  FStlRedo := False;
+  FStlThread := TStlPictureThread.Create(FStlKey, FStlSection.View, FPreviewWidth, FPreviewHeight);
+end;
+
+{ The delivery pump: the picture done? It becomes the image (not seen:
+  the model is drawn live over it), if it still shows the model as set. }
+procedure TMView.PollStlPicture;
+var
+  T: TStlPictureThread;
+  Img: IDecodedImage;
+begin
+  { The card could not draw it after all: pictures, as on the CPU. }
+  if FRenderer.ModelFallback then
+  begin
+    FRenderer.ModelFallback := False;
+    if FStlActive then
+    begin
+      ShowStatus('3D model: drawn in software (' + FRenderer.Description + ')', 4000);
+      StlRender(True);
+    end;
+  end;
+  if (FStlThread = nil) or not FStlThread.Finished then
+    Exit;
+  T := TStlPictureThread(FStlThread);
+  FStlThread := nil;
+  T.WaitFor;
+  Img := T.Picture;
+  if FStlActive and Assigned(Img) and not Img.IsError and SameImageKey(T.Key, FStlKey)
+    and SameStlView(T.View, FStlSection.View) then
+  begin
+    FCurrentImage := Img;
+    Inc(FHistGen);
+    { Drawn live: the card shows the model anyway; the picture is not
+      uploaded (a 4K picture's upload made the next turn stutter). }
+    if not (FRenderer.DrawsModel and (FRenderer.Model <> nil)) then
+    begin
+      FRenderer.SetImage(Img, True);
+      Refresh;
+    end;
+    UpdateInfo;
+  end;
+  T.Free;
+  if FStlRedo then
+    StartStlPicture;
+end;
+
+procedure TMView.StopStlPicture;
+begin
+  FStlRedo := False;
+  if FStlThread = nil then
+    Exit;
+  TStlPictureThread(FStlThread).Cancel;
+  FStlThread.WaitFor;
+  FreeAndNil(FStlThread);
+end;
+
+{ The rotate mode turns the model around its vertical axis: + =
+  clockwise, seen from above. }
+procedure TMView.StlTurn(ADegrees: Double);
+var
+  View: TStlView;
+begin
+  View := FStlSection.View;
+  View.Turn := View.Turn - ADegrees;
+  while View.Turn > 180 do
+    View.Turn := View.Turn - 360;
+  while View.Turn <= -180 do
+    View.Turn := View.Turn + 360;
+  FStlSection.View := View;
+  StlViewChanged;
+end;
+
+{ A drag with the left button (user): left / right turns the model
+  around its vertical axis, up / down tilts it (the elevation), half a
+  degree per pixel - the STL viewer's left drag. }
+procedure TMView.StlOrbit(ADX, ADY: Double);
+var
+  View: TStlView;
+begin
+  View := FStlSection.View;
+  View.Turn := View.Turn + ADX * 0.5;
+  while View.Turn > 180 do
+    View.Turn := View.Turn - 360;
+  while View.Turn <= -180 do
+    View.Turn := View.Turn + 360;
+  View.Tilt := EnsureRange(View.Tilt + ADY * 0.5, -90, 90);
+  if SameStlView(View, FStlSection.View) then
+    Exit;
+  FStlSection.View := View;
+  StlViewChanged;
+end;
+
+procedure TMView.HandleStlSectionChange(Sender: TObject);
+begin
+  FStlPanelMs := 0;      { a row changed by the user: the panel at once }
+  StlViewChanged;
 end;
 
 { Plays an animated image from its first frame (which is on screen
@@ -2193,7 +2692,36 @@ begin
     FClimbing := False;
     ShowStatus('browsing from ' + FNavigator.RootDirectory + '  (one level up)', 4000);
     Navigate(FClimbStep);
+  end
+  else if FTreeStepWaiting then
+  begin
+    { A step made while the folders were being read (1.3). }
+    FTreeStepWaiting := False;
+    ShowStatus('', 0);
+    Navigate(FTreeStep);
   end;
+end;
+
+{ "Not found" (1.3): the folder above APath is asked for instead (not for
+  Total Commander's folder: it decides); True if there is one to try. Each step up goes through the scanner (no disk
+  access here); the first path missing is said when one is found. }
+function TMView.TryParentOf(const APath: string): Boolean;
+var
+  Path, Parent: string;
+begin
+  Result := False;
+  Path := ExcludeTrailingPathDelimiter(APath);
+  if IsVirtualName(Path) then
+    Exit;
+  Parent := ExtractFileDir(Path);
+  if (Parent = '') or SameText(ExcludeTrailingPathDelimiter(Parent), Path) then
+    Exit;
+  if FNotFound = '' then
+    FNotFound := APath;
+  FTryingParent := True;
+  ShowStatus('not found: ' + FNotFound + '   - trying ' + Parent + ' ...', 0);
+  OpenMedia(Parent, '', True);
+  Result := True;
 end;
 
 procedure TMView.Navigate(ACommand: TCommand);
@@ -2247,6 +2775,19 @@ begin
     Moved := False;
   end;
 
+  { 1.3 (user: while "scanning folders ..." the gestures did nothing):
+    the folders around aren't known yet; the step is done when they
+    are. }
+  if (not Moved) and (not FNavigator.TreeReady) and (FNavigator.RootDirectory <> '') then
+  begin
+    FTreeStep := ACommand;
+    FTreeStepWaiting := True;
+    ShowStatus('the folders are still being read: the step follows', 0);
+    if SkimEnded then
+      LeaveSkim;
+    Exit;
+  end;
+
   { The end of the tree with ClimbUp: one level up, and the same step
     there once its tree is known (Day 22). Also without ClimbUp when
     there is nothing at all to step to (1.1, user: a deep folder with no
@@ -2282,6 +2823,7 @@ begin
   Parent := ExcludeTrailingPathDelimiter(ExtractFileDir(Root));
   if (Parent = '') or SameText(Parent, Root) then
     Exit;
+  FUrgentScan := True;
   OpenMedia(Parent, FNavigator.CurrentFileName, True);
   { No image to come back to: remember where we are (OpenMedia cleared
     it), so the step goes on from this folder, not from the parent's top. }
@@ -2408,8 +2950,17 @@ begin
         FRenderer.OriginalSize;
         AllowFull;
       end;
-    cmdRotateLeft:   FRenderer.Rotate(-1);
-    cmdRotateRight:  FRenderer.Rotate(1);
+    { A 3D model (1.3): turned, not the picture. }
+    cmdRotateLeft:
+      if FStlActive then
+        StlTurn(-90)
+      else
+        FRenderer.Rotate(-1);
+    cmdRotateRight:
+      if FStlActive then
+        StlTurn(90)
+      else
+        FRenderer.Rotate(1);
 
     cmdZoomAt:
       begin
@@ -2421,14 +2972,20 @@ begin
       end;
 
     cmdPanBy:
-      { Edit mode: the drag selects instead (cmdDragPoint). }
+      { Edit mode: the drag selects instead (cmdDragPoint). A 3D model
+        (user, 1.3): the drag turns it, as in the STL viewer. }
       if FEditMode then
         Exit
+      else if FStlActive then
+        StlOrbit(AArgs.X, AArgs.Y)
       else
         FRenderer.PanBy(AArgs.X, AArgs.Y);
 
     cmdRotateBy:
-      FRenderer.RotateBy(AArgs.Value);
+      if FStlActive then
+        StlTurn(AArgs.Value)
+      else
+        FRenderer.RotateBy(AArgs.Value);
 
     cmdToggleFit:
       { 100 % centred in the window, not at the mouse (user, Day 23: a
@@ -2708,6 +3265,8 @@ begin
       iiDimensions:
         if Paste then
           Part := Format('%d x %d', [FCurrentImage.Width, FCurrentImage.Height])
+        else if FStlActive and (FStlInfo <> '') and SameText(FStlKey.FileName, FileName) then
+          Part := FStlInfo          { a 3D model: triangles and size (1.3) }
         else if Assigned(FCurrentImage) and not FCurrentImage.IsError
           and SameText(FCurrentImage.Key.FileName, FileName) then
           Part := Format('%d x %d', [ImageWidth(FCurrentImage), ImageHeight(FCurrentImage)]);
@@ -2719,12 +3278,12 @@ begin
         begin
           Part := Format('%d / %d', [FNavigator.CurrentIndex + 1, FNavigator.ImageCount]);
           { The dir preview's folder: its counts (1.1). }
-          if (FDirFolder <> '') and (FDirCounts <> '') then
-            Part := Part + '   (' + FDirCounts + ')'
-          else if FSlideShow and (FConfig.DirPreviewDelayMs = 0) then
+          if FSlideShow and (FConfig.DirPreviewDelayMs = 0) then
             Part := Part + '   (slide show, paused)'
           else if FSlideShow then
-            Part := Part + Format('   (slide show, %.1f s)', [FConfig.DirPreviewDelayMs / 1000]);
+            Part := Part + Format('   (slide show, %.1f s)', [FConfig.DirPreviewDelayMs / 1000])
+          else if (FDirFolder <> '') and (FDirCounts <> '') then
+            Part := Part + '   (' + FDirCounts + ')';
         end;
       iiVideos:
         { Videos in this folder: counted, never shown (user, Day 24). }
@@ -3008,6 +3567,22 @@ begin
   Result := (FFollowMode > 0) and FFollowing;
 end;
 
+procedure TMView.ReopenEmptyFolder;
+var
+  Folder: string;
+begin
+  Folder := FNavigator.CurrentDirectory;
+  if Folder = '' then
+    Folder := FNavigator.RootDirectory;
+  if Folder = '' then
+    Exit;
+  { A drive's root keeps its backslash ("C:" alone is the drive's
+    current folder). }
+  if Length(ExcludeTrailingPathDelimiter(Folder)) > 2 then
+    Folder := ExcludeTrailingPathDelimiter(Folder);
+  OpenMedia(Folder, '', True);
+end;
+
 procedure TMView.TCFolderLocked;
 begin
   FlashNotice('TC connection: directory change disabled!');
@@ -3167,6 +3742,9 @@ begin
     Exit;
   end;
   Root := ExcludeTrailingPathDelimiter(FNavigator.RootDirectory);
+  { Nothing open (a folder that wasn't found, 1.3): up from there. }
+  if Root = '' then
+    Root := ExcludeTrailingPathDelimiter(FRequested);
   if Root = '' then
     Exit;
   Parent := ExtractFileDir(Root);
@@ -3932,7 +4510,10 @@ begin
     then the settings screen (where Esc ends the program). The preview
     strip (Day 27) is gone in a second anyway: before all of them. A cut
     button (1.1) is cancelled first of all. }
-  if FConfig.SortFolders.ClipIsCut then
+  { GIFs being combined (1.3): Esc stops that first. }
+  if StopGifJoin(False) then
+    ShowStatus('Combine GIFs: cancelling ...', 0)
+  else if FConfig.SortFolders.ClipIsCut then
   begin
     FConfig.SortFolders.CancelCut;
     SortFoldersChanged;
@@ -4042,6 +4623,10 @@ begin
     Exit;
   if FShowingPaste then
     Exit(FCurrentImage);
+  { A 3D model turned or cut (1.3): as it is set, not the file's start
+    view in the cache. }
+  if FStlActive and FStlOwn then
+    Exit(FCurrentImage);
   Result := FCache.Get(FCurrentImage.Key);
   if (Result = nil) or Result.IsError or (Result.Quality < FCurrentImage.Quality) then
     Result := FCurrentImage;
@@ -4132,7 +4717,7 @@ begin
   if (Ext = '.tif') or (Ext = '.tiff') then
     { kept }
   else if (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.jpe') or (Ext = '.bmp')
-    or (Ext = '.gif') then
+    or (Ext = '.gif') or (Ext = '.stl') then
     FileName := ChangeFileExt(FileName, '.png')
   else if Ext <> '.png' then
     FileName := FileName + '.png';
@@ -4258,6 +4843,8 @@ var
   NoticeShown: Boolean;
 begin
   AimTick;
+  PollStlPicture;
+  PollGifJoin;
   { Debugging saves: report when done. }
   Shot := FRenderer.TakeScreenshotResult;
   if Shot <> '' then
@@ -4417,12 +5004,14 @@ begin
     PollTotalCommander;
   end;
 
-  { The dir preview's next image (1.1). }
-  if FDirFolder <> '' then
-    StepDirPreview
-  { The slide show's (Day 29). }
-  else if FSlideShow then
-    StepSlideShow;
+  { The slide show's next image (Day 29); it overrides the dir preview
+    (1.3, user: with both on, nothing played - the dir preview waits
+    while VersariteViewer is in front, and the slide show waited for it). }
+  if FSlideShow then
+    StepSlideShow
+  { The dir preview's (1.1). }
+  else if FDirFolder <> '' then
+    StepDirPreview;
 
   { The pause before the full-size decode is over (the dir preview:
     quick views only, unless it plays everything slowly). }
@@ -4626,14 +5215,21 @@ begin
   Result := LayerTook;
   case AKind of
     omMove:
-      if FPanel.NoteMouse(AX, AY, AButtonDown, NowMs) then
-        UpdatePanel;
+      begin
+        if FPanel.NoteMouse(AX, AY, AButtonDown, NowMs) then
+          UpdatePanel;
+        { Off the panel: a dynamic list's used folders go up (Day 32). }
+        if FConfig.SortFolders.HasUse and not FPanel.MouseOnPanel then
+          ApplySortUse;
+      end;
 
     omLeave:
       begin
         FPanel.MouseGone(NowMs);
         if FPanel.Visible then
           UpdatePanel;
+        if FConfig.SortFolders.HasUse then
+          ApplySortUse;
       end;
 
     omWheel:
@@ -4720,6 +5316,19 @@ begin
       CycleSortList(-1);
     ppListNext:
       CycleSortList(1);
+
+    { The title (Day 32, user): a double-click switches dynamic sorting. }
+    ppTitle:
+      if AButton = obLeft then
+      begin
+        if SecondSlotClick(-5000, AButton) then
+          SetSortListDynamic(not SortListDynamic)
+        else
+        begin
+          FPanel.FooterText := 'double-click the title:' + LineEnding + 'dynamic sorting on / off';
+          UpdatePanel;
+        end;
+      end;
 
     ppPin:
       begin
@@ -4990,6 +5599,19 @@ begin
   Job.Slot := ASlot;
   Job.Caption := Slot.Name;
   Job.UndoOf := -1;
+  { Day 32 (user): the same image there already (same name, identical
+    bytes) is not copied again; a move puts this one into the
+    deleted-files folder as dup1_<name> instead. }
+  Job.DuplicateDir := FConfig.DeletedFilesFolder;
+
+  { Day 32 (user): sorting goes on at once - the magnifier and the zoom /
+    rotate mode end, and the slide show / dir preview counts the next
+    image's time afresh. }
+  SetMagnifier(False);
+  if Assigned(FOnEndModes) then
+    FOnEndModes(Self);
+  FSlideNextMs := 0;
+  FDirNextMs := 0;
 
   FPanel.JobStarted(ASlot);
   if AMove then
@@ -5323,6 +5945,22 @@ begin
         + ', but the original could not be removed (in use)';
       Footer := 'copied only (in use)' + LineEnding + 'click here: undo';
     end
+    else if AResult.OK and AResult.Duplicate and (J.Action = faCopy) then
+    begin
+      { Day 32: the identical image is there already: nothing copied,
+        nothing to undo. }
+      Status := Name + ' is already in ' + J.Caption + ' (identical): not copied again';
+      Footer := 'already in ' + J.Caption + LineEnding + '(identical): not copied';
+    end
+    else if AResult.OK and AResult.Duplicate then
+    begin
+      { A move: this one went into the deleted-files folder as dupN_. }
+      AddUndo(J, AResult.ResultFile);
+      Status := Name + ' is already in ' + J.Caption + ' (identical): this one went to '
+        + ExtractFileDir(AResult.ResultFile) + ' as ' + ExtractFileName(AResult.ResultFile);
+      Footer := 'already in ' + J.Caption + ':' + LineEnding + 'this one to deleted files'
+        + LineEnding + 'click here: undo';
+    end
     else if AResult.OK then
     begin
       AddUndo(J, AResult.ResultFile);
@@ -5410,6 +6048,14 @@ begin
 
   { The confirmation: the button flashes in its colour (red: failed);
     delete and undo: the bottom line. }
+  { A dynamic list (Day 32): the folder goes up, once the mouse has left
+    the panel. }
+  if (J.Kind = fjSort) and AResult.OK then
+  begin
+    FConfig.SortFolders.NoteUsed(J.TargetDir);
+    if Assigned(FPanel) and not FPanel.MouseOnPanel then
+      ApplySortUse;
+  end;
   if Assigned(FPanel) then
   begin
     if J.Kind = fjSort then
@@ -5607,6 +6253,36 @@ begin
     DirectoryHint('New folder list: add folders with "+"');
 end;
 
+procedure TMView.ApplySortUse;
+begin
+  if FConfig.SortFolders.ApplyUse then
+    SortFoldersChanged;
+end;
+
+function TMView.SortListDynamic: Boolean;
+begin
+  Result := FConfig.SortFolders.Dynamic;
+end;
+
+procedure TMView.SetSortListDynamic(AOn: Boolean);
+var
+  Folders: TSortFolders;
+begin
+  Folders := FConfig.SortFolders;
+  if Folders.Rapid then
+  begin
+    ShowStatus('Rapid sorting has a fixed order (no dynamic sorting)', 3000);
+    Exit;
+  end;
+  Folders.SetDynamic(AOn);
+  SortFoldersChanged;
+  if AOn then
+    SortNote('dynamic sorting on: a folder used goes up one place (pinned ones stay on top)',
+      'dynamic sorting on', 5000)
+  else
+    SortNote('dynamic sorting off: the list keeps its order', 'dynamic sorting off', 4000);
+end;
+
 procedure TMView.StatusNote(const AText: string; ADurationMs: Double);
 begin
   ShowStatus(AText, ADurationMs);
@@ -5742,6 +6418,8 @@ begin
   FPanel.MouseGone(NowMs);
   if FPanel.Visible then
     UpdatePanel;
+  if FConfig.SortFolders.HasUse then
+    ApplySortUse;
 end;
 
 { ---- Looking closer (Phase H): the display filters ------------------- }
@@ -6199,9 +6877,17 @@ begin
   FFollowMode := AMode;
   FFollowing := FindTotalCommanderWindow <> 0;   { the label's colour at once }
   UpdateFollowBadge;
-  { Subfolders on / off with it: the image's folder again, now. }
-  if (UseRecursive <> WasRecursive) and FNavigator.HasCurrentImage and not FShowingPaste then
-    OpenMedia(FNavigator.CurrentFileName, '', True);
+  { Subfolders on / off with it: the image's folder again, now. Also an
+    empty folder (no image on screen): it stayed flat, and with following
+    off the folder steps and "up" found nothing to go to (user, 1.3: an
+    empty subfolder, TC interaction switched off, the swipes did nothing). }
+  if (UseRecursive <> WasRecursive) and not FShowingPaste then
+  begin
+    if FNavigator.HasCurrentImage then
+      OpenMedia(FNavigator.CurrentFileName, '', True)
+    else
+      ReopenEmptyFolder;
+  end;
   FFollowPrimed := False;      { start from what it shows now }
   FFollowNoteShown := False;
   FreeAndNil(FFollower);       { asks afresh (e.g. whether it knows the cursor) }
@@ -6262,8 +6948,9 @@ begin
     if First then
       Exit;              { what it showed when following started: noted }
     FFollowWanted := '';
-    { The dir preview: the cursor on a folder plays it (1.1). }
-    if FDirPreview and (F <> '') and DirectoryExists(F) then
+    { The dir preview: the cursor on a folder plays it (1.1) - not while
+      the slide show runs (it overrides, 1.3). }
+    if FDirPreview and not FSlideShow and (F <> '') and DirectoryExists(F) then
     begin
       StartDirPreview(F);
       Exit;
@@ -6295,7 +6982,7 @@ begin
     FFollowFile := F;
     { The dir preview (1.1): a folder under the cursor plays; anything
       else ends it. }
-    if FDirPreview and not First and (F <> '') and DirectoryExists(F) then
+    if FDirPreview and not FSlideShow and not First and (F <> '') and DirectoryExists(F) then
     begin
       StartDirPreview(F);
       Exit;
@@ -6417,7 +7104,7 @@ begin
     if FSlideNextMs <> 0 then
       FSlideNextMs := Max(NowMs, FSlideNextMs + (New - Old));
   end;
-  if FSlideShow and (FDirFolder = '') then
+  if FSlideShow then
     Text := 'Slide show: '
   else
     Text := 'Dir preview: ';
@@ -6496,7 +7183,8 @@ begin
   end;
   { Day 31 (user): 0 ms = paused; the time starts afresh when it is
     longer again, then the folder's next image. }
-  if FConfig.DirPreviewDelayMs = 0 then
+  if (FConfig.DirPreviewDelayMs = 0)
+    or (Assigned(FPanel) and FPanel.MouseOnPanel) then   { sorting (Day 32) }
   begin
     FDirNextMs := 0;
     Exit;
@@ -6532,6 +7220,16 @@ begin
   end;
   FSlideShow := AOn;
   FSlideNextMs := 0;
+  { 1.3 (user): the slide show overrides the dir preview - a folder being
+    previewed is now played by the slide show (the dir preview stays on
+    and takes the next folder under Total Commander's cursor after the
+    show). }
+  if AOn and (FDirFolder <> '') then
+    StopDirPreview;
+  { The show over, the dir preview takes up the folder under Total
+    Commander's cursor again (asked afresh at the next poll). }
+  if (not AOn) and FDirPreview then
+    FFollowFile := '';
   if AOn then
     if FConfig.DirPreviewDelayMs = 0 then
       ShowStatus('Slide show: on, paused (0 ms per image; "each image longer" goes on; '
@@ -6558,8 +7256,11 @@ begin
     Exit;
   { Waits: an unsaved image is shown (it would be lost), edit mode is on,
     or the image is still coming. Its time starts afresh after. }
+  { Day 32 (user): also while the mouse is on the sort panel - the
+    image being sorted stays; its time starts afresh after. }
   if FShowingPaste or FEditMode or (FPendingFile <> '')
-    or (FConfig.DirPreviewDelayMs = 0) then   { 0 ms = paused (Day 31) }
+    or (FConfig.DirPreviewDelayMs = 0)   { 0 ms = paused (Day 31) }
+    or (Assigned(FPanel) and FPanel.MouseOnPanel) then
   begin
     FSlideNextMs := 0;
     Exit;
@@ -7165,6 +7866,15 @@ begin
           F := FFilters;
           if FFilterPanel.Dragging and FFilterPanel.DragTo(AX, F) then
             UserFilters(F);
+          { A section's slider (1.3): relative, as the filters; a
+            click alone changes nothing. }
+          if (FFilterExtraDrag >= 0) and (AX <> FFilterExtraDragX)
+            and PanelSectionAt(FFilterExtraDrag, Section, LocalRow) then
+            try
+              Section.SetSliderPos(LocalRow, FFilterExtraDragPos
+                + (AX - FFilterExtraDragX) / FFilterPanel.BarWidth);
+            except
+            end;
         end;
       end;
 
@@ -7180,7 +7890,19 @@ begin
       begin
         Result := True;
         Hit := FFilterPanel.HitTest(AX, AY);
-        if (Hit.Part = fpRow) and (AWheel <> 0) then
+        if (Hit.Part = fpExtra) and (AWheel <> 0)
+          and PanelSectionAt(Hit.Extra, Section, LocalRow) then
+        begin
+          Notches := AWheel / 120;
+          if Abs(Notches) < 1 then
+            Notches := Sign(AWheel);
+          try
+            if Section.RowKind(LocalRow) = srkSlider then
+              Section.Wheel(LocalRow, Notches);
+          except
+          end;
+        end
+        else if (Hit.Part = fpRow) and (AWheel <> 0) then
         begin
           { Wheel up (away) = more. }
           Notches := AWheel / 120;
@@ -7199,10 +7921,35 @@ begin
         Result := True;
         FFilterPress := True;
         FFilterExtraPress := -1;
+        FFilterExtraDrag := -1;
         Hit := FFilterPanel.HitTest(AX, AY);
-        { The edition's rows (M3b): any button, acted on at the release. }
+        { The edition's rows (M3b): any button, acted on at the release.
+          1.3: a slider is dragged (double-click: its start value); an
+          on / off box leaves out the second click of a double-click. }
         if Hit.Part = fpExtra then
         begin
+          if PanelSectionAt(Hit.Extra, Section, LocalRow) then
+            try
+              case Section.RowKind(LocalRow) of
+                srkSlider:
+                  begin
+                    if ADouble then
+                      Section.ResetRow(LocalRow)
+                    else if AButton = obLeft then
+                    begin
+                      FFilterExtraDrag := Hit.Extra;
+                      FFilterExtraDragX := AX;
+                      FFilterExtraDragPos := Section.SliderPos(LocalRow);
+                    end;
+                    Exit;
+                  end;
+                srkToggle:
+                  if ADouble then
+                    Exit;
+              end;
+            except
+              Exit;
+            end;
           FFilterExtraPress := Hit.Extra;
           Exit;
         end;
@@ -7255,6 +8002,7 @@ begin
         Result := True;
         FFilterPress := False;
         FFilterPanel.EndDrag;
+        FFilterExtraDrag := -1;
         { An edition's row: clicked if released where it was pressed. }
         if FFilterExtraPress >= 0 then
         begin
@@ -7277,6 +8025,160 @@ end;
 procedure TMView.ShowNote(const AText: string; ADurationMs: Double);
 begin
   ShowStatus(AText, ADurationMs);
+end;
+
+procedure TMView.CombineGifs(ASize: TGifJoinSize);
+const
+  PauseMs = 500;
+  NoteMs = 8000;
+var
+  Left, Right, Folder, Base, Output: string;
+  InfoL, InfoR: TGifInfo;
+  N: Integer;
+
+  function Animated(const AFile: string; out AInfo: TGifInfo): Boolean;
+  begin
+    Result := SameText(ExtractFileExt(AFile), '.gif') and FileExists(AFile)
+      and ReadGifInfo(AFile, AInfo) and (AInfo.Frames >= 2);
+  end;
+
+
+begin
+  if FGifThread <> nil then
+  begin
+    ShowStatus('Combine GIFs: still combining the last two (Esc: cancel)', 4000);
+    Exit;
+  end;
+  if FFollower = nil then
+    FFollower := TTCFollower.Create;
+  if not FFollower.PanelItems(Left, Right) then
+  begin
+    ShowStatus('Combine GIFs: Total Commander is not running', NoteMs);
+    Exit;
+  end;
+  if (Left = '') or (Right = '') then
+  begin
+    ShowStatus('Combine GIFs: cancelled - put Total Commander''s cursor on an animated GIF '
+      + 'in each panel', NoteMs);
+    Exit;
+  end;
+  if not Animated(Left, InfoL) then
+  begin
+    ShowStatus('Combine GIFs: cancelled - ' + ExtractFileName(Left)
+      + ' (left) is not an animated GIF', NoteMs);
+    Exit;
+  end;
+  if not Animated(Right, InfoR) then
+  begin
+    ShowStatus('Combine GIFs: cancelled - ' + ExtractFileName(Right)
+      + ' (right) is not an animated GIF', NoteMs);
+    Exit;
+  end;
+  if SameText(ExpandFileName(Left), ExpandFileName(Right)) or SameFileContent(Left, Right) then
+  begin
+    ShowStatus('Combine GIFs: cancelled - the two GIFs are the same', NoteMs);
+    Exit;
+  end;
+  { Into the folder shown here (where the GIFs usually are). }
+  Folder := '';
+  if FNavigator.HasCurrentImage then
+    Folder := FolderOnDisk;
+  if (Folder = '') or not DirectoryExists(Folder) then
+  begin
+    ShowStatus('Combine GIFs: cancelled - no folder open here to save into', NoteMs);
+    Exit;
+  end;
+  Folder := IncludeTrailingPathDelimiter(Folder);
+  Base := ChangeFileExt(ExtractFileName(Left), '') + '_' + ChangeFileExt(ExtractFileName(Right), '');
+  Output := Folder + Base + '.gif';
+  N := 1;
+  while FileExists(Output) do
+  begin
+    Output := Folder + Base + '_' + IntToStr(N) + '.gif';
+    Inc(N);
+  end;
+  { 1.3 (user: "Scaled to largest GIF" hung the program): the joining
+    runs on a thread; PollGifJoin shows how far it is and the result. }
+  FGifJoinL := InfoL;
+  FGifJoinR := InfoR;
+  FGifJoinSize := ASize;
+  FGifJoinNoteMs := 0;
+  FGifThread := TGifJoinThread.Create(Left, Right, Output, PauseMs, ASize);
+  if ASize = gjScaleToLarger then
+    ShowStatus('Combine GIFs: scaling ...', 0)
+  else
+    ShowStatus('Combine GIFs: joining ...', 0);
+end;
+
+{ The delivery pump: the GIFs being combined (1.3) - how far, and when
+  done the note and the new GIF on screen. }
+procedure TMView.PollGifJoin;
+const
+  NoteMs = 8000;
+var
+  T: TGifJoinThread;
+  Output: string;
+
+  { The size of the larger picture (by area; equal: the left one), which
+    the other one is scaled to fit. }
+  function LargerGifSize(const A, B: TGifInfo): string;
+  begin
+    if Int64(A.Width) * A.Height >= Int64(B.Width) * B.Height then
+      Result := Format('%d x %d', [A.Width, A.Height])
+    else
+      Result := Format('%d x %d', [B.Width, B.Height]);
+  end;
+
+begin
+  if FGifThread = nil then
+    Exit;
+  T := TGifJoinThread(FGifThread);
+  if not T.Finished then
+  begin
+    if (T.Frames > 0) and (NowMs - FGifJoinNoteMs >= 250) then
+    begin
+      FGifJoinNoteMs := NowMs;
+      ShowStatus(Format('Combine GIFs: scaling frame %d / %d ...   (Esc: cancel)',
+        [T.Done + 1, T.Frames]), 0);
+    end;
+    Exit;
+  end;
+  FGifThread := nil;
+  T.WaitFor;
+  Output := T.Output;
+  if not T.Ok then
+  begin
+    if T.Error = 'Cancelled' then
+      ShowStatus('Combine GIFs: cancelled', 4000)
+    else
+      ShowStatus('Combine GIFs: failed - ' + T.Error, NoteMs);
+    T.Free;
+    Exit;
+  end;
+  T.Free;
+  if (FGifJoinSize = gjScaleToLarger) and ((FGifJoinL.Width <> FGifJoinR.Width)
+    or (FGifJoinL.Height <> FGifJoinR.Height)) then
+    ShowStatus(Format('Combined: %s  (%d + %d frames; scaled to %s)', [ExtractFileName(Output),
+      FGifJoinL.Frames, FGifJoinR.Frames, LargerGifSize(FGifJoinL, FGifJoinR)]), NoteMs)
+  else
+    ShowStatus(Format('Combined: %s  (%d + %d frames)', [ExtractFileName(Output),
+      FGifJoinL.Frames, FGifJoinR.Frames]), NoteMs);
+  OpenMedia(Output);
+end;
+
+{ Esc, or the viewer closing: a combining under way stops (the half
+  file is not left). True if one was running. }
+function TMView.StopGifJoin(AWait: Boolean): Boolean;
+begin
+  Result := FGifThread <> nil;
+  if not Result then
+    Exit;
+  TGifJoinThread(FGifThread).CancelWanted := True;
+  if AWait then
+  begin
+    FGifThread.WaitFor;
+    FreeAndNil(FGifThread);
+  end;
 end;
 
 function TMView.FileJobsBusy: Boolean;

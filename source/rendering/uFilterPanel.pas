@@ -41,9 +41,11 @@ unit uFilterPanel;
     passing it).
   - Edge opening and closing, as the sort panel (uSortPanel), at the
     left edge.
-  - The edition's rows (M3b, uExtensions' panel sections; none in
-    MView): below Auto / Reset all, a line above; hover, hint at the
-    bottom; TMView passes their clicks on.
+  - The edition's rows (M3b, uExtensions' panel sections; in MView
+    since 1.3 the controls of a 3D model, uStlPanel): below Auto /
+    Reset all, a line above; hover, hint at the bottom; TMView passes
+    their clicks, drags and wheel on. DrawPanelSlider / DrawPanelToggle
+    give them the filter rows' look; BarWidth the drag's scale.
 
   Does NOT
   --------
@@ -83,8 +85,8 @@ uses
 
 type
 
-  { fpExtra: a row of an edition's panel section (uExtensions, M3b;
-    none in MView). }
+  { fpExtra: a row of a panel section (uExtensions, M3b; in MView the
+    3D model's controls, 1.3). }
   TFilterPart = (fpNone, fpPanel, fpRow, fpAuto, fpReset, fpLock, fpPin, fpExtra);
 
   TFilterHit = record
@@ -179,6 +181,9 @@ type
     { The edition's rows look different now (uExtensions): draw again.
       True once per change. }
     function ExtrasChanged: Boolean;
+    { The width of a row's bar (the edition's sliders move with the
+      mouse by it). }
+    function BarWidth: Integer;
 
     { The picture, up to date; nil while hidden. }
     function Bitmap: TBGRABitmap;
@@ -202,6 +207,15 @@ const
   { The rows, top to bottom: the order the filters work in. }
   FilterRowCount = Ord(High(TFilterKind)) + 1;
 
+{ The look of the filter rows, for the panel sections' rows (uExtensions):
+  a slider (name and value above, a bar with the neutral tick and the
+  knob; lit when away from neutral) and an on / off box. APos /
+  ANeutral: 0 .. 1 on the bar. }
+procedure DrawPanelSlider(ABitmap: TBGRABitmap; const R: TRect; const AName, AValue: string;
+  APos, ANeutral: Double; AHover: Boolean; AScale: Double);
+procedure DrawPanelToggle(ABitmap: TBGRABitmap; const R: TRect; const AName, AValue: string;
+  AOn: Boolean; AScale: Double);
+
 implementation
 
 uses
@@ -215,6 +229,92 @@ const
 function ScaleI(AValue: Integer; AScale: Double): Integer;
 begin
   Result := Max(1, Round(AValue * AScale));
+end;
+
+{ The bar in a row: its lower part. }
+function PanelBarRect(const ARow: TRect; AScale: Double): TRect;
+var
+  Pad, Mid: Integer;
+begin
+  Pad := ScaleI(10, AScale);
+  Mid := ARow.Top + ARow.Height * 72 div 100;
+  Result := Rect(ARow.Left + Pad, Mid - ScaleI(4, AScale), ARow.Right - Pad,
+    Mid + ScaleI(4, AScale));
+end;
+
+procedure DrawPanelSlider(ABitmap: TBGRABitmap; const R: TRect; const AName, AValue: string;
+  APos, ANeutral: Double; AHover: Boolean; AScale: Double);
+var
+  Pad, TextY, X0, X1, XN, XV: Integer;
+  Bar: TRect;
+  Changed: Boolean;
+  Lit, Text, Dim, Track: TBGRAPixel;
+begin
+  Pad := ScaleI(10, AScale);
+  Text := BGRA(235, 235, 235, 255);
+  Dim := BGRA(160, 160, 160, 255);
+  Lit := BGRA(255, 190, 60, 255);
+  Track := BGRA(255, 255, 255, 70);
+  APos := EnsureRange(APos, 0, 1);
+  ANeutral := EnsureRange(ANeutral, 0, 1);
+  Changed := Abs(APos - ANeutral) > 1e-6;
+  ABitmap.FontHeight := Max(9, Min(ScaleI(13, AScale), R.Height * 2 div 5));
+  { Name left, value right, in the upper part. }
+  TextY := R.Top + Max(1, R.Height * 6 div 100);
+  ABitmap.TextOut(R.Left + Pad, TextY, AName, Text);
+  if Changed then
+    ABitmap.TextOut(R.Right - Pad - ABitmap.TextSize(AValue).cx, TextY, AValue, Lit)
+  else
+    ABitmap.TextOut(R.Right - Pad - ABitmap.TextSize(AValue).cx, TextY, AValue, Dim);
+  { The bar: a track, a tick at neutral, lit from neutral to the value,
+    a knob at the value. }
+  Bar := PanelBarRect(R, AScale);
+  X0 := Bar.Left;
+  X1 := Bar.Right;
+  XN := X0 + Round(ANeutral * (X1 - X0));
+  XV := X0 + Round(APos * (X1 - X0));
+  ABitmap.FillRect(X0, (Bar.Top + Bar.Bottom) div 2 - 1, X1, (Bar.Top + Bar.Bottom) div 2 + 1,
+    Track, dmDrawWithTransparency);
+  ABitmap.FillRect(XN, Bar.Top + 1, XN + 1, Bar.Bottom - 1, BGRA(255, 255, 255, 120),
+    dmDrawWithTransparency);
+  if Changed then
+    ABitmap.FillRect(Min(XN, XV), (Bar.Top + Bar.Bottom) div 2 - 1, Max(XN, XV) + 1,
+      (Bar.Top + Bar.Bottom) div 2 + 2, Lit, dmDrawWithTransparency);
+  if Changed then
+    ABitmap.FillEllipseAntialias(XV + 0.5, (Bar.Top + Bar.Bottom) / 2,
+      Bar.Height / 2 + 0.5, Bar.Height / 2 + 0.5, Lit)
+  else if AHover then
+    ABitmap.FillEllipseAntialias(XV + 0.5, (Bar.Top + Bar.Bottom) / 2,
+      Bar.Height / 2 + 0.5, Bar.Height / 2 + 0.5, Text);
+end;
+
+procedure DrawPanelToggle(ABitmap: TBGRABitmap; const R: TRect; const AName, AValue: string;
+  AOn: Boolean; AScale: Double);
+var
+  Pad, TextY, BoxS: Integer;
+  Box: TRect;
+  Lit, Text, Dim: TBGRAPixel;
+begin
+  Pad := ScaleI(10, AScale);
+  Text := BGRA(235, 235, 235, 255);
+  Dim := BGRA(160, 160, 160, 255);
+  Lit := BGRA(255, 190, 60, 255);
+  ABitmap.FontHeight := Max(9, Min(ScaleI(13, AScale), R.Height * 2 div 5));
+  { A box, filled when on. }
+  TextY := R.Top + (R.Height - ABitmap.TextSize('Xg').cy) div 2;
+  ABitmap.TextOut(R.Left + Pad, TextY, AName, Text);
+  BoxS := Max(8, R.Height div 2);
+  Box := Rect(R.Right - Pad - BoxS, R.Top + (R.Height - BoxS) div 2, R.Right - Pad,
+    R.Top + (R.Height - BoxS) div 2 + BoxS);
+  if AOn then
+    ABitmap.FillRoundRectAntialias(Box.Left, Box.Top, Box.Right, Box.Bottom, 3, 3, Lit)
+  else
+    ABitmap.RoundRectAntialias(Box.Left + 0.5, Box.Top + 0.5, Box.Right - 0.5,
+      Box.Bottom - 0.5, 3, 3, Dim, Max(1, AScale));
+  if AOn then
+    ABitmap.TextOut(Box.Left - Pad div 2 - ABitmap.TextSize(AValue).cx, TextY, AValue, Lit)
+  else
+    ABitmap.TextOut(Box.Left - Pad div 2 - ABitmap.TextSize(AValue).cx, TextY, AValue, Dim);
 end;
 
 { TFilterPanel }
@@ -572,6 +672,11 @@ begin
   Result := FBitmap;
 end;
 
+function TFilterPanel.BarWidth: Integer;
+begin
+  Result := Max(1, BarRect(RowRect(0)).Width);
+end;
+
 function TFilterPanel.ExtrasChanged: Boolean;
 begin
   Result := FVisible and ((PanelSectionRowCount <> FExtraRows)
@@ -827,7 +932,8 @@ begin
       R.Top + (R.Height - FBitmap.TextSize(Line).cy) div 2, Line, Col);
   end;
 
-  { The edition's rows (M3b; none in MView), a line above them. }
+  { The sections' rows (M3b; 1.3 also MView's 3D controls), a line
+    above them. }
   for Row := 0 to FExtraRows - 1 do
   begin
     R := RowRect(FilterRowCount + 1 + Row);

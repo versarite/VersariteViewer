@@ -1,0 +1,77 @@
+Day 33 (2026-10-26) - 3D models (STL) in the viewer (VersariteViewer 1.3)
+
+1. Version 1.2.1 (user: there were downloads of 1.2 already):
+   uEdition MViewVersion; release_notes_v1.2.0.md back to what 1.2 had,
+   the later changes in release_notes_v1.2.1.md.
+2. The user's STL viewer (C:\projects\lazarus_stl_viewer) fixed first:
+   stencil / depth bits, the plane through the model's centre, the closed
+   cut face (stencil count with the depth test off), Z up, smoothing by
+   welded corners, display lists, ASCII files, drag & drop, Grid on / off.
+3. uStlModel (new, imaging): reads binary (84 + 50 x count bytes) and
+   ASCII STL ("vertex" lines); draws in software into a TBGRABitmap,
+   orthographic, z-buffer, the STL viewer's colours and headlight
+   (two-sided, Gouraud). Turn (around Z) and Tilt (elevation) as the
+   viewer's glRotatef pair. Triangles in 1/16 pixel fixed point with a
+   tie rule for shared edges (each pixel counted once). Section: per
+   pixel, the part behind the plane left out; the cut face closed by
+   counting, per pixel, the surfaces between the plane and the eye (odd =
+   inside), the face at the plane's depth. Smoothing: corners welded by
+   sorting quantised positions (once per model), faces within the
+   level's angle averaged. Edges, grid, axes, the plane's frame as depth-
+   tested lines. Models shared through a small cache (counted
+   references: the decode worker and TMView use one copy). 180 000
+   triangles: about 0.1 s at 1920 x 1080 (0.15 s with the edges).
+4. uImageFormats: .stl listed. uMediaLoader.RenderStlImage: the start
+   view (StlStartView) at twice the screen size (at most about 4K) with
+   a screen-size copy, as qlFull; quick (screen size, qlScreen, the same
+   full size) for TMView while turning.
+5. uStlPanel (new, rendering): TStlSection, a panel section (uExtensions)
+   with nine rows - Section, Flip side, Plane X, Plane Y, Plane position,
+   Elevation, Smoothing, Grid, Edges; registered by TMView, rows only
+   while a model is shown. uExtensions: TSectionRowKind (button, toggle,
+   slider) and SliderPos / SetSliderPos / Wheel / ResetRow for sections;
+   uFilterPanel: DrawPanelSlider / DrawPanelToggle (the filter rows'
+   look, shared) and BarWidth; TMView.HandleFilterMouse drags, wheels and
+   resets slider rows, and leaves out the second click of a double-click
+   on a toggle.
+6. TMView: StlNewImage (a model shown: its controls, the start view, the
+   info line "N triangles   X x Y x Z"), cmdRotateBy / Left / Right turn
+   the model (StlTurn; + = clockwise from above, R tap = 90 degrees), a
+   change is drawn quickly at once (timer stage 1: many wheel notches
+   give one picture) and sharp 400 ms later (stage 2); a better version
+   of the file arriving then (window resized) is drawn as set, not the
+   start view. The rotate mode's line says "model -60°". "Save image" of
+   a model writes <name>.png.
+7. Tests: TestStl (new, 25: reading binary / ASCII / refused, cache,
+   drawing, closed cut face, panel rows). TestNavigation 153,
+   TestExtensions 80. Checked under Wine: a cup and a 180 000-triangle
+   sphere - section on, flipped (closed disc), plane tilted 60° (closed
+   ellipse), turned in rotate mode, plane position dragged; both
+   editions build.
+8. Combine GIFs (user): uGifJoin (new, imaging) parses both GIFs to
+   their frames (graphic control, descriptor, colour table, LZW data)
+   and writes them unchanged into one GIF89a - no global table, each
+   frame its own (its local one or its file's global one), the canvas
+   the larger of the two with each animation centred, the first file's
+   NETSCAPE2.0 loop. After each animation a clearing frame: the whole
+   canvas, transparent (GifLzwEncode, a small LZW encoder), delay = the
+   pause (0.5 s), disposal 2; the frame before it gets disposal 1, so
+   the last picture stays through the pause and nothing shows through
+   the next animation. Written as .part, then renamed. uTCFollow:
+   PanelItems - the files under both panels' cursors (LP / LN, RP / RN;
+   else path lines 9 / 10 and file lists 1 / 2, cursor 1007 / 1008).
+   TMView.CombineGifs: both animated GIFs (2 frames or more), not the
+   same (name or content, uFileMover.SameFileContent), into the folder
+   shown as <left>_<right>.gif (_1 ...), then opened. Menu entry
+   "Combine GIFs" below the dir preview, enabled only side by side with
+   Total Commander running. TestGifJoin (new, 18). Not yet tried with a
+   real Total Commander (none here).
+9. A left drag turns a model in 3D (user): cmdPanBy -> TMView.StlOrbit
+   while a model is shown (not in edit mode): left / right turns around
+   the vertical axis, up / down tilts (elevation, -90 .. 90), half a
+   degree per pixel as in the STL viewer. (The rotate-mode check: it
+   did turn - the quick and the sharp picture line up.)
+10. Version 1.3 instead of 1.2.1 (user): MViewVersion '1.3',
+   release_notes_v1.3.0.md (was v1.2.1), readmes, the comments. The
+   About box: "Copyright © 2026 DL1BWA/AC1WW" above the licence line;
+   the readmes say so beside the GPL line.

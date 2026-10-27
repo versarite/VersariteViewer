@@ -32,6 +32,12 @@ unit uFileMover;
     Undo always follows the action it undoes).
   - Never overwrite: a name that exists in the target folder gets _1,
     _2 ... before the extension (UniqueFileName).
+  - Duplicates (Day 32, user): a sort job with DuplicateDir set first
+    looks for the same image in the target folder - the name, or its
+    _1, _2 ... copies, of the same size and with identical bytes
+    (SameFileContent; no pixel comparison). Found: a copy is not made
+    (OK, Duplicate, ResultFile = the one there); a move puts the file
+    into DuplicateDir as dup1_<name> (dup2_ ... if taken) instead.
   - Copy keeps the file's date. Move is a rename on the same drive and
     a copy + delete of the source across drives (Windows MoveFileEx with
     MOVEFILE_COPY_ALLOWED).
@@ -101,6 +107,9 @@ type
     UndoOf: Integer;        { fjUndo: the undo entry's id }
     Id: Integer;            { the caller's number for this job }
     Data: TBytes;           { faWrite: the file's content }
+    { Day 32: '' = no duplicate check; else where a move of a duplicate
+      goes (the deleted-files folder). }
+    DuplicateDir: string;
   end;
 
   TFileJobResult = record
@@ -115,6 +124,10 @@ type
     KeptSource: Boolean;
     { faWrite: the old file of that name, renamed ('' = there was none). }
     RenamedTo: string;
+    { Day 32: the identical image was in the target folder already
+      (DuplicateOf): a copy did nothing, a move went to DuplicateDir. }
+    Duplicate: Boolean;
+    DuplicateOf: string;
   end;
 
   TFileJobDone = procedure(const AResult: TFileJobResult) of object;
@@ -165,6 +178,15 @@ type
   (file or folder). ADir with or without trailing delimiter. }
 function UniqueFileName(const ADir, AName: string): string;
 
+{ The two files are the same size and byte for byte the same (False if
+  one can't be read). }
+function SameFileContent(const AFileA, AFileB: string): Boolean;
+{ A file in ADir with the content of ASource: AName, or AName's _1, _2 ...
+  (UniqueFileName's names, up to the first missing one); '' = none. }
+function FindIdenticalFile(const ADir, AName, ASource: string): string;
+{ dup1_<AName> in ADir, or dup2_, dup3_ ... if that exists. }
+function DuplicateFileName(const ADir, AName: string): string;
+
 { Does AJob now, on the calling thread; ALogFile '' = no log. }
 function ExecuteFileJob(const AJob: TFileJob; const ALogFile: string): TFileJobResult;
 
@@ -206,6 +228,93 @@ begin
   until not (FileExists(Result) or DirectoryExists(Result));
 end;
 
+function FileSizeOf(const AFile: string): Int64;
+var
+  Info: TSearchRec;
+begin
+  Result := -1;
+  if FindFirst(AFile, faAnyFile, Info) = 0 then
+  begin
+    Result := Info.Size;
+    FindClose(Info);
+  end;
+end;
+
+function SameFileContent(const AFileA, AFileB: string): Boolean;
+const
+  ChunkSize = 1024 * 1024;
+var
+  A, B: TFileStream;
+  BufA, BufB: array of Byte;
+  NA, NB: Integer;
+  Size: Int64;
+begin
+  Result := False;
+  Size := FileSizeOf(AFileA);
+  if (Size < 0) or (Size <> FileSizeOf(AFileB)) then
+    Exit;
+  try
+    A := TFileStream.Create(AFileA, fmOpenRead or fmShareDenyWrite);
+    try
+      B := TFileStream.Create(AFileB, fmOpenRead or fmShareDenyWrite);
+      try
+        SetLength(BufA, ChunkSize);
+        SetLength(BufB, ChunkSize);
+        repeat
+          NA := A.Read(BufA[0], ChunkSize);
+          NB := B.Read(BufB[0], ChunkSize);
+          if NA <> NB then
+            Exit;
+          if (NA > 0) and not CompareMem(@BufA[0], @BufB[0], NA) then
+            Exit;
+        until NA < ChunkSize;
+        Result := True;
+      finally
+        B.Free;
+      end;
+    finally
+      A.Free;
+    end;
+  except
+    Result := False;      { not readable: not taken for the same }
+  end;
+end;
+
+function FindIdenticalFile(const ADir, AName, ASource: string): string;
+var
+  Dir, Base, Ext, Candidate: string;
+  N: Integer;
+begin
+  Result := '';
+  Dir := IncludeTrailingPathDelimiter(ADir);
+  Ext := ExtractFileExt(AName);
+  Base := Copy(AName, 1, Length(AName) - Length(Ext));
+  for N := 0 to 999 do
+  begin
+    if N = 0 then
+      Candidate := Dir + AName
+    else
+      Candidate := Dir + Base + '_' + IntToStr(N) + Ext;
+    if not FileExists(Candidate) then
+      Exit;
+    if SameFileContent(ASource, Candidate) then
+      Exit(Candidate);
+  end;
+end;
+
+function DuplicateFileName(const ADir, AName: string): string;
+var
+  Dir: string;
+  N: Integer;
+begin
+  Dir := IncludeTrailingPathDelimiter(ADir);
+  N := 1;
+  repeat
+    Result := Dir + 'dup' + IntToStr(N) + '_' + AName;
+    Inc(N);
+  until not (FileExists(Result) or DirectoryExists(Result));
+end;
+
 procedure AppendLog(const ALogFile: string; const R: TFileJobResult);
 var
   F: TextFile;
@@ -224,7 +333,11 @@ begin
     fjUndo:   Action := Action + ' (undo)';
     fjIcon:   Action := Action + ' (icon)';
   end;
-  if R.OK and (R.RenamedTo <> '') then
+  if R.OK and R.Duplicate and (R.Job.Action = faCopy) then
+    Outcome := 'not copied: identical to ' + ExtractFileName(R.DuplicateOf)
+  else if R.OK and R.Duplicate then
+    Outcome := 'identical to ' + R.DuplicateOf + ': moved aside'
+  else if R.OK and (R.RenamedTo <> '') then
     Outcome := 'ok; the one before is now ' + ExtractFileName(R.RenamedTo)
   else if R.OK and R.KeptSource then
     Outcome := 'copied; the original could not be removed (in use)'
@@ -404,6 +517,8 @@ begin
   Result.Modified := 0;
   Result.KeptSource := False;
   Result.RenamedTo := '';
+  Result.Duplicate := False;
+  Result.DuplicateOf := '';
   if AJob.Action = faWrite then
   begin
     WriteNewFile(AJob, Result);
@@ -421,7 +536,35 @@ begin
       Name := AJob.TargetName;
       if Name = '' then
         Name := ExtractFileName(AJob.Source);
-      Target := UniqueFileName(AJob.TargetDir, Name);
+      Target := '';
+      { The same image there already (Day 32). }
+      if (AJob.Kind = fjSort) and (AJob.DuplicateDir <> '') then
+      begin
+        Result.DuplicateOf := FindIdenticalFile(AJob.TargetDir, Name, AJob.Source);
+        if Result.DuplicateOf <> '' then
+        begin
+          Result.Duplicate := True;
+          if AJob.Action = faCopy then
+          begin
+            Result.OK := True;
+            Result.ResultFile := Result.DuplicateOf;
+            Result.Size := FileSizeOf(Result.DuplicateOf);
+            Result.Modified := FileDateToDateTime(FileAge(Result.DuplicateOf));
+            AppendLog(ALogFile, Result);
+            Exit;
+          end;
+          if (not DirectoryExists(AJob.DuplicateDir))
+            and not ForceDirectories(AJob.DuplicateDir) then
+          begin
+            Result.Message := 'folder not found: ' + AJob.DuplicateDir;
+            AppendLog(ALogFile, Result);
+            Exit;
+          end;
+          Target := DuplicateFileName(AJob.DuplicateDir, Name);
+        end;
+      end;
+      if Target = '' then
+        Target := UniqueFileName(AJob.TargetDir, Name);
       Done := False;
       Err := 0;
       for Try_ := 1 to RetryCount do

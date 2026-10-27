@@ -1,14 +1,14 @@
-# VersariteViewer 1.2
+# VersariteViewer 1.3
 *formerly MView*
 ## Written with support from Claude/Opus5.5 and ChatGPT
 
 A *very* fast native stand-alone Windows image viewer, driven by the mouse. No external libraries needed. 
 Made for the microscope bench, for browsing whole experiment folders, and not too bad at any other kind of image collection.
-By [Versarite](https://github.com/versarite). Free software under the GNU GPL v3.
+By [Versarite](https://github.com/versarite). Copyright © 2026 DL1BWA/AC1WW. Free software under the GNU GPL v3.
 Claude and - in the early design phase - ChatGPT helped me greatly to unlock the capabilities of Lazarus/FPC.
 
-**Status: release 1.2 (2026-10-22).** 
-A small number of new features has been added following feedback. The development of VersariteViewer stops at 1.2 for now.
+**Status: release 1.3 (2026-10-27).** 
+A small number of new features has been added following feedback - and 3D models (STL) with sections (see [What 1.3 brings](#what-13-brings)). The development of VersariteViewer stops at 1.3 for now.
 I concentrate in the future on the Viewer Lab Version, where Versarite is envisioned to become a bridge beween Totalcmd and Fiji/ImageJ.
    
 1.2 adds a **slide show** - of the folder on screen, or of
@@ -34,6 +34,46 @@ Microscopy-specific work continues in a separate **microscopy edition**, Versari
 > 2006 and its source was never published, so its bugs could never be fixed. VersariteViewer carries its
 > ideas forward in code anyone can read, fix and extend.
 > See [From Hamana to VersariteViewer](docs/From_Hamana_to_VersariteViewer.md).
+
+## What 1.3 brings
+
+3D models, combining GIFs, and polishing from daily use (days 32 to 34):
+
+- **3D models (.stl)** are shown like images: binary and ASCII STL, drawn live by the graphics
+  card (OpenGL: turning, tilting and every slider at once, as fluid as a dedicated STL viewer,
+  sharp at any zoom; in software where there is no suitable OpenGL) - a light model on a dark
+  background, the build plate as a grid, the axes, the triangles' edges. The info line gives the
+  number of triangles and the size. A **drag with the left button turns and tilts the model**;
+  the **rotate mode turns it** (wheel; R a quarter turn), zoom zooms. While a model is shown the
+  **filter panel** (left) has its controls below Auto / Reset all - boxes and sliders, no buttons:
+  **Section** (cut by a plane, the cut face shown closed), **Flip side**, **Plane X / Y** (tilt),
+  **Plane position**, **Elevation**, **Smoothing**, **Grid**, **Edges**. Copy and Save image take
+  the model as it is turned and cut.
+- **Combine GIFs:** side by side with Total Commander, the menu entry joins the animated GIFs under
+  its left and right cursor into `<left>_<right>.gif` in the folder shown (left first, a short
+  pause, then right). Two ways: **Original sizes** (frames copied unchanged) or **Scaled to
+  largest GIF** (the smaller one scaled to fit the larger, its shape kept; new pixels, so some
+  resolution is lost).
+- **Dynamic folder lists:** a sort list can reorder itself - each copy or move into a folder moves
+  it up one place (once the mouse has left the panel); a double-click on the list's title switches
+  it, a red star marks it. **Pin to top** (first line of a folder's menu) keeps folders on top,
+  with a red frame.
+- **Semi-automatic sorting:** in a slide show or the Total Commander dir preview a copy or move
+  restarts the time, and the show waits while the mouse is on the sort panel; the magnifier and
+  the zoom / rotate mode end after a copy or move.
+- **No duplicates:** an identical file (same name or its `_1` copies, same size, same bytes) is not
+  copied again; a move puts it into the deleted-files folder as `dup1_<name>` (undoable).
+- **Open file ...** in the right-click menu (also the command **OpenFile** for a key or button):
+  a file dialog in the folder shown; the file opens as from the command line.
+- **Surer browsing:** a folder that isn't there any more (the last session's, say) opens the
+  nearest folder above it instead of stopping at "Not found"; a folder step made while the folders
+  are still being read ("scanning folders ...") is done as soon as they are known; climbing one
+  folder up no longer waits for the image still being read; the **slide show overrides** the
+  Total Commander dir preview (with both on, nothing played).
+- Fixed: an empty folder opened while following Total Commander kept no subfolders after the
+  following was switched off, so the folder swipes and "up" did nothing there.
+
+The full list: [release notes 1.3](docs/release_notes_v1.3.0.md).
 
 ## What 1.2 brings
 
@@ -69,7 +109,7 @@ The slide show, and the next testers' reports (day 31):
 - `[Magnifier] AimRestMs` (default 500): how long the mouse rests in edit mode until the aiming
   loupe shows.
 
-Added after the first 1.2 builds:
+Added after the first 1.2 builds (now part of 1.3):
 
 - **Pause by going down to 0:** "each image shorter" now goes all the way down to 0 ms, whatever
   the step; at 0 the slide show or dir preview **pauses** (it is not ended; the info line says
@@ -340,7 +380,7 @@ Tested with Total Commander 11.03 (64-bit).
 - `docs\dayNNN.log` — the development log, one file per day
 - `docs\Strategy_Phase_G.md` — the plan for sorting, metadata, magnifier and filters
 - `docs\release_notes_*.md` — what each release brings (`release_notes_v1.0.0.md`, `release_notes_v1.0.1.md`,
-  `release_notes_v1.1.0.md`, `release_notes_v1.2.0.md`)
+  `release_notes_v1.1.0.md`, `release_notes_v1.2.0.md`, `release_notes_v1.3.0.md`)
 - `docs\Hamana_Research.md`, `docs\Hamana_Commands.md` — what was learned from Hamana
 - `docs\From_Hamana_to_VersariteViewer.md` — the homage: what VersariteViewer kept, what it changed, and why
 

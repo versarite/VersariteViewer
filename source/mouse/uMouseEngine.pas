@@ -247,6 +247,9 @@ type
       zone orders, no zone names on screen. }
     property ZonesEnabled: Boolean read FZonesEnabled write FZonesEnabled;
     property Mode: TInputMode read FMode;
+    { Day 32 (user): back to browsing (after a copy / move: the zoom or
+      rotate mode must not hold up the next image). }
+    procedure LeaveMode;
     property DoubleClickMs: Integer read FDoubleClickMs write FDoubleClickMs;
     { Counts as input (e.g. after the menu closed), for cursor hiding. }
     procedure NoteActivity(ANowMs: QWord);
@@ -392,6 +395,11 @@ begin
   end;
 end;
 
+procedure TMouseEngine.LeaveMode;
+begin
+  SetMode(imBrowse);
+end;
+
 procedure TMouseEngine.SetMode(AMode: TInputMode);
 begin
   if AMode = FMode then
@@ -514,6 +522,7 @@ begin
     maSlideShowMode:     Emit(cmdTCSlideShow);
     maDirPreview:        Emit(cmdDirPreviewOnOff);
     maSlideShow:         Emit(cmdSlideShow);
+    maOpenFile:          Emit(cmdOpenFile);
     { A zoom / rotate mode is the engine's own; everything else (edit
       mode, exit) TMView decides. }
     maBack:

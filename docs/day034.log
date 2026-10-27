@@ -1,0 +1,91 @@
+Day 34 (2026-10-27) - 3D models on the graphics card, navigation when a folder is missing or still being read (VersariteViewer 1.3)
+
+Found in the project (written the evening before, no log): uGLStlDraw
+(3D models drawn by the graphics card: vertex buffers, a GLSL shader,
+the cut face closed with the stencil buffer), uGLRenderer.DrawModel,
+TMView: the model live, the sharp picture by a thread
+(TStlPictureThread); uDirectoryScanner: an urgent scan (climbing one
+level up doesn't wait for the image being read); "Open file ...";
+Combine GIFs: "scaled to the largest GIF".
+
+1. Speed of the live model (user: "not nearly as fluid as my viewer").
+   Measured with the same software OpenGL (llvmpipe) on the 180 000-
+   triangle sphere: VersariteViewer 178 ms per frame, the STL viewer
+   180 ms - the card's work is the same. So the rest:
+   - uGLStlDraw: two shader programs. The one with "discard" (the cut,
+     the picture's edges) keeps the card from skipping hidden fragments
+     early; without a section the plain one is used, the picture's
+     rectangle kept by the scissor test (uGLRenderer.DrawModel).
+   - TMView: the sharp picture (copy, save, the filters' copy) only
+     after the model has rested 1.5 s (was 0.4 s: a processor core
+     between two turns), and not uploaded to the card while the model
+     is drawn live (a 4K picture's upload made the next turn stutter).
+   - uStlPanel.SetView: the panel drawn again only if a row changed (the
+     turn is in no row; a drag changes the elevation by fractions of a
+     degree - the whole panel was drawn and uploaded for every mouse
+     move while it was open); TMView: while turning, at most every
+     150 ms, the last value when the model rests.
+   - The D line: "3D live: x ms per frame, n frames/s" (with D the
+     card's time is measured to the end, glFinish), or "3D: pictures".
+2. ImageToSave: a turned or cut model is saved / copied as set (it
+   took the file's start view from the cache).
+3. Navigation (user: "Not found" after the last session's folder was
+   gone, and nothing reacted; while "scanning folders ..." the gestures
+   did nothing):
+   - HandleStartReady: a path that isn't there - the folder above it is
+     tried, step by step through the scanner (TryParentOf; not for Total
+     Commander's folder); the note says which was missing and where it
+     browses instead.
+   - Navigate: a step that can't be done yet because the folders are
+     still being read is kept and done when the tree is there
+     (FTreeStep; "the folders are still being read: the step follows").
+   - ParentFolder with nothing open: up from the path asked for.
+   Checked under Wine: start with C:\STL\missing\deeper opened C:\STL;
+   up from C:\BIG\a_first (17 800 folders) and a gesture right during
+   "scanning folders ..." landed in C:\BIG\b_second.
+4. Slide show and Total Commander dir preview (user: with the dir
+   preview on, the slide show played nothing): the pump stepped only
+   the dir preview while it had a folder, and the dir preview waits
+   while VersariteViewer is in front. Now the slide show overrides:
+   PumpDeliveries steps the slide show first; switching it on ends a
+   folder's preview (the show plays that folder); while it runs, Total
+   Commander's cursor on a folder starts no preview; when it ends, the
+   dir preview takes up the folder under the cursor again (asked afresh
+   at the next poll). The info line and the "longer / shorter" note say
+   "slide show" while it runs.
+5. Release 1.3 (user: the STL view and the directory priorities work):
+   tests TestNavigation 153, TestMouse 98, TestSort 172, TestStl 25,
+   TestGifJoin 28, TestExtensions 80 - all pass; both editions build.
+   Release notes 1.3 completed (the 3D view on the graphics card, the
+   two ways to combine GIFs, Open file, the browsing fixes, the slide
+   show over the dir preview), both readmes, the GitHub folder brought
+   up to date (the viewer's sources, the tests, the docs).
+6. Combine GIFs, "Scaled to largest GIF" hung the program (user): it ran
+   on the UI thread, and every picture of the animation was composed
+   and kept in memory before scaling (a long, large GIF: hundreds of MB,
+   seconds to minutes with no reaction). Now uGifJoin composes, scales
+   and encodes one picture at a time (TFrameComposer) and reports each
+   frame (TGifJoinProgress, which can also cancel); TMView runs the
+   joining on a thread (TGifJoinThread): the info line says "scaling
+   frame n / m ... (Esc: cancel)", Esc cancels (no file left), the
+   result is opened when done; a second Combine meanwhile is refused
+   with a note. 40 frames of 64 x 48 scaled to 1600 x 1000: about 6 s,
+   with the program reacting throughout. TestGifJoin 32 (progress once
+   per frame, cancel leaves no file).
+7. Started side by side ([Startup] Mode=2), Total Commander did not come
+   (user; switching side by side off and on again started it): at the
+   start it is told the last session's folder, which had been renamed
+   (C:\projects\mview\...), and Total Commander stops at a folder that
+   isn't there; later it is told the folder shown, which is. Now
+   uTotalCommander.OpenInTotalCommander hands on only a folder that
+   exists: the nearest one above it, else none.
+8. Then (user: "better nothing at all should be passed to totalcmd, it
+   has its own memory"): started side by side, Total Commander gets no
+   folder at all (TMainForm.StartSideBySide, FSideAtStart); the menu
+   entry later still hands it the folder shown. The check in
+   OpenInTotalCommander (item 7) stays as a safety net.
+9. Taken back (user: the cause was a VersariteViewer still running,
+   hidden by the close protection in the taskbar - not the folder):
+   started side by side, Total Commander is told the start folder again,
+   as before (TMainForm.StartSideBySide; FSideAtStart removed). The
+   check of item 7 stays: a folder that isn't there is not handed on.

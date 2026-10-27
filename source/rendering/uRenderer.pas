@@ -103,7 +103,8 @@ uses
   uFilters,
   uFilterImage,
   uImageSaver,
-  uStopwatch;
+  uStopwatch,
+  uStlModel;
 
 const
   { In InfoText: where the zoom ("52 % = 1997 x 1331", the angle) goes;
@@ -180,6 +181,11 @@ type
     FShowDiagnostics: Boolean;
     FDiagnosticsText: string;
     FInputMode: TInputMode;
+    FModelTurn: Double;
+    FModelShown: Boolean;
+    FModel: IStlModel;
+    FModelView: TStlView;
+    FModelFallback: Boolean;
     FOnImagePainted: TImagePaintedEvent;
     FZoneLabel: string;
     FZoneCorner: Integer;
@@ -344,6 +350,23 @@ type
       cache). The renderer adds its own part, latency and paint time. }
     property DiagnosticsText: string read FDiagnosticsText write FDiagnosticsText;
     property InputMode: TInputMode read FInputMode write FInputMode;
+    { A 3D model is shown (1.3): the rotate mode turns the model, and
+      says by how much (ModelTurn, degrees). }
+    property ModelShown: Boolean read FModelShown write FModelShown;
+    property ModelTurn: Double read FModelTurn write FModelTurn;
+    { The model itself and how it is set (1.3): a renderer that can draw
+      it (DrawsModel: the graphics card) draws it live from these, at
+      every frame, instead of the picture TMView made of it. }
+    property Model: IStlModel read FModel write FModel;
+    property ModelView: TStlView read FModelView write FModelView;
+    { True while this renderer draws the model itself as ModelView says
+      (the GPU renderer, its shader made; a section also needs the
+      stencil buffer). False: TMView draws pictures of it (software). }
+    function DrawsModel: Boolean; virtual;
+    { Set by the renderer when it found it can't after all (the shader
+      did not compile, no stencil for a section): TMView draws a picture
+      again and clears it. }
+    property ModelFallback: Boolean read FModelFallback write FModelFallback;
     { Mouse language feedback (Phase F): the name of the zone the mouse
       is in, drawn in that zone's corner (0 top left, 1 top right,
       2 bottom left, 3 bottom right); '' = none. And what a gesture
@@ -1035,8 +1058,12 @@ begin
       Result := Format('ZOOM   %d %%      wheel = zoom at the mouse,   X1 / Esc / bottom edge = back',
         [Round(FLastScale * 100)]);
     imRotate:
-      Result := Format('ROTATE   %.0f°      wheel = turn,   X2 / Esc = back',
-        [FView.Angle]);
+      if FModelShown then
+        Result := Format('ROTATE   model %.0f°      wheel = turn,   X2 / Esc = back',
+          [FModelTurn])
+      else
+        Result := Format('ROTATE   %.0f°      wheel = turn,   X2 / Esc = back',
+          [FView.Angle]);
   else
     if FLens.Active then
     begin
@@ -1442,6 +1469,11 @@ begin
   Inc(FFilterVersion);
   if OldMirror <> FFilters.Mirror then
     MirrorChanged;
+end;
+
+function TRenderer.DrawsModel: Boolean;
+begin
+  Result := False;
 end;
 
 function TRenderer.FiltersAvailable: Boolean;

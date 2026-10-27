@@ -1,7 +1,7 @@
 @echo off
 rem Builds and runs the VersariteViewer tests (TestNavigation.lpr, TestExif.lpr,
 rem TestMouse.lpr, TestSort.lpr, TestFilters.lpr, TestGif.lpi,
-rem TestExtensions.lpi).
+rem TestExtensions.lpi, TestStl.lpi, TestGifJoin.lpi).
 rem Double-click this file, or run it from a command prompt.
 rem It uses the Free Pascal compiler that comes with Lazarus, so fpc
 rem does not need to be on the PATH.
@@ -51,6 +51,12 @@ if exist "%LAZBUILD%" (
   echo Building TestExtensions.lpi with lazbuild ...
   "%LAZBUILD%" -q TestExtensions.lpi
   if errorlevel 1 goto failed
+  echo Building TestStl.lpi with lazbuild ...
+  "%LAZBUILD%" -q TestStl.lpi
+  if errorlevel 1 goto failed
+  echo Building TestGifJoin.lpi with lazbuild ...
+  "%LAZBUILD%" -q TestGifJoin.lpi
+  if errorlevel 1 goto failed
   set GIFTEST=1
 ) else (
   echo lazbuild not found at %LAZBUILD%: TestGif and TestExtensions skipped.
@@ -71,6 +77,10 @@ echo.
 if "%GIFTEST%"=="1" TestGif.exe
 echo.
 if "%GIFTEST%"=="1" TestExtensions.exe
+echo.
+if "%GIFTEST%"=="1" TestStl.exe
+echo.
+if "%GIFTEST%"=="1" TestGifJoin.exe
 echo.
 pause
 exit /b 0

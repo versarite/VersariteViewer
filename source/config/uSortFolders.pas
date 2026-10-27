@@ -30,6 +30,14 @@ unit uSortFolders;
   - Several lists (Day 27, testers): the slots above are the current
     list's; CycleList goes to the next / previous one, past the last a
     new empty list, then round again. Empty lists are dropped when left.
+  - Dynamic lists and pinned folders (Day 32, user): a list can be
+    dynamic ([DirList<n>] Dynamic=1): a folder copied or moved into goes
+    up one place (NoteUsed), but only when ApplyUse is called - TMView
+    does that once the mouse has left the panel, so the list never moves
+    under a resting mouse. A pinned folder (Slot<n>Pinned=1, in any list)
+    stays on top in the order given; the pinned ones come first, the
+    others never climb above them, and Move keeps each in its part
+    (SlotRange).
   - Rapid Selection (Day 27, testers): a fixed list of ten slots
     (Selection1 .. Selection9, Selection0 in one folder; keys 1 .. 0),
     shown instead of the current list while on; not one of the cycled
@@ -81,6 +89,8 @@ const
   ListSectionPrefix = 'DirList';
   { [Sort] List: the folder list shown (1-based). }
   KEY_LIST = 'List';
+  { [DirList<n>] Dynamic=1 (Day 32): used folders go up. }
+  KEY_DYNAMIC = 'Dynamic';
   { Rapid Selection: ten slots, keys 1 .. 9, 0. }
   RapidSlots = 10;
   MaxRecentFolders = 8;
@@ -99,6 +109,7 @@ type
     Name: string;       { shown on the panel }
     Color: TSlotColor;
     Icon: string;       { icon file (name in the icon folder, or a full path); '' = none }
+    Pinned: Boolean;    { on top, in the order given (Day 32) }
   end;
 
   TSortSlots = array of TSortSlot;
@@ -108,6 +119,8 @@ type
   private
     FSlots: TSortSlots;          { the list shown: the current one, or Rapid Selection's }
     FLists: TSortSlotLists;      { all lists; FLists[FCurrent] is behind FSlots }
+    FDynamic: array of Boolean;  { per list (as FLists): dynamic (Day 32) }
+    FUsed: TStringList;          { folders used, to go up at the next ApplyUse }
     FCurrent: Integer;
     FRapid: Boolean;
     FRecent: TStringList;
@@ -122,6 +135,8 @@ type
     procedure StoreCurrent;
     procedure ReadSlots(AIni: TCustomIniFile; const ASection: string; out ASlots: TSortSlots);
     procedure WriteSlots(AIni: TCustomIniFile; const ASection: string; const ASlots: TSortSlots);
+    procedure SyncDynamic;
+    procedure MoveSlot(AFrom, ATo: Integer);
   public
     constructor Create;
     destructor Destroy; override;
@@ -157,7 +172,26 @@ type
     procedure SetIcon(AIndex: Integer; const AIcon: string);
     procedure SetName(AIndex: Integer; const AName: string);
     procedure Remove(AIndex: Integer);
+    { ATo is kept within AFrom's part of the list (SlotRange). }
     procedure Move(AFrom, ATo: Integer);
+
+    { Dynamic sorting and pinning (Day 32, user). Dynamic: the list shown
+      (never Rapid Selection). }
+    function Dynamic: Boolean;
+    procedure SetDynamic(AOn: Boolean);
+    function PinnedCount: Integer;
+    { Pins (on top, below the last pinned one) or unpins (first below the
+      pinned ones) slot AIndex; its new index. }
+    function SetPinned(AIndex: Integer; AOn: Boolean): Integer;
+    { Where slot AIndex may go: the pinned part or the rest. }
+    procedure SlotRange(AIndex: Integer; out ALow, AHigh: Integer);
+    { A copy / move into AFolder is done: in a dynamic list it goes up
+      one place at the next ApplyUse (not pinned ones, never above them). }
+    procedure NoteUsed(const AFolder: string);
+    function HasUse: Boolean;
+    { Moves them; True if the list changed. Also done before another
+      list is shown and before Rapid Selection. }
+    function ApplyUse: Boolean;
 
     { Copy / cut / paste of a button between the lists (1.1, testers).
       Copy and Cut remember the entry; a cut one stays where it is,
@@ -237,18 +271,166 @@ end;
 
 { TSortFolders }
 
+{ The pinned slots first, each part in its order (Day 32). }
+procedure PinnedFirst(var ASlots: TSortSlots);
+var
+  Sorted: TSortSlots;
+  I, N: Integer;
+begin
+  SetLength(Sorted, Length(ASlots));
+  N := 0;
+  for I := 0 to High(ASlots) do
+    if ASlots[I].Pinned then
+    begin
+      Sorted[N] := ASlots[I];
+      Inc(N);
+    end;
+  for I := 0 to High(ASlots) do
+    if not ASlots[I].Pinned then
+    begin
+      Sorted[N] := ASlots[I];
+      Inc(N);
+    end;
+  ASlots := Sorted;
+end;
+
 constructor TSortFolders.Create;
 begin
   inherited Create;
   FRecent := TStringList.Create;
+  FUsed := TStringList.Create;
   SetLength(FLists, 1);
+  SyncDynamic;
   FCurrent := 0;
 end;
 
 destructor TSortFolders.Destroy;
 begin
+  FUsed.Free;
   FRecent.Free;
   inherited Destroy;
+end;
+
+{ FDynamic as long as FLists (a new list: not dynamic). }
+procedure TSortFolders.SyncDynamic;
+var
+  I, Old: Integer;
+begin
+  Old := Length(FDynamic);
+  SetLength(FDynamic, Length(FLists));
+  for I := Old to High(FDynamic) do
+    FDynamic[I] := False;
+end;
+
+function TSortFolders.Dynamic: Boolean;
+begin
+  Result := (not FRapid) and (FCurrent >= 0) and (FCurrent <= High(FDynamic))
+    and FDynamic[FCurrent];
+end;
+
+procedure TSortFolders.SetDynamic(AOn: Boolean);
+begin
+  if FRapid then
+    Exit;
+  SyncDynamic;
+  if (FCurrent >= 0) and (FCurrent <= High(FDynamic)) then
+    FDynamic[FCurrent] := AOn;
+  if not AOn then
+    FUsed.Clear;
+end;
+
+function TSortFolders.PinnedCount: Integer;
+var
+  I: Integer;
+begin
+  Result := 0;
+  if FRapid then
+    Exit;
+  for I := 0 to High(FSlots) do
+    if FSlots[I].Pinned then
+      Inc(Result);
+end;
+
+function TSortFolders.SetPinned(AIndex: Integer; AOn: Boolean): Integer;
+var
+  N: Integer;
+begin
+  Result := AIndex;
+  if FRapid or (AIndex < 0) or (AIndex >= Length(FSlots)) or (FSlots[AIndex].Pinned = AOn) then
+    Exit;
+  N := PinnedCount;
+  FSlots[AIndex].Pinned := AOn;
+  { Pinned: below the last pinned one (N, before this one counts); unpinned:
+    the first of the rest (the pinned ones are now N - 1). }
+  if AOn then
+    Result := N
+  else
+    Result := N - 1;
+  MoveSlot(AIndex, Result);
+  StoreCurrent;
+end;
+
+procedure TSortFolders.SlotRange(AIndex: Integer; out ALow, AHigh: Integer);
+var
+  N: Integer;
+begin
+  N := PinnedCount;
+  if (AIndex >= 0) and (AIndex < Length(FSlots)) and FSlots[AIndex].Pinned then
+  begin
+    ALow := 0;
+    AHigh := N - 1;
+  end
+  else
+  begin
+    ALow := N;
+    AHigh := High(FSlots);
+  end;
+end;
+
+procedure TSortFolders.NoteUsed(const AFolder: string);
+begin
+  if Dynamic and (Trim(AFolder) <> '') then
+    FUsed.Add(ExcludeTrailingPathDelimiter(AFolder));
+end;
+
+function TSortFolders.HasUse: Boolean;
+begin
+  Result := FUsed.Count > 0;
+end;
+
+function TSortFolders.ApplyUse: Boolean;
+var
+  K, I, Here, N: Integer;
+  S: TSortSlot;
+begin
+  Result := False;
+  if FUsed.Count = 0 then
+    Exit;
+  if Dynamic then
+  begin
+    N := PinnedCount;
+    for K := 0 to FUsed.Count - 1 do
+    begin
+      Here := -1;
+      for I := 0 to High(FSlots) do
+        if SameText(FSlots[I].Folder, FUsed[K]) then
+        begin
+          Here := I;
+          Break;
+        end;
+      { One place up; pinned ones stay, the others not above them. }
+      if (Here > N) and not FSlots[Here].Pinned then
+      begin
+        S := FSlots[Here - 1];
+        FSlots[Here - 1] := FSlots[Here];
+        FSlots[Here] := S;
+        Result := True;
+      end;
+    end;
+    if Result then
+      StoreCurrent;
+  end;
+  FUsed.Clear;
 end;
 
 function TSortFolders.Count: Integer;
@@ -284,14 +466,18 @@ end;
 procedure TSortFolders.CycleList(ADir: Integer);
 var
   Kept: TSortSlotLists;
+  KeptDynamic: array of Boolean;
   I, Pos, Occupied, NewClip: Integer;
 begin
   NewClip := -1;
   if FRapid or (ADir = 0) then
     Exit;
+  ApplyUse;
   StoreCurrent;
+  SyncDynamic;
   { Empty lists go; the empty one shown stands for "new". }
   Kept := nil;
+  KeptDynamic := nil;
   Pos := -1;
   for I := 0 to High(FLists) do
     if Length(FLists[I]) > 0 then
@@ -302,6 +488,8 @@ begin
         NewClip := Length(Kept);         { the cut one's list, renumbered }
       SetLength(Kept, Length(Kept) + 1);
       Kept[High(Kept)] := FLists[I];
+      SetLength(KeptDynamic, Length(Kept));
+      KeptDynamic[High(KeptDynamic)] := FDynamic[I];
     end;
   FClipList := NewClip;
   Occupied := Length(Kept);
@@ -322,6 +510,8 @@ begin
   if Length(Kept) = 0 then
     SetLength(Kept, 1);
   FLists := Kept;
+  FDynamic := KeptDynamic;
+  SyncDynamic;
   FCurrent := Pos;
   FSlots := Copy(FLists[FCurrent], 0, Length(FLists[FCurrent]));
 end;
@@ -369,6 +559,7 @@ var
 begin
   if AOn then
   begin
+    ApplyUse;
     StoreCurrent;
     SetLength(FSlots, RapidSlots);
     for I := 0 to RapidSlots - 1 do
@@ -383,6 +574,7 @@ begin
         FSlots[I].Name := Folder;
       FSlots[I].Color := Colors[I];
       FSlots[I].Icon := '-';           { the numbered folder, never an icon }
+      FSlots[I].Pinned := False;
     end;
     FRapid := True;
   end
@@ -425,6 +617,7 @@ begin
     SetLength(FSlots, Length(FSlots) + 1);
     FSlots[AIndex].Color := FirstFreeColor;
     FSlots[AIndex].Icon := '';
+    FSlots[AIndex].Pinned := False;
   end
   else if (AIndex < 0) or (AIndex >= Length(FSlots)) then
     Exit;
@@ -464,6 +657,17 @@ begin
 end;
 
 procedure TSortFolders.Move(AFrom, ATo: Integer);
+var
+  Low_, High_: Integer;
+begin
+  if FRapid or (AFrom < 0) or (AFrom >= Length(FSlots)) then
+    Exit;
+  { Within its part (Day 32): pinned among the pinned, the rest below. }
+  SlotRange(AFrom, Low_, High_);
+  MoveSlot(AFrom, EnsureRange(ATo, Low_, Max(Low_, High_)));
+end;
+
+procedure TSortFolders.MoveSlot(AFrom, ATo: Integer);
 var
   S: TSortSlot;
   I: Integer;
@@ -600,10 +804,15 @@ begin
   for I := High(FSlots) downto AAfter + 2 do
     FSlots[I] := FSlots[I - 1];
   FSlots[AAfter + 1] := FClip;
+  Result := AAfter + 1;
+  { A pinned one stays among the pinned, an unpinned one below them. }
+  PinnedFirst(FSlots);
+  for I := 0 to High(FSlots) do
+    if SameText(FSlots[I].Folder, FClip.Folder) and (FSlots[I].Name = FClip.Name) then
+      Result := I;
   StoreCurrent;
   if FClipCut then
     FHasClip := False;
-  Result := AAfter + 1;
 end;
 
 procedure TSortFolders.AddRecent(const AFolder: string);
@@ -635,6 +844,9 @@ begin
   for I := 0 to High(FLists) do
     FLists[I] := Copy(ASource.FLists[I], 0, Length(ASource.FLists[I]));
   FSlots := Copy(ASource.FSlots, 0, Length(ASource.FSlots));
+  FDynamic := Copy(ASource.FDynamic, 0, Length(ASource.FDynamic));
+  SyncDynamic;
+  FUsed.Assign(ASource.FUsed);
   FCurrent := ASource.FCurrent;
   FRapid := ASource.FRapid;
   FRecent.Assign(ASource.FRecent);
@@ -646,6 +858,9 @@ begin
   SetLength(FSlots, 0);
   SetLength(FLists, 1);
   FLists[0] := nil;
+  FDynamic := nil;
+  SyncDynamic;
+  FUsed.Clear;
   FCurrent := 0;
   FRapid := False;
   FRecent.Clear;
@@ -676,8 +891,11 @@ begin
       Color := ParseSlotColor(AIni.ReadString(ASection, Key + 'Color', ''),
         TSlotColor((Length(ASlots) - 1) mod (Ord(High(TSlotColor)) + 1)));
       Icon := Trim(AIni.ReadString(ASection, Key + 'Icon', ''));
+      Pinned := AIni.ReadBool(ASection, Key + 'Pinned', False);
     end;
   end;
+  { Pinned ones on top (also when edited by hand). }
+  PinnedFirst(ASlots);
 end;
 
 procedure TSortFolders.LoadFromIni(AIni: TCustomIniFile);
@@ -689,7 +907,9 @@ begin
   FRapid := False;
   FHasClip := False;
   FRecent.Clear;
+  FUsed.Clear;
   FLists := nil;
+  FDynamic := nil;
   { [DirList1], [DirList2], ... (Day 27); before: the slots in [Sort]. }
   for N := 1 to MaxSortLists do
   begin
@@ -700,6 +920,8 @@ begin
     begin
       SetLength(FLists, Length(FLists) + 1);
       FLists[High(FLists)] := List;
+      SetLength(FDynamic, Length(FLists));
+      FDynamic[High(FDynamic)] := AIni.ReadBool(ListSectionPrefix + IntToStr(N), KEY_DYNAMIC, False);
     end;
   end;
   if Length(FLists) = 0 then
@@ -707,6 +929,7 @@ begin
     SetLength(FLists, 1);
     ReadSlots(AIni, SortSection, FLists[0]);
   end;
+  SyncDynamic;
   FCurrent := EnsureRange(AIni.ReadInteger(SortSection, KEY_LIST, 1) - 1, 0, High(FLists));
   FSlots := Copy(FLists[FCurrent], 0, Length(FLists[FCurrent]));
   for I := 1 to MaxRecentFolders do
@@ -733,6 +956,7 @@ begin
       AIni.DeleteKey(ASection, Key + 'Name');
       AIni.DeleteKey(ASection, Key + 'Color');
       AIni.DeleteKey(ASection, Key + 'Icon');
+      AIni.DeleteKey(ASection, Key + 'Pinned');
     end;
   end;
   for I := 0 to High(ASlots) do
@@ -742,6 +966,10 @@ begin
     AIni.WriteString(ASection, Key + 'Name', ASlots[I].Name);
     AIni.WriteString(ASection, Key + 'Color', ColorNames[ASlots[I].Color]);
     AIni.WriteString(ASection, Key + 'Icon', ASlots[I].Icon);
+    if ASlots[I].Pinned then
+      AIni.WriteBool(ASection, Key + 'Pinned', True)
+    else if AIni.ValueExists(ASection, Key + 'Pinned') then
+      AIni.DeleteKey(ASection, Key + 'Pinned');
   end;
 end;
 
@@ -766,6 +994,8 @@ begin
       Current := N;
     AIni.EraseSection(ListSectionPrefix + IntToStr(N));
     WriteSlots(AIni, ListSectionPrefix + IntToStr(N), FLists[I]);
+    if (I <= High(FDynamic)) and FDynamic[I] then
+      AIni.WriteBool(ListSectionPrefix + IntToStr(N), KEY_DYNAMIC, True);
   end;
   for I := N + 1 to MaxSortLists do
     if AIni.SectionExists(ListSectionPrefix + IntToStr(I)) then

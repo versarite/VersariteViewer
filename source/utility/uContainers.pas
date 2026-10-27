@@ -121,6 +121,8 @@ procedure RegisterContainerReader(const AName, AExtension: string;
 procedure RegisterContainerStacks(const AExtension: string; AFrames: TContainerFramesFunc;
   ANote: TContainerNoteFunc);
 function ContainerReaderCount: Integer;
+{ The extension (".zip") reader AIndex takes (0 .. ContainerReaderCount - 1). }
+function ContainerReaderExtension(AIndex: Integer): string;
 
 { A file whose extension a registered reader takes (not a virtual name). }
 function IsContainerName(const AFileName: string): Boolean;
@@ -205,6 +207,13 @@ end;
 function ContainerReaderCount: Integer;
 begin
   Result := Length(Readers);
+end;
+
+function ContainerReaderExtension(AIndex: Integer): string;
+begin
+  if (AIndex < 0) or (AIndex > High(Readers)) then
+    Exit('');
+  Result := Readers[AIndex].Extension;
 end;
 
 function ReaderIndexFor(const AFileName: string): Integer;

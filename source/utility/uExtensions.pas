@@ -9,7 +9,9 @@ unit uExtensions;
   a second program from the same source tree; its units plug themselves
   in here, in their initialization sections, and the core never names
   them. MView's own program lists none of them, so in MView every list
-  here is empty and nothing changes.
+  here is empty and nothing changes - except the panel rows: since 1.3
+  TMView registers its own (the section controls of a 3D model,
+  uStlPanel).
 
   Owns
   ----
@@ -291,13 +293,26 @@ function MenuEntry(AIndex: Integer): TExtensionMenuEntry;
 { ---- Rows in the left (filter) panel (M3b) ---- }
 
 type
-  { A few rows of an edition at the bottom of the left panel, below
-    "Auto / Reset all" (the microscopy edition: the calibration selector
-    and "Confocal"). The panel draws the background and the hover; the
-    section its content. }
+  { How the mouse acts on a row: a button (Click at the release), an
+    on / off box (Click; the second click of a double-click is left
+    out), a slider (drag along it, wheel, double-click: back to its
+    start value; no Click). }
+  TSectionRowKind = (srkButton, srkToggle, srkSlider);
+
+  { A few rows at the bottom of the left panel, below "Auto / Reset
+    all" (the microscopy edition: the calibration selector and
+    "Confocal"; 1.3: the section controls of a 3D model). The panel
+    draws the background and the hover; the section its content. }
   TPanelSection = class
   public
     function RowCount: Integer; virtual;
+    function RowKind(ARow: Integer): TSectionRowKind; virtual;
+    { Sliders: the position on the bar (0 .. 1); SetSliderPos moves it
+      (a drag); Wheel: notches, + = more; ResetRow: the start value. }
+    function SliderPos(ARow: Integer): Double; virtual;
+    procedure SetSliderPos(ARow: Integer; APos: Double); virtual;
+    procedure Wheel(ARow: Integer; ANotches: Double); virtual;
+    procedure ResetRow(ARow: Integer); virtual;
     { ARect: the row in the panel's picture; AHover: the mouse is on it. }
     procedure DrawRow(ARow: Integer; ABitmap: TBGRABitmap; const ARect: TRect;
       AHover: Boolean; AScale: Double); virtual;
@@ -790,6 +805,28 @@ end;
 function TPanelSection.RowCount: Integer;
 begin
   Result := 0;
+end;
+
+function TPanelSection.RowKind(ARow: Integer): TSectionRowKind;
+begin
+  Result := srkButton;
+end;
+
+function TPanelSection.SliderPos(ARow: Integer): Double;
+begin
+  Result := 0;
+end;
+
+procedure TPanelSection.SetSliderPos(ARow: Integer; APos: Double);
+begin
+end;
+
+procedure TPanelSection.Wheel(ARow: Integer; ANotches: Double);
+begin
+end;
+
+procedure TPanelSection.ResetRow(ARow: Integer);
+begin
 end;
 
 procedure TPanelSection.DrawRow(ARow: Integer; ABitmap: TBGRABitmap; const ARect: TRect;

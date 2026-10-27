@@ -129,6 +129,7 @@ type
     maAutoLevels, maAutoLevelsMode, maApplyFilters, maResizeToShown, maMagnifier,
     maRapidSelection, maRapidKey, maPreviewStrip,
     maDirPreviewLonger, maDirPreviewShorter, maSlideShowMode, maDirPreview, maSlideShow,
+    maOpenFile,
     maBack, maExit
   );
 
@@ -333,6 +334,7 @@ const
     'AutoLevels', 'AutoLevelsMode', 'ApplyFilters', 'ResizeToShown', 'Magnifier',
     'RapidSelection', 'RapidKey', 'TogglePreview',
     'DirPreviewLonger', 'DirPreviewShorter', 'SlideShowMode', 'DirPreview', 'SlideShow',
+    'OpenFile',
     'Back', 'Exit');
   ActionCaptions: array[TMouseAction] of string = (
     '(nothing)',
@@ -359,6 +361,7 @@ const
     'Dir preview: slide show mode on / off (plays on in front)',
     'Total Commander dir preview on / off',
     'Slide show of this folder on / off',
+    'Open file ... (a file dialog)',
     'Back (leave a mode, else the settings screen)', 'Exit');
 
   OrderNames: array[TZoneOrder] of string = ('None', 'Date', 'Name', 'Random');

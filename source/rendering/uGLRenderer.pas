@@ -121,7 +121,8 @@ uses
   uFilters,
   uRenderer,
   uImageSaver,
-  uStopwatch;
+  uStopwatch,
+  uGLStlDraw;
 
 type
   EGLUnsuitable = class(Exception);
@@ -255,6 +256,15 @@ type
     FShaderNote: string;         { why the filters can't be shown }
     FUniforms: TGLFilterUniforms;
 
+    { 3D models drawn live (1.3): the painter, and whether it failed
+      (then TMView draws pictures of the model, as on the CPU). }
+    FStl: TGLStlPainter;
+    FStlFailed: Boolean;
+    FStlDrawMs: Double;          { the last model frame (with the D line: measured to the end) }
+    FStlFrames: array[0..127] of Double;   { when the last model frames were drawn }
+    FStlFrameHead: Integer;
+    FStencilBits: GLint;
+
     function MakeTextures(const AImage: IDecodedImage; ABitmap: TBGRACustomBitmap): TGLImageTextures;
     procedure DropTextures(var ATextures: TGLImageTextures);
     procedure DeleteQueued;
@@ -267,6 +277,9 @@ type
     procedure DrawTextures(ATextures: TGLImageTextures; AWidth, AHeight: Integer;
       ALens: Boolean = False);
     procedure DrawLens(AWidth, AHeight: Integer);
+    { The 3D model (Model, ModelView) live, where the picture of it
+      (ATextures) would be drawn. False: could not; the picture instead. }
+    function DrawModel(ATextures: TGLImageTextures; AWidth, AHeight: Integer): Boolean;
     { AFontName / AFontPt: a font of its own ('' / 0 = the standard; the
       info line, Day 24). AWrapWidth > 0: lines wider than that are
       broken between their parts (WrapAtParts; the info line, Day 31). }
@@ -304,6 +317,7 @@ type
     function Description: string; override;
     function IsUploading: Boolean; override;
     function FiltersAvailable: Boolean; override;
+    function DrawsModel: Boolean; override;
     property GLName: string read FGLName;
   end;
 
@@ -375,7 +389,8 @@ function MViewWglGetProcAddress(AName: PAnsiChar): Pointer; stdcall;
   external 'opengl32.dll' name 'wglGetProcAddress';
 {$ENDIF}
 
-{ An OpenGL function by name; nil if the driver hasn't got it. }
+{ An OpenGL function by name; nil if the driver hasn't got it. Also the
+  3D painter's loader (TGLProcLoader). }
 function LoadGLProc(const AName: AnsiString): Pointer;
 begin
   Result := nil;
@@ -465,6 +480,9 @@ begin
 
   MaxSize := 0;
   glGetIntegerv(GL_MAX_TEXTURE_SIZE, @MaxSize);
+  { 3D models (1.3): a section's cut face needs the stencil buffer. }
+  FStencilBits := 0;
+  glGetIntegerv(GL_STENCIL_BITS, @FStencilBits);
   FTileSize := PreferredTileSize;
   if (MaxSize > 0) and (MaxSize < FTileSize) then
     FTileSize := MaxSize;
@@ -645,6 +663,7 @@ begin
     with it. }
   FreeAndNil(FShown);
   FreeAndNil(FPending);
+  FreeAndNil(FStl);
   inherited Destroy;
 end;
 
@@ -654,6 +673,8 @@ begin
 end;
 
 function TGLRenderer.Description: string;
+var
+  Frames, I: Integer;
 begin
   Result := 'GPU ' + FGLName;
   if FLastUploadMs > 0 then
@@ -669,6 +690,22 @@ begin
     Result := Result + '   (old mipmaps)';
   if FGpuNote <> '' then
     Result := Result + '   (' + FGpuNote + ')';
+  { A 3D model (1.3): drawn live by the card (its time per frame), or as
+    pictures (software). }
+  if ModelShown and (Model <> nil) then
+  begin
+    if DrawsModel then
+    begin
+      { Frames in the last second (while it is being turned). }
+      Frames := 0;
+      for I := 0 to High(FStlFrames) do
+        if (FStlFrames[I] > 0) and (NowMs - FStlFrames[I] <= 1000) then
+          Inc(Frames);
+      Result := Result + Format('   3D live: %.1f ms per frame, %d frames/s', [FStlDrawMs, Frames]);
+    end
+    else
+      Result := Result + '   3D: pictures (software)';
+  end;
   if (FShaderNote <> '') and not ColourNeutral(Filters) then
     Result := Result + '   (' + FShaderNote + ')';
 end;
@@ -806,6 +843,8 @@ begin
   { The shader went with the context: made again when needed. }
   FShader := 0;
   FShaderTried := False;
+  if Assigned(FStl) then
+    FStl.ContextLost;
   ForgetBar(FInfoBar);
   ForgetBar(FDiagBar);
   ForgetBar(FModeBar);
@@ -1108,6 +1147,77 @@ begin
   if Filtered then
     FGL2.UseProgram(0);
   glDisable(GL_TEXTURE_2D);
+end;
+
+function TGLRenderer.DrawsModel: Boolean;
+begin
+  { A section needs the stencil buffer (the cut face). }
+  Result := FGL2.Loaded and not FStlFailed
+    and not (ModelView.Section and (FStencilBits <= 0));
+end;
+
+{ The picture's place on the screen as DrawTextures (without the 1:1
+  snap, which is for bitmaps), then the model drawn into it. }
+function TGLRenderer.DrawModel(ATextures: TGLImageTextures; AWidth, AHeight: Integer): Boolean;
+var
+  LogW, LogH, BmpW, BmpH, X0, Y0, X1, Y1: Integer;
+  Scale, SX, SY, CX, CY, StartMs: Double;
+  Scissored: Boolean;
+begin
+  Result := False;
+  BmpW := ATextures.Bitmap.Width;
+  BmpH := ATextures.Bitmap.Height;
+  LogicalSize(LogW, LogH);
+  Scale := ScaleFor(AWidth, AHeight);
+  if (Scale <= 0) or (LogW <= 0) or (BmpW <= 0) or (BmpH <= 0) then
+    Exit;
+  FLastScale := Scale;
+  SX := Scale * LogW / BmpW;
+  SY := Scale * LogH / BmpH;
+  CX := AWidth / 2 + FView.PanX;
+  CY := AHeight / 2 + FView.PanY;
+  if FStl = nil then
+    FStl := TGLStlPainter.Create(@LoadGLProc);
+  SetupScreenProjection(AWidth, AHeight);
+  glTranslatef(CX, CY, 0);
+  glRotatef(FView.Angle, 0, 0, 1);
+  if Filters.Mirror then
+    glScalef(-SX, SY, 1)
+  else
+    glScalef(SX, SY, 1);
+  glTranslatef(-BmpW / 2, -BmpH / 2, 0);
+  { The picture's rectangle on the screen (not turned: always for a
+    model, the rotate mode turns the model) by the scissor test: then the
+    painter needs no fragment test (speed, 1.3). }
+  Scissored := Abs(FView.Angle) < 0.01;
+  if Scissored then
+  begin
+    X0 := Max(0, Floor(CX - BmpW * SX / 2));
+    X1 := Min(AWidth, Ceil(CX + BmpW * SX / 2));
+    Y0 := Max(0, Floor(CY - BmpH * SY / 2));
+    Y1 := Min(AHeight, Ceil(CY + BmpH * SY / 2));
+    glEnable(GL_SCISSOR_TEST);
+    { Window coordinates count from the bottom. }
+    glScissor(X0, AHeight - Y1, Max(0, X1 - X0), Max(0, Y1 - Y0));
+  end;
+  StartMs := NowMs;
+  Result := FStl.Draw(Model, ModelView, BmpW, BmpH, SX, Scissored);
+  if Scissored then
+    glDisable(GL_SCISSOR_TEST);
+  { With the D line: the time the card really took for the model. }
+  if ShowDiagnostics then
+    glFinish;
+  FStlDrawMs := NowMs - StartMs;
+  FStlFrames[FStlFrameHead] := StartMs;
+  FStlFrameHead := (FStlFrameHead + 1) mod Length(FStlFrames);
+  SetupScreenProjection(AWidth, AHeight);
+  if not Result then
+  begin
+    { Not on this card after all: pictures again (TMView). }
+    FStlFailed := True;
+    FGpuNote := FStl.Note;
+    ModelFallback := True;
+  end;
 end;
 
 { The magnifier: a black disc, the image again Mag times larger cut
@@ -1566,6 +1676,9 @@ begin
     DrawBar(FCenterBar, (AWidth - FCenterBar.Width) div 2,
       (AHeight - Abs(FCenterBar.Height)) div 2);
   end
+  else if (FShown <> nil) and ModelShown and (Model <> nil) and DrawsModel
+    and DrawModel(FShown, AWidth, AHeight) then
+    { A 3D model, live (1.3): drawn where its picture would be. }
   else if FShown <> nil then
   begin
     DrawTextures(FShown, AWidth, AHeight);

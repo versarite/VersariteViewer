@@ -121,6 +121,9 @@ begin
   inherited Create(AOwner);
   TabStop := True;
   DoubleBuffered := True;
+  { 3D models (1.3): the cut face of a section is closed with the
+    stencil buffer (uGLStlDraw). }
+  StencilBits := 8;
   FInput := TMouseEngine.Create(Self);
   FInput.OnCommand := @HandleInputCommand;
 end;
