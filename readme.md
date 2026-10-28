@@ -2,10 +2,11 @@
 *formerly MView*
 ## Written with support from Claude/Opus5.5 and ChatGPT
 
-A *very* fast native stand-alone Windows image viewer, driven by the mouse. No external libraries needed. 
-Made for the microscope bench, for browsing whole experiment folders, and not too bad at any other kind of image collection.
+A *very* fast native stand-alone Windows image viewer, driven by the mouse. Keyboard key assignments are supported. No external libraries needed. 
+Made for the microscope bench, for browsing whole experiment folders, and not too bad at any other kind of image collection. Designed primarily
+to symbiotically work with TotalCommander, but handles files from any other file manager. 
 By [Versarite](https://github.com/versarite). Copyright © 2026 DL1BWA/AC1WW. Free software under the GNU GPL v3.
-Claude and - in the early design phase - ChatGPT helped me greatly to unlock the capabilities of Lazarus/FPC.
+This project is educational. It should not only produce useful software, but illustrate in detail how use agent-based coding on a simple subject to get from an idea to a satisfactory result. Claude and - in the early design phase - ChatGPT helped me greatly to unlock the capabilities of out-of-the-box Lazarus/FPC. 
 
 **Status: release 1.3 (2026-10-27).** 
 A small number of new features has been added following feedback - and 3D models (STL) with sections (see [What 1.3 brings](#what-13-brings)). The development of VersariteViewer stops at 1.3 for now.
