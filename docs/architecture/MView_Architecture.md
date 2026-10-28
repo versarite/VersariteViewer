@@ -1,6 +1,6 @@
 ---
-title: "VersariteViewer 1.2 — Architecture"
-subtitle: "Units, dependencies and how they work together (release 1.2, Day 31, 2026-10-22)"
+title: "VersariteViewer 1.3 — Architecture"
+subtitle: "Units, dependencies and how they work together (release 1.3, Day 35, 2026-10-28)"
 ---
 
 # How to read this
@@ -55,6 +55,13 @@ layering: no unit uses one in a higher layer, still no cycles.
   shown as a crop), the aiming loupe, the edition's Undo joined with the viewer's (NextUndoStamp),
   the image's own pixels (GetImagePixels) and the edition's ini keys (in uEdition:
   RegisterEditionKey).
+- **Release 1.3** (Days 32 to 34): four new units, so the dependency picture (redrawn for 1.3)
+  shows 66 units and 208 uses, still without cycles. uStlModel reads an STL model and holds its view;
+  uGLStlDraw draws it on the graphics card (vertex buffers, GLSL shaders, the cut face closed with
+  the stencil buffer), called by uGLRenderer; uStlPanel puts the 3D controls into the filter panel;
+  uGifJoin joins two animated GIFs one frame at a time. TMView runs two new threads: the sharp
+  picture of a model (TStlPictureThread) and the joining of GIFs (TGifJoinThread), both picked up
+  by the delivery pump.
 
 # Picture 1 — unit dependencies
 
@@ -64,7 +71,7 @@ Arrows point from a unit to the units it uses. The layers (L0 at the bottom to L
 dependency depth: a unit only uses units in lower layers, so there are **no cycles**. uMainForm is the
 only unit that sees everything; the imaging units never see the window, and the utility units see
 nothing of the viewer at all. Layers with many units are drawn as two staggered rows. Units marked
-NEW came after 1.0 (the list above). Versarite Image Lab's own units (`source\microscopy\`) sit on
+NEW came after 1.2 (the list above). Versarite Image Lab's own units (`source\microscopy\`) sit on
 top of these and are not drawn.
 
 # Picture 2 — at run time
@@ -84,7 +91,11 @@ a loader thread of their own; the Total Commander follower asks Total Commander 
 through window messages; a second instance hands its path to the running one through a hidden
 message window and ends.
 
-New since 1.0 (the bottom band, NEW): the scan bar's thumbnails, a container's entries and
+New in 1.3 (the bottom band, NEW): a 3D model is drawn live on the UI thread by the GPU renderer
+(uGLStlDraw), with its controls in the filter panel (uStlPanel); its sharp picture and the joining
+of two GIFs run on threads of their own, polled by the delivery pump.
+
+Added in 1.1 (the band above it): the scan bar's thumbnails, a container's entries and
 thumbnails (ZIP / CBZ; .lif in Image Lab) and the dir peek each run on threads of their own and
 hand their results back with `TThread.Queue`; the settings are written on the UI thread through
 uSafeFile.
@@ -114,6 +125,8 @@ uSafeFile.
 | imaging | uTiffQuick | Fast TIFF: only the needed rows of raw TIFFs, own parallel LZW. | workers (+ helpers) |
 | imaging | uWicDecoder | Decoding through Windows WIC, in bands for huge PNG / TIFF / BMP. | workers |
 | imaging | uGifDecoder | Own GIF decoder: first frame fast, all frames on demand. | workers |
+| imaging | uGifJoin | **1.3** Joins two animated GIFs (original sizes, or scaled to the larger), one frame at a time, with progress and cancel. | own thread |
+| imaging | uStlModel | **1.3** STL models (binary and ASCII): reading, the view (turn, tilt, section), the software picture. | workers, own thread, UI |
 | imaging | uAnimation | Animation frames, the frame cursor and the frame clock. | workers, then UI |
 | imaging | uImageScaling | Fast box downscaling for screen copies. | workers |
 | imaging | uImageFormats | The one list of image file extensions (1.1: also the formats only Windows' codecs read, and which codec is missing). | any |
@@ -124,6 +137,8 @@ uSafeFile.
 | rendering | uRenderer | View state (fit, zoom, pan, rotation, overlays) and the CPU renderer. | UI |
 | rendering | uGLRenderer | The GPU renderer: textures, tiles, mipmaps, overlay text. | UI |
 | rendering | uGLMediaView | The OpenGL drawing surface. | UI |
+| rendering | uGLStlDraw | **1.3** A 3D model on the graphics card: vertex buffers, two GLSL programs, the cut face closed with the stencil buffer. | UI |
+| rendering | uStlPanel | **1.3** The 3D controls in the filter panel: Section, Flip side, Plane X / Y / position, Elevation, Smoothing, Grid, Edges. | UI |
 | rendering | uSortPanel | The sort panel at the right edge: buttons, pin, flash, icon preview; drawn as one picture. | UI |
 | rendering | uSortIcons | The slot icons: files read on a loader thread, pictures scaled on the UI thread. | UI + loader |
 | rendering | uFilterPanel | The filter panel at the left edge: histogram, rows, Auto, Reset; drawn as one picture. | UI |
