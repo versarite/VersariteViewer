@@ -161,6 +161,11 @@ function AutomaticCacheSizeMB: Integer;
 
 implementation
 
+{$IFDEF LINUX}
+uses
+  Linux;
+{$ENDIF}
+
 {$IFDEF WINDOWS}
 type
   TMemStatusEx = record
@@ -185,6 +190,11 @@ var
   Status: TMemStatusEx;
   TotalMB: QWord;
 {$ENDIF}
+{$IFDEF LINUX}
+var
+  Info: TSysInfo;
+  TotalMB: QWord;
+{$ENDIF}
 begin
   Result := 1024;
   {$IFDEF WINDOWS}
@@ -193,6 +203,18 @@ begin
   if MViewGlobalMemoryStatusEx(Status) then
   begin
     TotalMB := Status.ullTotalPhys div (1024 * 1024);
+    Result := Integer(TotalMB div 4);
+  end;
+  {$ENDIF}
+  {$IFDEF LINUX}
+  { 1.4: sysinfo(2), sizes in units of mem_unit bytes. }
+  FillChar(Info, SizeOf(Info), 0);
+  if (Sysinfo(@Info) = 0) and (Info.totalram > 0) then
+  begin
+    TotalMB := QWord(Info.totalram);
+    if Info.mem_unit > 1 then
+      TotalMB := TotalMB * Info.mem_unit;
+    TotalMB := TotalMB div (1024 * 1024);
     Result := Integer(TotalMB div 4);
   end;
   {$ENDIF}

@@ -388,6 +388,11 @@ var
 function MViewWglGetProcAddress(AName: PAnsiChar): Pointer; stdcall;
   external 'opengl32.dll' name 'wglGetProcAddress';
 {$ENDIF}
+{$IFDEF LINUX}
+{ 1.4: GLX's loader (libGL; the OpenGL control links it anyway). }
+function MViewGlxGetProcAddress(AName: PAnsiChar): Pointer; cdecl;
+  external 'GL' name 'glXGetProcAddressARB';
+{$ENDIF}
 
 { An OpenGL function by name; nil if the driver hasn't got it. Also the
   3D painter's loader (TGLProcLoader). }
@@ -399,6 +404,11 @@ begin
   { Some drivers return 1, 2 or 3 instead of nil for "not there". }
   if PtrUInt(Result) <= 3 then
     Result := nil;
+  {$ENDIF}
+  {$IFDEF LINUX}
+  { GLX answers for any name; a function the driver lacks is found out
+    by the version and extension checks before it is used. }
+  Result := MViewGlxGetProcAddress(PAnsiChar(AName));
   {$ENDIF}
 end;
 
@@ -500,6 +510,15 @@ begin
   { Some drivers return 1, 2 or 3 instead of nil for "not there". }
   if PtrUInt(Pointer(FGenerateMipmap)) <= 3 then
     FGenerateMipmap := nil;
+  {$ELSE}
+  { 1.4: GLX gives an address for any name, so the version (3.0) or the
+    extension decides whether the function is really there. }
+  P := glGetString(GL_EXTENSIONS);
+  if Major >= 3 then
+    Pointer(FGenerateMipmap) := LoadGLProc('glGenerateMipmap')
+  else if (P <> nil) and ((Pos('GL_ARB_framebuffer_object', string(P)) > 0)
+    or (Pos('GL_EXT_framebuffer_object', string(P)) > 0)) then
+    Pointer(FGenerateMipmap) := LoadGLProc('glGenerateMipmapEXT');
   {$ENDIF}
 
   { The shader functions for the display filters (OpenGL 2.0). }

@@ -293,14 +293,215 @@ end;
 
 {$ELSE}
 
+{ 1.4, Linux: a Unix domain socket in the abstract namespace (Linux
+  only: no file, gone with the process, so a crashed VersariteViewer
+  leaves nothing behind), one per edition and user. A new instance
+  connects, sends the path (UTF-8) and closes its side; the running one
+  answers 'OK' once it has taken it. No answer within 5 s (it hangs):
+  the new one runs on its own, as on Windows. The running one accepts
+  on a 100 ms timer on the UI thread (non-blocking socket, no thread). }
+uses
+  SysUtils,
+  Classes,
+  ExtCtrls,
+  BaseUnix,
+  Sockets,
+  uEdition;
+
+const
+  ReplyOk = 'OK';
+  AnswerWaitMs = 5000;
+  MaxPathBytes = 65536;
+  SO_PEERCRED_OPT = 17;          { Linux }
+
+type
+  { struct ucred: the connecting process, from the kernel. }
+  TPeerCred = record
+    Pid: Int32;
+    Uid: UInt32;
+    Gid: UInt32;
+  end;
+
+type
+  TListener = class
+  private
+    FSocket: cint;
+    FTimer: TTimer;
+    procedure HandleTimer(Sender: TObject);
+  public
+    OnPath: TInstancePathEvent;
+    constructor Create(ASocket: cint);
+    destructor Destroy; override;
+  end;
+
+var
+  Listener: TListener = nil;
+
+function SocketName: string;
+begin
+  Result := Format('%s.Instance.%d', [EditionId, FpGetUid]);
+end;
+
+{ The abstract-namespace address: sun_path starts with #0. }
+procedure MakeAddress(out AAddr: TUnixSockAddr; out ALength: TSockLen);
+var
+  Name: AnsiString;
+begin
+  FillChar(AAddr, SizeOf(AAddr), 0);
+  AAddr.family := AF_UNIX;
+  Name := AnsiString(SocketName);
+  if Length(Name) > High(AAddr.path) - 1 then
+    SetLength(Name, High(AAddr.path) - 1);
+  Move(Name[1], AAddr.path[1], Length(Name));
+  ALength := SizeOf(AAddr.family) + 1 + Length(Name);
+end;
+
+{ Waits up to AMs for ASocket to become readable. }
+function WaitReadable(ASocket: cint; AMs: Integer): Boolean;
+var
+  Fds: TFDSet;
+  Wait: TTimeVal;
+begin
+  fpFD_ZERO(Fds);
+  fpFD_SET(ASocket, Fds);
+  Wait.tv_sec := AMs div 1000;
+  Wait.tv_usec := (AMs mod 1000) * 1000;
+  Result := fpSelect(ASocket + 1, @Fds, nil, nil, @Wait) > 0;
+end;
+
 function HandOverToRunningInstance(const APath: string): Boolean;
+var
+  S: cint;
+  Addr: TUnixSockAddr;
+  Len: TSockLen;
+  Bytes: UTF8String;
+  Answer: array[0..7] of AnsiChar;
+  Got: ssize_t;
 begin
   Result := False;
+  S := fpSocket(AF_UNIX, SOCK_STREAM, 0);
+  if S < 0 then
+    Exit;
+  try
+    MakeAddress(Addr, Len);
+    if fpConnect(S, @Addr, Len) <> 0 then
+      Exit;                      { none running }
+    Bytes := UTF8String(APath);
+    if (Length(Bytes) > 0) and (fpSend(S, @Bytes[1], Length(Bytes), 0) <> Length(Bytes)) then
+      Exit;
+    fpShutdown(S, SHUT_WR);      { "that was all" }
+    if not WaitReadable(S, AnswerWaitMs) then
+      Exit;                      { it hangs: run on our own }
+    FillChar(Answer, SizeOf(Answer), 0);
+    Got := fpRecv(S, @Answer[0], SizeOf(Answer) - 1, 0);
+    Result := (Got >= Length(ReplyOk)) and (Copy(string(Answer), 1, Length(ReplyOk)) = ReplyOk);
+  finally
+    CloseSocket(S);
+  end;
+end;
+
+constructor TListener.Create(ASocket: cint);
+begin
+  inherited Create;
+  FSocket := ASocket;
+  FTimer := TTimer.Create(nil);
+  FTimer.Interval := 100;
+  FTimer.OnTimer := @HandleTimer;
+  FTimer.Enabled := True;
+end;
+
+destructor TListener.Destroy;
+begin
+  FTimer.Free;
+  CloseSocket(FSocket);
+  inherited Destroy;
+end;
+
+{ The process on the other end of ASocket runs as this user. }
+function SameUser(ASocket: cint): Boolean;
+var
+  Cred: TPeerCred;
+  Len: TSockLen;
+begin
+  FillChar(Cred, SizeOf(Cred), $FF);
+  Len := SizeOf(Cred);
+  Result := (fpGetSockOpt(ASocket, SOL_SOCKET, SO_PEERCRED_OPT, @Cred, @Len) = 0)
+    and (Cred.Uid = FpGetUid);
+end;
+
+{ One waiting instance per tick: read its path (it closes its side when
+  done; at most 2 s), answer, hand the path on. Never lets an exception
+  out. }
+procedure TListener.HandleTimer(Sender: TObject);
+var
+  C: cint;
+  Buffer: array[0..4095] of Byte;
+  Data: TBytesStream;
+  Got: ssize_t;
+  Path: UTF8String;
+  Reply: AnsiString;
+begin
+  C := fpAccept(FSocket, nil, nil);
+  if C < 0 then
+    Exit;                        { nobody waiting (non-blocking) }
+  { The abstract namespace has no file permissions: only this user's
+    programs are listened to (the kernel's word on who connected). }
+  if not SameUser(C) then
+  begin
+    CloseSocket(C);
+    Exit;
+  end;
+  Data := TBytesStream.Create;
+  try
+    try
+      repeat
+        if not WaitReadable(C, 2000) then
+          Break;
+        Got := fpRecv(C, @Buffer[0], SizeOf(Buffer), 0);
+        if Got > 0 then
+          Data.WriteBuffer(Buffer[0], Got);
+      until (Got <= 0) or (Data.Size > MaxPathBytes);
+      SetString(Path, PAnsiChar(Data.Bytes), Data.Size);
+      Reply := ReplyOk;
+      fpSend(C, @Reply[1], Length(Reply), 0);
+    finally
+      CloseSocket(C);
+    end;
+    if Assigned(OnPath) then
+      OnPath(string(Path));
+  except
+    { A bad message must not stop the viewer. }
+  end;
+  Data.Free;
 end;
 
 procedure StartInstanceListener(AOnPath: TInstancePathEvent);
+var
+  S: cint;
+  Addr: TUnixSockAddr;
+  Len: TSockLen;
 begin
+  if Listener <> nil then
+  begin
+    Listener.OnPath := AOnPath;
+    Exit;
+  end;
+  S := fpSocket(AF_UNIX, SOCK_STREAM, 0);
+  if S < 0 then
+    Exit;
+  MakeAddress(Addr, Len);
+  if (fpBind(S, @Addr, Len) <> 0) or (fpListen(S, 8) <> 0) then
+  begin
+    CloseSocket(S);              { another one listens already: fine }
+    Exit;
+  end;
+  FpFcntl(S, F_SETFL, FpFcntl(S, F_GETFL) or O_NONBLOCK);
+  Listener := TListener.Create(S);
+  Listener.OnPath := AOnPath;
 end;
+
+finalization
+  FreeAndNil(Listener);
 
 {$ENDIF}
 

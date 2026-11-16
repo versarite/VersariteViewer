@@ -231,7 +231,10 @@ function MayHavePreview(const AFileName: string): Boolean;
 implementation
 
 uses
-  uIconFile;
+  uIconFile,
+  uPngQuick,
+  uDriveHealth,
+  BGRAReadPng;
 
 type
 
@@ -251,6 +254,138 @@ procedure TProgressAdapter.HandleProgress(Sender: TObject; Stage: TFPImgProgress
 begin
   if Assigned(Cancel) and Cancel() then
     Continue := False;
+end;
+
+type
+  { Linux port (1.4): BGRABitmap's PNG reader reports no progress, so a
+    long decode from memory (a 21600 x 21600 PNG: WIC did it scaled on
+    Windows) never came back to its cancel check, and after 20 s the
+    worker was taken as stuck in a read: "Disk not responding". While
+    a file already read into memory is decoded, this thread calls the
+    cancel check every KeepAliveMs: the job's alive tick stays fresh.
+    The disk read itself stays outside it, so a hung disk is still
+    found. The check (TDecodeJob.WorkerCancelCheck) is safe from any
+    thread. }
+  TDecodeKeepAlive = class(TThread)
+  private
+    FCancel: TCancelCheck;
+    FStop: PRTLEvent;
+  protected
+    procedure Execute; override;
+  public
+    constructor Create(ACancel: TCancelCheck);
+    destructor Destroy; override;
+    { Stops the thread, waits for it, frees it. }
+    procedure Finish;
+  end;
+
+const
+  KeepAliveMs = 500;
+  { Read in parts this large, with a cancel check after each. }
+  ReadPartBytes = 8 * 1024 * 1024;
+
+constructor TDecodeKeepAlive.Create(ACancel: TCancelCheck);
+begin
+  FCancel := ACancel;
+  FStop := RTLEventCreate;
+  FreeOnTerminate := False;
+  inherited Create(False);
+end;
+
+destructor TDecodeKeepAlive.Destroy;
+begin
+  RTLEventDestroy(FStop);
+  inherited Destroy;
+end;
+
+procedure TDecodeKeepAlive.Execute;
+begin
+  while not Terminated do
+  begin
+    RTLEventWaitFor(FStop, KeepAliveMs);
+    if Terminated then
+      Break;
+    if Assigned(FCancel) then
+      FCancel();
+  end;
+end;
+
+procedure TDecodeKeepAlive.Finish;
+begin
+  Terminate;
+  RTLEventSetEvent(FStop);
+  WaitFor;
+  Free;
+end;
+
+{ 1.4 (Day 40): opening and reading with the OS error kept. A media
+  error (CRC, corrupt, device I/O ...) marks the drive as in trouble
+  (uDriveHealth: no preloads from it for a while, a notice); every
+  failure raises, so the loader makes an error entry with the reason
+  (a failed read used to look like the end of the file). }
+procedure DriveError(const AFileName, AAction: string; ACode: Integer);
+begin
+  if IsMediaErrorCode(ACode) then
+    NoteDriveTrouble(AFileName, Format('%s while reading %s', [SysErrorMessage(ACode),
+      ExtractFileName(AFileName)]));
+  raise EInOutError.CreateFmt('%s "%s": %s', [AAction, ExtractFileName(AFileName),
+    SysErrorMessage(ACode)]);
+end;
+
+function OpenForRead(const AFileName: string): THandle;
+begin
+  Result := FileOpen(AFileName, fmOpenRead or fmShareDenyNone);
+  if Result = feInvalidHandle then
+    DriveError(AFileName, 'Cannot open', GetLastOSError);
+end;
+
+function ReadChecked(AHandle: THandle; const AFileName: string; var ABuffer;
+  ACount: Integer): Integer;
+begin
+  Result := FileRead(AHandle, ABuffer, ACount);
+  if Result < 0 then
+    DriveError(AFileName, 'Read error in', GetLastOSError);
+end;
+
+function HandleSize(AHandle: THandle): Int64;
+begin
+  Result := FileSeek(AHandle, Int64(0), fsFromEnd);
+  FileSeek(AHandle, Int64(0), fsFromBeginning);
+end;
+
+{ Reads the whole file into AData in parts, checking ACancel between
+  them (the alive tick, and a cancel). False if cancelled. }
+function ReadWholeFile(const AFileName: string; AData: TMemoryStream;
+  ACancel: TCancelCheck): Boolean;
+var
+  H: THandle;
+  Total, Got: Int64;
+  Part: Integer;
+begin
+  Result := False;
+  H := OpenForRead(AFileName);
+  try
+    Total := HandleSize(H);
+    if Total < 0 then
+      Total := 0;
+    AData.SetSize(Total);
+    Got := 0;
+    while Got < Total do
+    begin
+      if Assigned(ACancel) and ACancel() then
+        Exit;
+      Part := Integer(Min(Int64(ReadPartBytes), Total - Got));
+      Part := ReadChecked(H, AFileName, (PByte(AData.Memory) + Got)^, Part);
+      if Part <= 0 then
+        Break;
+      Inc(Got, Part);
+    end;
+    AData.SetSize(Got);
+    AData.Position := 0;
+    Result := True;
+  finally
+    FileClose(H);
+  end;
 end;
 
 function IsCancelled(ACancel: TCancelCheck): Boolean;
@@ -622,7 +757,10 @@ begin
       else
         IOGate.YieldToDisplay(ACancel);
       try
-        Data.LoadFromFile(AKey.FileName);
+        { In parts (1.4: was LoadFromFile): the OS error is kept, and a
+          cancel stops it between parts. }
+        if not ReadWholeFile(AKey.FileName, Data, ACancel) then
+          Exit(TDecodedImage.CreateError(AKey, 'Cancelled'));
       finally
         if APriorityRead then
           IOGate.EndPriorityRead;
@@ -797,7 +935,7 @@ function ReadFileStart(const AFileName: string; AMaxBytes: Int64;
   ACancel: TCancelCheck; APriorityRead: Boolean;
   out AData: TBytes; out AComplete: Boolean): Boolean;
 var
-  Stream: TFileStream;
+  H: THandle;
   Total, Want, Got: Int64;
   Part: Integer;
 begin
@@ -809,9 +947,9 @@ begin
   else
     IOGate.YieldToDisplay(ACancel);
   try
-    Stream := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
+    H := OpenForRead(AFileName);
     try
-      Total := Stream.Size;
+      Total := Max(Int64(0), HandleSize(H));
       Want := Min(Total, AMaxBytes);
       SetLength(AData, Want);
       Got := 0;
@@ -820,7 +958,7 @@ begin
         if IsCancelled(ACancel) then
           Exit;
         Part := Integer(Min(Int64(GifReadChunk), Want - Got));
-        Part := Stream.Read(AData[Got], Part);
+        Part := ReadChecked(H, AFileName, AData[Got], Part);
         if Part <= 0 then
           Break;
         Inc(Got, Part);
@@ -829,7 +967,7 @@ begin
       AComplete := Got >= Total;
       Result := True;
     finally
-      Stream.Free;
+      FileClose(H);
     end;
   finally
     if APriorityRead then
@@ -1024,6 +1162,10 @@ var
   StartMs, DecodeMs, PreviewStartMs: Double;
   HeaderW, HeaderH: Int64;
   Reason: string;
+  Data: TMemoryStream;
+  Reader: TFPCustomImageReader;
+  KeepAlive: TDecodeKeepAlive;
+  ReadOk: Boolean;
 begin
   { The memory guard, before BGRABitmap allocates whatever the header
     claims (a corrupt or a NASA-sized PNG). }
@@ -1040,17 +1182,40 @@ begin
     try
       Bitmap := TBGRABitmap.Create;
       Bitmap.OnProgress := @Adapter.HandleProgress;
-      { Reading and decoding happen in one call here, so the gate stays
-        raised for both. }
-      if APriorityRead then
-        IOGate.BeginPriorityRead
-      else
-        IOGate.YieldToDisplay(ACancel);
+      { 1.4: first read (the gate raised only for the read), then decode
+        from memory with the alive tick kept fresh (TDecodeKeepAlive).
+        The same reader BGRABitmap's LoadFromFileUTF8 picks. }
+      Data := TMemoryStream.Create;
       try
-        Bitmap.LoadFromFileUTF8(AKey.FileName);
-      finally
         if APriorityRead then
-          IOGate.EndPriorityRead;
+          IOGate.BeginPriorityRead
+        else
+          IOGate.YieldToDisplay(ACancel);
+        try
+          ReadOk := ReadWholeFile(AKey.FileName, Data, ACancel);
+        finally
+          if APriorityRead then
+            IOGate.EndPriorityRead;
+        end;
+        if not ReadOk then
+        begin
+          FreeAndNil(Bitmap);
+          Exit(TDecodedImage.CreateError(AKey, 'Cancelled'));
+        end;
+        Reader := CreateBGRAImageReader(DetectFileFormat(Data, ExtractFileExt(AKey.FileName)));
+        try
+          Data.Position := 0;
+          KeepAlive := TDecodeKeepAlive.Create(ACancel);
+          try
+            Bitmap.LoadFromStream(Data, Reader, []);
+          finally
+            KeepAlive.Finish;
+          end;
+        finally
+          Reader.Free;
+        end;
+      finally
+        Data.Free;
       end;
       Bitmap.OnProgress := nil;
       DecodeMs := NowMs - StartMs;
@@ -1082,6 +1247,181 @@ begin
     end;
   finally
     Adapter.Free;
+  end;
+end;
+
+{ ---- Large PNG without WIC (1.4, Linux port) ----
+
+  On Windows WIC reads a large PNG scaled down for the quick view
+  (LoadWicBands). Without WIC, BGRABitmap's reader decoded every pixel
+  first (a 21600 x 21600 PNG: 466 MP, about 2 GB and tens of seconds)
+  just to show a screen-sized picture. Here its reader keeps only every
+  2^k-th row while it decodes (MinifyHeight: still inflated in full,
+  but not converted or stored), the columns are then averaged by the
+  same factor, and the rest is the usual ShrinkToSize. Faster still,
+  and tried first: uPngQuick (the system's zlib, blocks averaged while
+  the rows come); BGRABitmap's reader is the fallback. The result is
+  the Screen quality with the full size noted, as from WIC; the Full
+  decode follows as before (LoadOther), after a pause or on zooming. }
+
+function IsPngFileName(const AFileName: string): Boolean;
+begin
+  Result := LowerCase(ExtractFileExt(AFileName)) = '.png';
+end;
+
+{ A new bitmap AFactor times narrower: each row's AFactor neighbouring
+  pixels averaged (the last Width mod AFactor columns left out). }
+function ShrinkColumns(ASource: TBGRABitmap; AFactor: Integer): TBGRABitmap;
+var
+  W, X, Y, K: Integer;
+  Src, Dst: PBGRAPixel;
+  SR, SG, SB, SA, F: Cardinal;
+begin
+  W := Max(1, ASource.Width div AFactor);
+  F := Cardinal(AFactor);
+  Result := TBGRABitmap.Create(W, ASource.Height);
+  try
+    for Y := 0 to ASource.Height - 1 do
+    begin
+      Src := ASource.ScanLine[Y];
+      Dst := Result.ScanLine[Y];
+      for X := 0 to W - 1 do
+      begin
+        SR := 0;
+        SG := 0;
+        SB := 0;
+        SA := 0;
+        for K := 1 to AFactor do
+        begin
+          Inc(SR, Src^.red);
+          Inc(SG, Src^.green);
+          Inc(SB, Src^.blue);
+          Inc(SA, Src^.alpha);
+          Inc(Src);
+        end;
+        Dst^.red := Byte(SR div F);
+        Dst^.green := Byte(SG div F);
+        Dst^.blue := Byte(SB div F);
+        Dst^.alpha := Byte(SA div F);
+        Inc(Dst);
+      end;
+    end;
+    Result.InvalidateBitmap;
+  except
+    FreeAndNil(Result);
+    raise;
+  end;
+end;
+
+{ The Screen quality of a PNG at least 4 times taller than its fitted
+  size; nil if it isn't (or the reader fails: LoadOther then tries and
+  reports). }
+function LoadPngScreen(const AKey: TImageKey; ACancel: TCancelCheck;
+  APreviewWidth, APreviewHeight: Integer; APriorityRead: Boolean): IDecodedImage;
+var
+  HeaderW, HeaderH: Int64;
+  FitW, FitH, Factor: Integer;
+  Data: TMemoryStream;
+  Png: TBGRAReaderPNG;
+  Bitmap, Narrow, Shrunk: TBGRABitmap;
+  KeepAlive: TDecodeKeepAlive;
+  StartMs, DecodeMs, ShrinkStartMs: Double;
+  Reason: string;
+  ReadOk, Cancelled: Boolean;
+  QuickW, QuickH: Integer;
+begin
+  Result := nil;
+  if (APreviewWidth <= 0) or (APreviewHeight <= 0) then
+    Exit;
+  if not HeaderImageSize(AKey.FileName, HeaderW, HeaderH) then
+    Exit;
+  if (HeaderW <= 0) or (HeaderH <= 0) or (HeaderW > High(Integer)) or (HeaderH > High(Integer)) then
+    Exit;
+  FitSize(Integer(HeaderW), Integer(HeaderH), APreviewWidth, APreviewHeight, FitW, FitH);
+  { Less than 4 x: the full decode is quick enough (LoadOther). }
+  if HeaderH < 4 * Int64(FitH) then
+    Exit;
+  { At most this much is kept: full width, below 4 x the fitted height. }
+  if not DecodeFits(HeaderW, 4 * Int64(FitH), 0, Reason) then
+    Exit;
+
+  StartMs := NowMs;
+  Bitmap := nil;
+  Narrow := nil;
+  Data := TMemoryStream.Create;
+  Png := TBGRAReaderPNG.Create;
+  try
+    try
+      if APriorityRead then
+        IOGate.BeginPriorityRead
+      else
+        IOGate.YieldToDisplay(ACancel);
+      try
+        ReadOk := ReadWholeFile(AKey.FileName, Data, ACancel);
+      finally
+        if APriorityRead then
+          IOGate.EndPriorityRead;
+      end;
+      if not ReadOk then
+        Exit(TDecodedImage.CreateError(AKey, 'Cancelled'));
+
+      { First the own reader: the system's zlib, F x F blocks averaged
+        while the rows come (uPngQuick). }
+      Bitmap := DecodePngReduced(Data, FitW, FitH, ACancel, QuickW, QuickH, Cancelled);
+      if Cancelled then
+        Exit(TDecodedImage.CreateError(AKey, 'Cancelled'));
+      if Bitmap <> nil then
+      begin
+        DecodeMs := NowMs - StartMs;
+        ShrinkStartMs := NowMs;
+      end
+      else
+      begin
+        { Else BGRABitmap's reader. Rows kept: every 2^k-th, k as large
+          as leaves at least twice the fitted height (so ShrinkToSize
+          still averages). }
+        Data.Position := 0;
+        Png.MinifyHeight := 2 * FitH;
+        Bitmap := TBGRABitmap.Create;
+        KeepAlive := TDecodeKeepAlive.Create(ACancel);
+        try
+          Bitmap.LoadFromStream(Data, Png, []);
+        finally
+          KeepAlive.Finish;
+        end;
+        DecodeMs := NowMs - StartMs;
+        if IsCancelled(ACancel) then
+          Exit(TDecodedImage.CreateError(AKey, 'Cancelled'));
+        if (Bitmap.Width = 0) or (Bitmap.Height = 0) then
+          Exit(nil);
+
+        ShrinkStartMs := NowMs;
+        { The columns by the factor the rows were thinned by: the
+          proportions are right again. }
+        Factor := Png.VerticalShrinkFactor;
+        if (Factor > 1) and (Factor <= Bitmap.Width) then
+        begin
+          Narrow := ShrinkColumns(Bitmap, Factor);
+          FreeAndNil(Bitmap);
+          Bitmap := Narrow;
+          Narrow := nil;
+        end;
+      end;
+      Shrunk := ShrinkToSize(Bitmap, FitW, FitH);
+      FreeAndNil(Bitmap);
+      Result := TDecodedImage.Create(AKey, qlScreen, Shrunk, nil,
+        DecodeMs, NowMs - ShrinkStartMs, Integer(HeaderW), Integer(HeaderH));
+    except
+      on E: EOutOfMemory do
+        Result := TDecodedImage.CreateError(AKey, E.Message, NowMs - StartMs);
+      on E: Exception do
+        Result := nil;     { LoadOther tries, and reports what is wrong }
+    end;
+  finally
+    Bitmap.Free;
+    Narrow.Free;
+    Png.Free;
+    Data.Free;
   end;
 end;
 
@@ -1277,6 +1617,18 @@ function TMediaLoader.Load(const AFileName: string; AQuality: TQualityLevel;
 var
   Key: TImageKey;
 begin
+  { 1.4 (Day 40): a preload from a drive that had read errors or didn't
+    answer a little while ago: not even its size is asked for (each look
+    adds to a failing drive's retries). Not an error of the file: the
+    viewer asks again later. The image the user goes to is read. }
+  if (not APriorityRead) and DriveInTrouble(AFileName) then
+  begin
+    Key.FileName := AFileName;
+    Key.FileSize := 0;
+    Key.FileTime := 0;
+    Exit(TDecodedImage.CreateError(Key, DriveSkippedMessage));
+  end;
+
   Key := MakeImageKey(AFileName);
 
   if IsCancelled(ACancel) then
@@ -1350,7 +1702,14 @@ begin
       Result := LoadOther(Key, ACancel, APreviewWidth, APreviewHeight, APriorityRead);
   end
   else
-    Result := LoadOther(Key, ACancel, APreviewWidth, APreviewHeight, APriorityRead);
+  begin
+    Result := nil;
+    { 1.4: without WIC, a large PNG's quick view decoded smaller. }
+    if (AQuality < qlFull) and IsPngFileName(AFileName) then
+      Result := LoadPngScreen(Key, ACancel, APreviewWidth, APreviewHeight, APriorityRead);
+    if Result = nil then
+      Result := LoadOther(Key, ACancel, APreviewWidth, APreviewHeight, APriorityRead);
+  end;
 end;
 
 end.

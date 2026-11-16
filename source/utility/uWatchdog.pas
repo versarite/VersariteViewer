@@ -79,7 +79,8 @@ interface
 uses
   Classes,
   SysUtils
-  {$IFDEF WINDOWS}, Windows{$ENDIF};
+  {$IFDEF WINDOWS}, Windows{$ENDIF}
+  {$IFDEF UNIX}, BaseUnix{$ENDIF};
 
 type
 
@@ -133,7 +134,12 @@ begin
   {$IFDEF WINDOWS}
   TerminateProcess(GetCurrentProcess, UINT(AExitCode));
   {$ENDIF}
-  Halt(AExitCode);   { not reached on Windows }
+  {$IFDEF UNIX}
+  { 1.4: _exit for the whole process at once (no finalization, which
+    may be what hangs), like TerminateProcess. }
+  FpExit(AExitCode);
+  {$ENDIF}
+  Halt(AExitCode);   { not reached }
 end;
 
 constructor TWatchdog.Create;

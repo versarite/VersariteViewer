@@ -172,3 +172,6 @@ Today (2026-10-22, this chat)
    cmdSortRandomKeep (random, without shuffling again when it is random
    already - the menu's entry still shuffles anew). TestMouse: saved and
    read (98).
+26. The order radio group (user): "Random", "by date", "by name" (3
+   columns); "unchanged" went - a zone without an order (None, e.g.
+   Inspect) has none ticked and leaves the order as it is.

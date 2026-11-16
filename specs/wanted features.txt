@@ -1,0 +1,232 @@
+#wanted and suggested features
+#please make sure this file is excluded from git uploads
+
+DONE the "pin" icon of the left side panel should be close o the border (left side of the panel, not right). move lock too, next to it to the right.
+totalcmd side by side button in ini menu. if last dir is filled, switch there. if not, switch to users Documents folder
+add mirror image horizontally
+DONE show in status bar not only percent of original, but also in WxH, it replaces a keyboard-based "resize" function. 
+as far as i can see, all copy/move operations use the original image size. maybe a new right click menu item "save as resized" or have a pop up dialog for save/ save as with two buttons >Size: [original] and [resized] ? 
+the "one level up" directory scan does now work, the ii entryclimb up is efficient.
+---
+DONE the permanent auto function of filter processing is incredible!!! it could be a default setting.
+the this permanent "auto filter always on" should be in the ini, something like AutoFilter=1
+
+the icon file generation and assignment work perfecly. pse consier this:
+if, in the righ menu panel, the mouse is above a directory AND an icon is assigned, display a larger version, if appropriate the original icon size from the ini ions folder
+ in a small picture to the left of the side bar. 
+---
+DONE nikon comes later, the project has not started yet. it is perhaps appropriate to structure the image decoders in a way that other formats can be added. 
+no editing or text typing at this point, just displaying!
+edit mode by default draws a box with the left button right now. 
+measurement does not need edit mode. 
+measurements  - like the magnifier - should be activated/deactivated by a line in the right click context menu "Measurement". if it is a microscopy image where the calibration is in the meta data, or if calibration data have been loaded, this measurement mode should be enabled, otherwise it remains disabled.
+when enabled, mouse click starts a line, second click ends a line and shows the length. color of line and text is at this point taken from the ini settings for the status line.  
+for all images tat do not have calibration metadata, the entering/loading of calibration data, either by numbers or by measuring and using an object of known size, should be another line in the context menu: "Calibration". a third line is the scale bar. if calibration data is loaded/read, the context menu should have a line "Draw scale bar". if "draw scale bar" is enabled, "measurement" is automatically disabled. Mouse click starts a line in status bar color - strictly horizontal - , second mouse click ends the line. mouse wheel increases the line thickness. third mouse click finishes the process. it can be repeated if necessary.      
+lets try that to start with. 
+---
+
+DONE necessary updates to mview as requested by testers- please implement:
+1.right click context menu in the main window: line with option to change sorting mode  by date, by name asc/desc; random
+2. overhaul of the right side panel:
+--move the [add directory] button to the top.
+--the number of entries before scrolling sets in can become too large - the line fonts is very small. two main changes:
+selectable by an ini entry: number of displayed directory entries/lines. default is the original size as of today, a good number is currently on my screen about 20. a max should be defined based on the screen size, on my screen it is about 30. if it exceeds the availble size due to window size, scrolling sets in as usual.
+3. [move up]/[move down] lines in the context menu of the directory entries' [...] button: 
+--add a button "move to top"; 
+--when the move up/move down button is pressed and held, the item should move automatically up/down until the button is relased. 
+--to facilitate this, move the pop-up window of the side panel to the left, such that the dirs are exposed/visible.
+4. implement multiple side panel contents, i.e. additional directory lists. the top line "sort" should have two little arrow buttons [left] [right] (only icons, no capture). when pressing, additional side panel contents, i.e. direcory lists, should come up. they can be filled by the user as usual, combined with an icon, sorted up/down, etc.
+each side panel contents should have its own set of entries in the ini file, just as the current side panel. give these ini lists sequentially numbered key names, e.g. [DirList1] [DirList2] 
+--add to the side panel [...] context menu two new lines [make dir] [make subdir]. the should either create ,from the current active dir, a new dir at the same level, or a sub directory. they should be named [current dir name_(consecutive number ...001, 002...)]. rearrange the ini file accordingly.
+--wrap around: initially, when there is only one dir lis: when the user clicks either arrow, a new empty dir list should appear. when there are more than one exisitng dir lists, clicking either arrow cycles through the lists left or right. when the last occupied dir list is reached, the next click shows a new empty list. an additional click wraps around. this is to cycle through the lists, but keeps the option to add lists.         
+
+5.in the side panels context meny (the one that opens when the [...] button is clicked on a directory line): 
+--when the "icon" submenu which opens when the line "icons" is clicked -> move the line "Select from file" to the top of the window. if there are many icons, it becomes awkward. 
+--please add the icon format .ico to the list of recognized/displayed images - when you implement the additional formats. if the icons have different sizes stored, show only the largest one.  
+ 
+6. "Rapid Selection" mode: make it possible to select this mode from the main window, right click context menu: 
+this power user mode allows for ultaquick sorting. when it is toggled,
+-open up the righ side panel, pin it (if not already open and pinned)
+-display a unique directory listing with 9 entries, default icons as usual in different fixed, non-changeable colors, labeled 1..9,0 - accoding to the keyboard number keys. the respective directories should be named Selection0-Selection9. if the directories do not yet exist,they should be created in the users default picture folder. add an ini line "default image folder" and prefill with the windows user's default image folder in users/[current users name]/Pictures. 
+--this power mode should be linked to the keyboard keys 1 to 0. if the key is pressed, the current image should be moved to this folder. 
+the power mode directory list in the side panel should conequentially not be part of the main side panel contents selection that is selected by the new arrow buttons. when the "Rapid Selection" mode is deselected in the main context menu, the side panel should return to the previous directory list. the power user directory list should be exclusive to the "Rapid Slection" mode.
+        
+7.zoom function in single window mode (in contrast to 4-zone mode): in addition to the x1 mouse button, implement the folowing: if the mouse pointer is on the bottom edge of the window for more than a second (also add ini file entry for this time and an active zone in points, default 12), it should toggle between mouse pointer-centered "zoom" mode and normal "next/previous image" mode.
+
+8. double check that the program handles a situation when a disk is full (flashing warning message when less than 100 Mb are free)..just as the "follow total commander" message, but with a red background.
+  
+9. in the side panels context meny (the one that opens when the [...] button is clicked on a directory line): add a [Rename] line that renames the dirctory name in the list (not the actual directory)
+
+10. next implement the dditional image formats and prepare a new readme.md
+11. hamana has in its right bottom a quick view bar. it shows quick previews of the images in the current folder, when left-clicked the image is opened. it would be nice to have that bar somewhere. 
+i suggest: add in the key/mouse action definition window an entry: "Toggle preview" so it an be assiged to a mouse button. in addition, display that bar at the top of the window when the mouse is touching the upper border longer than 500ms. use the "ini" entries for time and pixel frame as defined above for the for the bottom touch zoom function. the panel should be as wide as the status bar and close after 1s upon mouse leave. 
+12. it appears to be necessary to also allow assignment of keyboard keys. please update the list in the key definition page - in addition to . use all easily available keys at this point, but no kombinations. check for that purpose what keyboard locale is installed. include the numbers but predefine for"Rapid Sorting" as defined above.   
+
+
+--------------suggestions from this point on, not to be implemented rigt now
+
+DONE For a sports photographer, speed is everything. They often shoot in high-speed burst modes (10 to 30 frames per second), returning from a single game with thousands of raw, fast-moving action shots. They need to drastically slice this massive volume down to a handful of "hero shots" to meet tight media or wire deadlines.
+The feature you highlighted solves this exact workflow bottleneck through a process called image culling. Here is how it functions mechanically and why it makes [XnView MP](https://www.xnview.com) so popular for this specific workflow:
+## 1. Zero-Latency Filtering with Single-Keystroke Marking
+Instead of forcing a photographer to right-click an image, navigate a context menu, or click an icon to flag a photo, XnView MP maps ratings directly to the keyboard's number row.
+
+* A photographer keeps one hand on the arrow keys (to flash forward through images) and one hand on the number row (1 through 5 for star ratings, or dedicated keys for color tags like red, green, or blue).
+* As they cycle through a fast-action burst of a player running, they can tag a sharp frame instantly with a 5, and press 0 or another key to instantly mark blurry frames for deletion.
+* Because XnView MP relies on a highly efficient background caching engine, it renders raw camera files nearly instantly, turning a tedious manual process into a lightning-fast, rhythmic task.
+
+
+
+
+
+USEFUL for LAB
+## 2. Immediate Smart Isolation (Filter by Tag)
+Once the photographer completes a pass through 2,000 photos, they don't have to scroll back through to find what they liked. With a single click on XnView MP’s side filter panel, they can tell the program to "Show only 5-star images" or "Show only images tagged with Red."
+Instantly, the thousands of excess frames disappear from view, leaving only the top 20 or 30 best action shots visible on the screen.
+## 3. Standards-Compliant Metadata (XMP/IPTC)
+Crucially, when XnView MP applies a star rating or color tag, it doesn't just store that choice inside its own proprietary app database. It embeds those markers directly into the file's standardized industry metadata (XMP/IPTC sidecar files or embedded headers).
+This means the photographer's fast culling work transfers flawlessly to the next step of the pipeline. When they import those selected files into professional editing platforms like Adobe Lightroom, Capture One, or a photojournalism wire service upload system, those programs will instantly recognize the exact same star ratings and color categories applied in XnView MP.
+Because Versarite-MView doesn't manage folders internally, you can adapt this concept through its partnership with Total Commander:
+
+---
+* The MView Workflow Adaptation: You could implement a system where pressing 1-5 inside MView sends an automated command packet back to Total Commander.
+* The Result: Total Commander could instantly append a specific text suffix to the filename (e.g., _5star), move the file into a pre-configured subfolder (like /Selected/), or apply a native Total Commander file comment/color code.
+
+NOT NECESSARY-taging can be internal and also transferred to the preview bar
+---
+
+This allows a user to enjoy MView’s 400-megapixel GPU-accelerated canvas performance to quickly check microscopic focus details, while maintaining a lightning-fast, keyboard-driven culling workflow.
+Would you like to look at the technical logic for capturing single-key inputs (1-5) without interfering with MView's existing hot-corner controls, or should we map out the command-line arguments needed to pass file manipulation instructions cleanly back to Total Commander?
+
+SUGGES TO IMPLEMENT IN LAB--------------
+unit uLosslessJPEG;
+
+interface
+
+uses
+  Classes, SysUtils;
+
+type
+  // Define a structure to hold raw DCT coefficients for an 8x8 block
+  TJpegBlock = array[0..63] of SmallInt; 
+  PJpegBlockArray = ^TJpegBlockArray;
+  TJpegBlockArray = array[0..0] of TJpegBlock;
+
+function RotateJPEG90Clockwise(SourceStream, DestStream: TStream): Boolean;
+
+implementation
+
+// The structural steps your routine must follow:
+function RotateJPEG90Clockwise(SourceStream, DestStream: TStream): Boolean;
+begin
+  Result := False;
+  
+  // STEP 1: Parse JPEG Markers 
+  // Read through the stream. Locate the SOI (Start of Image, $FFD8).
+  // Copy over metadata markers (APP0, APP1, COM) directly to the DestStream.
+  
+  // STEP 2: Parse SOF0 (Start of Frame)
+  // Extract image dimensions (Width and Height in pixels).
+  // Compute total MCUs: BlocksX := (Width + 7) div 8; BlocksY := (Height + 7) div 8;
+  // Write the updated (swapped) Width and Height into the new SOF0 marker on DestStream.
+  
+  // STEP 3: Huffman Decoding to Coefficient Workspace
+  // Read the SOS (Start of Scan) segment. 
+  // Perform entropy decoding (Huffman) on the bitstream to extract raw DCT coefficients.
+  // Allocate memory for the global block arrays.
+  
+  // STEP 4: Matrix Transposition
+  // Loop through your workspace grid and apply the remapping math:
+  // For each block, transpose the 8x8 grid coefficients and adjust signs.
+  
+  // STEP 5: Huffman Re-encoding
+  // Write the updated SOS marker to DestStream.
+  // Re-encode the newly arranged coefficient grid back into a Huffman bitstream.
+  
+  // STEP 6: Finalize File
+  // Write the EOI (End of Image, $FFD9) marker.
+  Result := True;
+end;
+
+end.
+
+
+Writing a native Free Pascal implementation for true lossless JPEG transformation is a great choice. It keeps Versarite-MView completely portable and dependency-free, avoiding the need to ship a separate jpegtran.exe binary.
+To implement this natively in Pascal without re-encoding, your code must perform Huffman decoding, manipulate the coefficient arrays of the Entropy-Coded Segments (ECS), and then rewrite the data. It bypasses the Inverse Discrete Cosine Transform (IDCT) and quantization steps, preserving 100% of the original image quality.
+The core math and structural steps required to build a native Free Pascal unit for lossless rotation break down into specific tasks:
+## 1. The Mathematical Grid Manipulation (The Logic)
+Because JPEGs are stored in 8x8 or 16x16 Minimum Coded Units (MCUs), rotating the image requires you to change both the global arrangement of the blocks and the internal structure of each block.
+For a 90-degree clockwise rotation, you apply the following operations to the data arrays:
+
+* Block Position Remapping: A block at position (X, Y) moves to a new position (NewX, NewY), where NewX = (HeightInBlocks - 1) - Y and NewY = X.
+* Internal Block Transposition: Inside each 8x8 block coefficient matrix, you transpose the matrix (swap rows with columns: $M[i][j] \to M[j][i]$).
+* Sign Reversal: To account for the directional orientation change after transposition, you must reverse the signs of the odd-indexed rows or columns depending on whether you are rotating clockwise or counterclockwise.
+
+## 2. Structural Code Steps for the Pascal Unit
+To handle this inside your Free Pascal environment, you will structure a custom decoder/encoder pass using a stream object (TMemoryStream or TFileStream).
+
+unit uLosslessJPEG;
+
+interface
+
+uses
+  Classes, SysUtils;
+
+type
+  // Define a structure to hold raw DCT coefficients for an 8x8 block
+  TJpegBlock = array[0..63] of SmallInt; 
+  PJpegBlockArray = ^TJpegBlockArray;
+  TJpegBlockArray = array[0..0] of TJpegBlock;
+
+function RotateJPEG90Clockwise(SourceStream, DestStream: TStream): Boolean;
+
+implementation
+
+// The structural steps your routine must follow:
+function RotateJPEG90Clockwise(SourceStream, DestStream: TStream): Boolean;
+begin
+  Result := False;
+  
+  // STEP 1: Parse JPEG Markers 
+  // Read through the stream. Locate the SOI (Start of Image, $FFD8).
+  // Copy over metadata markers (APP0, APP1, COM) directly to the DestStream.
+  
+  // STEP 2: Parse SOF0 (Start of Frame)
+  // Extract image dimensions (Width and Height in pixels).
+  // Compute total MCUs: BlocksX := (Width + 7) div 8; BlocksY := (Height + 7) div 8;
+  // Write the updated (swapped) Width and Height into the new SOF0 marker on DestStream.
+  
+  // STEP 3: Huffman Decoding to Coefficient Workspace
+  // Read the SOS (Start of Scan) segment. 
+  // Perform entropy decoding (Huffman) on the bitstream to extract raw DCT coefficients.
+  // Allocate memory for the global block arrays.
+  
+  // STEP 4: Matrix Transposition
+  // Loop through your workspace grid and apply the remapping math:
+  // For each block, transpose the 8x8 grid coefficients and adjust signs.
+  
+  // STEP 5: Huffman Re-encoding
+  // Write the updated SOS marker to DestStream.
+  // Re-encode the newly arranged coefficient grid back into a Huffman bitstream.
+  
+  // STEP 6: Finalize File
+  // Write the EOI (End of Image, $FFD9) marker.
+  Result := True;
+end;
+
+end.
+
+
+## 3. Edge Cases Your Code Must Handle
+Writing this purely in Pascal means handling the quirks of the JPEG format specification that wrappers usually hide:
+
+* Non-Multiple of 8/16 Dimensions: If your image dimensions are not perfectly divisible by the MCU size (e.g., a width of 1021 pixels instead of 1024), the rightmost edge contains a partial "dropped" block. When rotating 90 degrees, that partial block moves to the bottom edge. You must account for padding adjustment in your block-grabbing array logic to prevent corruption or edge shifts.
+* Chroma Subsampling (MCU Sizes): If the image uses YUV 4:2:0 subsampling, a single MCU is actually 16x16 pixels (composed of four Y blocks, one Cb block, and one Cr block). Your block remapping grid must traverse the coefficients in groups of these macro-blocks rather than simple 8x8 blocks, or the color channels will desynchronize from the brightness canvas.
+
+To write the actual parsing loops, let me know:
+
+* Does your project already use the native FPReadJPEG / FPWriteJPEG units built into Free Pascal's fcl-image package?
+
+
+
+
+

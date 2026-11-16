@@ -686,13 +686,16 @@ begin
   FOrderGroup := TRadioGroup.Create(Self);
   FOrderGroup.Parent := FRight;
   FOrderGroup.Caption := 'Browsing from this zone';
-  FOrderGroup.Columns := 3;
+  FOrderGroup.Columns := 4;
   { Day 31 (user): "Random" in place of "any order". A zone without an
     order (the profile's None, e.g. Inspect) has none of them ticked: it
     leaves the order as it is (ShowSelection, HandleOrderClick). }
   FOrderGroup.Items.Add('Random');
   FOrderGroup.Items.Add('by date');
   FOrderGroup.Items.Add('by name');
+  { Day 40 (user): the order last picked from the context menu while the
+    mouse was in this zone. }
+  FOrderGroup.Items.Add('context menu');
   FOrderGroup.OnClick := @HandleOrderClick;
   PlaceHeader;
 
@@ -1043,6 +1046,7 @@ begin
       zoDate: OrderText := '(by date)';
       zoName: OrderText := '(by name)';
       zoRandom: OrderText := '(random)';
+      zoMenu: OrderText := '(menu order)';
     else
       OrderText := '';
     end;
@@ -1379,6 +1383,7 @@ begin
         zoRandom: FOrderGroup.ItemIndex := 0;
         zoDate:   FOrderGroup.ItemIndex := 1;
         zoName:   FOrderGroup.ItemIndex := 2;
+        zoMenu:   FOrderGroup.ItemIndex := 3;
       else
         FOrderGroup.ItemIndex := -1;
       end;
@@ -1633,6 +1638,7 @@ begin
   case FOrderGroup.ItemIndex of
     0: Order := zoRandom;
     1: Order := zoDate;
+    3: Order := zoMenu;
   else
     Order := zoName;
   end;

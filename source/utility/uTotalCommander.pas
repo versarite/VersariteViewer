@@ -22,11 +22,14 @@ unit uTotalCommander;
 
   Responsibilities
   ----------------
+  - TTotalCommanderLink (1.4): Total Commander as the viewer's file
+    manager (uFileManager), registered on Windows; it carries the calls
+    below and the follower (uTCFollow).
   - FindTotalCommanderWindow: the running Total Commander's window, 0 if
     none.
-  - TotalCommanderExe: the program: the configured path if it exists,
-    else the running one's, else from the registry (TOTALCMD64.EXE, or
-    TOTALCMD.EXE), else a few usual folders; '' if not found.
+  - TotalCommanderExe: the program: the configured path (the program or
+    its folder) if it exists, else '' (Day 40: no more looking for an
+    installation - there can be several).
   - OpenInTotalCommander: starts it (or passes to the running one) with
     the folder in its active panel.
   - PlaceWindow: a window, restored if minimised or maximised, placed so
@@ -47,13 +50,14 @@ unit uTotalCommander;
 
   Uses (MView units)
   ------------------
-  (none)
+  interface:      uFileManager
+  implementation: uTCFollow
   Libraries:      Classes, SysUtils, Types; Windows, ShellApi, Registry
                   (Windows only)
 
   Used by
   -------
-  uMainForm
+  uMainForm, uMView, uTCFollow
 }
 
 {$mode ObjFPC}{$H+}
@@ -63,10 +67,38 @@ interface
 uses
   Classes,
   SysUtils,
-  Types;
+  Types,
+  uFileManager;
+
+type
+  { Total Commander as the file manager (1.4). The window is looked up
+    at every call (it may have been closed or started meanwhile). }
+  TTotalCommanderLink = class(TFileManager)
+  private
+    FFollower: TObject;          { TTCFollower, made on the first Poll }
+    FProgram: string;            { [FileManager] TotalCommander= }
+    function Follower: TObject;
+  public
+    destructor Destroy; override;
+    function Name: string; override;
+    function IsRunning: Boolean; override;
+    function IsShown: Boolean; override;
+    function ProgramPath(const AConfigured: string): string; override;
+    procedure Configure(const AProgram: string); override;
+    function IsConfigured: Boolean; override;
+    function Open(const AProgram, AFolder: string): Boolean; override;
+    function PlaceAt(const ARect: TRect): Boolean; override;
+    function WindowRect(out ARect: TRect): Boolean; override;
+    function MoveToWork(const AFrom, ATo: TRect): Boolean; override;
+    function Poll(AWantFile: Boolean; out AFolder, AFile: string): Boolean; override;
+    function CursorSupported: Boolean; override;
+    function PanelItems(out ALeft, ARight: string): Boolean; override;
+    function Info: string; override;
+    procedure Restart; override;
+  end;
 
 function FindTotalCommanderWindow: THandle;
-{ AConfigured: [Sort] TotalCommander ('' = look for it); AWindow: the
+{ AConfigured: [FileManager] TotalCommander ('' = none); AWindow: the
   running one's window (0 = none). }
 function TotalCommanderExe(const AConfigured: string; AWindow: THandle): string;
 { AFolder '' = just bring it up. True if it could be started. }
@@ -85,12 +117,121 @@ function MoveWindowToWork(AWindow: THandle; const AFrom, ATo: Types.TRect): Bool
 
 implementation
 
+uses
+  uTCFollow
+{$IFDEF WINDOWS}
+  , Windows,
+  ShellApi,
+  Registry
+{$ENDIF}
+  ;
+
+{ The window's rectangle (0 = none: False). }
+function TotalCommanderWindowRect(AWindow: THandle; out ARect: Types.TRect): Boolean; forward;
+function TotalCommanderWindowShown(AWindow: THandle): Boolean; forward;
+
+{ TTotalCommanderLink }
+
+destructor TTotalCommanderLink.Destroy;
+begin
+  FFollower.Free;
+  inherited Destroy;
+end;
+
+function TTotalCommanderLink.Follower: TObject;
+begin
+  if FFollower = nil then
+    FFollower := TTCFollower.Create;
+  Result := FFollower;
+end;
+
+function TTotalCommanderLink.Name: string;
+begin
+  Result := 'Total Commander';
+end;
+
+function TTotalCommanderLink.IsRunning: Boolean;
+begin
+  Result := FindTotalCommanderWindow <> 0;
+end;
+
+function TTotalCommanderLink.IsShown: Boolean;
+begin
+  Result := TotalCommanderWindowShown(FindTotalCommanderWindow);
+end;
+
+function TTotalCommanderLink.ProgramPath(const AConfigured: string): string;
+begin
+  Result := TotalCommanderExe(AConfigured, FindTotalCommanderWindow);
+end;
+
+procedure TTotalCommanderLink.Configure(const AProgram: string);
+begin
+  FProgram := Trim(AProgram);
+end;
+
+{ Day 40 (user): only the configured program (there can be several
+  installations); without it VV says it needs its path. }
+function TTotalCommanderLink.IsConfigured: Boolean;
+begin
+  Result := TotalCommanderExe(FProgram, 0) <> '';
+end;
+
+function TTotalCommanderLink.Open(const AProgram, AFolder: string): Boolean;
+begin
+  Result := OpenInTotalCommander(AProgram, AFolder);
+end;
+
+function TTotalCommanderLink.PlaceAt(const ARect: TRect): Boolean;
+var
+  Wnd: THandle;
+begin
+  Wnd := FindTotalCommanderWindow;
+  Result := (Wnd <> 0) and PlaceWindow(Wnd, ARect);
+end;
+
+function TTotalCommanderLink.WindowRect(out ARect: TRect): Boolean;
+begin
+  Result := TotalCommanderWindowRect(FindTotalCommanderWindow, ARect);
+end;
+
+function TTotalCommanderLink.MoveToWork(const AFrom, ATo: TRect): Boolean;
+var
+  Wnd: THandle;
+begin
+  Wnd := FindTotalCommanderWindow;
+  Result := (Wnd <> 0) and MoveWindowToWork(Wnd, AFrom, ATo);
+end;
+
+function TTotalCommanderLink.Poll(AWantFile: Boolean; out AFolder, AFile: string): Boolean;
+begin
+  Result := TTCFollower(Follower).Poll(AWantFile, AFolder, AFile);
+end;
+
+function TTotalCommanderLink.CursorSupported: Boolean;
+begin
+  Result := (FFollower <> nil) and TTCFollower(FFollower).CursorSupported;
+end;
+
+function TTotalCommanderLink.PanelItems(out ALeft, ARight: string): Boolean;
+begin
+  Result := TTCFollower(Follower).PanelItems(ALeft, ARight);
+end;
+
+procedure TTotalCommanderLink.Restart;
+begin
+  FreeAndNil(FFollower);
+end;
+
+function TTotalCommanderLink.Info: string;
+begin
+  if FFollower = nil then
+    Result := ''
+  else
+    Result := TTCFollower(FFollower).Info;
+end;
 
 {$IFDEF WINDOWS}
-uses
-  Windows,
-  ShellApi,
-  Registry;
 
 const
   DWMWA_EXTENDED_FRAME_BOUNDS_ID = 9;
@@ -114,9 +255,41 @@ function MViewQueryFullProcessImageNameW(AProcess: THandle; AFlags: DWORD;
   AName: PWideChar; var ASize: DWORD): BOOL; stdcall;
   external 'kernel32.dll' name 'QueryFullProcessImageNameW';
 
+function ExeOfWindow(AWindow: THandle): string; forward;
+
+{ A main window of the class TTOTAL_CMD whose process really is
+  TOTALCMD.EXE or TOTALCMD64.EXE (Day 40, user: another program's window
+  of that class, or a leftover, must not be taken for Total Commander and
+  moved / resized side by side). }
 function FindTotalCommanderWindow: THandle;
+var
+  Wnd: HWND;
+  ExeName: string;
 begin
-  Result := FindWindowW('TTOTAL_CMD', nil);
+  Result := 0;
+  Wnd := FindWindowExW(0, 0, 'TTOTAL_CMD', nil);
+  while Wnd <> 0 do
+  begin
+    ExeName := UpperCase(ExtractFileName(ExeOfWindow(Wnd)));
+    if (ExeName = 'TOTALCMD.EXE') or (ExeName = 'TOTALCMD64.EXE') then
+      Exit(Wnd);
+    Wnd := FindWindowExW(0, Wnd, 'TTOTAL_CMD', nil);
+  end;
+end;
+
+function TotalCommanderWindowRect(AWindow: THandle; out ARect: Types.TRect): Boolean;
+var
+  R: TWinRect;
+begin
+  ARect := Types.Rect(0, 0, 0, 0);
+  Result := (AWindow <> 0) and MViewGetWindowRect(AWindow, @R);
+  if Result then
+    ARect := Types.Rect(R.Left, R.Top, R.Right, R.Bottom);
+end;
+
+function TotalCommanderWindowShown(AWindow: THandle): Boolean;
+begin
+  Result := (AWindow <> 0) and IsWindowVisible(AWindow);
 end;
 
 { The program file of the process that owns AWindow. }
@@ -186,33 +359,15 @@ end;
 
 function TotalCommanderExe(const AConfigured: string; AWindow: THandle): string;
 begin
-  { 1. The configured path (the program, or its folder). }
+  { The configured path (the program, or its folder) - only that (Day 40,
+    user: there can be several installations; no guessing). }
   Result := Trim(AConfigured);
   if Result <> '' then
   begin
     if FileExists(Result) then
       Exit;
     Result := ExeInFolder(Result);
-    if Result <> '' then
-      Exit;
   end;
-  { 2. The running one. }
-  Result := ExeOfWindow(AWindow);
-  if (Result <> '') and FileExists(Result) then
-    Exit;
-  { 3. Its registry entry (user, then machine, both registry views). }
-  Result := ExeInFolder(InstallDirFromRegistry(HKEY_CURRENT_USER, 0));
-  if Result = '' then
-    Result := ExeInFolder(InstallDirFromRegistry(HKEY_LOCAL_MACHINE, KEY_WOW64_64KEY_ID));
-  if Result = '' then
-    Result := ExeInFolder(InstallDirFromRegistry(HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY_ID));
-  { 4. The usual folders. }
-  if Result = '' then
-    Result := ExeInFolder('C:\totalcmd');
-  if Result = '' then
-    Result := ExeInFolder('C:\Program Files\totalcmd');
-  if Result = '' then
-    Result := ExeInFolder('C:\Program Files (x86)\totalcmd');
 end;
 
 function OpenInTotalCommander(const AExe, AFolder: string): Boolean;
@@ -314,6 +469,17 @@ begin
   Result := False;
 end;
 
+function TotalCommanderWindowRect(AWindow: THandle; out ARect: Types.TRect): Boolean;
+begin
+  ARect := Types.Rect(0, 0, 0, 0);
+  Result := False;
+end;
+
+function TotalCommanderWindowShown(AWindow: THandle): Boolean;
+begin
+  Result := False;
+end;
+
 function FindTotalCommanderWindow: THandle;
 begin
   Result := 0;
@@ -358,5 +524,10 @@ begin
     T := ATo.Top;
   Result := Types.Rect(L, T, L + W, T + H);
 end;
+
+{$IFDEF WINDOWS}
+initialization
+  RegisterFileManager(dmTotalCommander, TTotalCommanderLink);
+{$ENDIF}
 
 end.

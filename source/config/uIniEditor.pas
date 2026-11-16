@@ -190,6 +190,7 @@ implementation
 
 uses
   uEdition,
+  uFileManager,
   uExtensions,
   uSafeFile;
 
@@ -221,7 +222,7 @@ begin
   MakeButton('View images (F5)', @HandleViewClick);
   MakeButton('Save (Ctrl+S)', @HandleSaveClick);
   MakeButton('Undo changes', @HandleUndoClick);
-  MakeButton('Total Commander side by side', @HandleSideBySideClick);
+  MakeButton(FMName + ' side by side', @HandleSideBySideClick);
   MakeButton('Exit', @HandleExitClick);
 
   { The spinner (Day 25): at the right end of the bar while the viewer

@@ -97,16 +97,74 @@ initialization
     CounterFrequency := 1;
 {$ELSE}
 uses
-  SysUtils;
+  SysUtils,
+  Classes,
+  Unix,
+  Linux;
 
+{ 1.4: the monotonic clock, nanoseconds. }
 function NowMs: Double;
+var
+  T: TTimeSpec;
 begin
-  Result := GetTickCount64;
+  if clock_gettime(CLOCK_MONOTONIC, @T) = 0 then
+    Result := T.tv_sec * 1000.0 + T.tv_nsec / 1000000.0
+  else
+    Result := GetTickCount64;
 end;
 
+{ 1.4: from /proc: the system's uptime and the process's start in clock
+  ticks after boot (field 22 of /proc/self/stat; 100 ticks a second on
+  every usual Linux). 0 if unknown. }
 function ProcessAgeMs: Double;
+const
+  TicksPerSecond = 100;
+var
+  Lines: TStringList;
+  S: string;
+  P, Field: Integer;
+  Uptime: Double;
+  Start: Int64;
+  Parts: TStringArray;
 begin
   Result := 0;
+  Lines := TStringList.Create;
+  try
+    try
+      Lines.LoadFromFile('/proc/uptime');
+      if Lines.Count = 0 then
+        Exit;
+      S := Lines[0];
+      P := Pos(' ', S);
+      if P > 0 then
+        S := Copy(S, 1, P - 1);
+      Uptime := StrToFloatDef(S, -1, DefaultFormatSettings);
+      if Uptime < 0 then
+        Exit;
+      Lines.LoadFromFile('/proc/self/stat');
+      if Lines.Count = 0 then
+        Exit;
+      { The name (field 2) is in brackets and may hold spaces. }
+      S := Lines[0];
+      P := LastDelimiter(')', S);
+      if P = 0 then
+        Exit;
+      Parts := Trim(Copy(S, P + 1, MaxInt)).Split([' ']);
+      Field := 22 - 3;           { Parts[0] is field 3 }
+      if Length(Parts) <= Field then
+        Exit;
+      Start := StrToInt64Def(Parts[Field], -1);
+      if Start < 0 then
+        Exit;
+      Result := (Uptime - Start / TicksPerSecond) * 1000.0;
+      if Result < 0 then
+        Result := 0;
+    except
+      Result := 0;
+    end;
+  finally
+    Lines.Free;
+  end;
 end;
 {$ENDIF}
 

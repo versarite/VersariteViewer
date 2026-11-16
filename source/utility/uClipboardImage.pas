@@ -187,11 +187,46 @@ end;
 
 {$ELSE}
 
-function CopyBitmapToClipboard(ABitmap: TBGRABitmap; AWindow: THandle;
+{ 1.4, Linux: a PNG (image/png), the picture format Linux programs
+  take from the clipboard (GIMP, LibreOffice, browsers, Inkscape). The
+  LCL keeps it on offer while VersariteViewer runs, as X11 / Wayland
+  clipboards do. }
+uses
+  Classes,
+  Clipbrd,
+  LCLIntf,
+  LCLType;
+
+function CopyBitmapToClipboard(ABitmap: TBGRABitmap; AWindow: System.THandle;
   out AReason: string): Boolean;
+var
+  Data: TMemoryStream;
+  PngFormat: TClipboardFormat;
 begin
   Result := False;
-  AReason := 'only on Windows';
+  AReason := '';
+  if (ABitmap = nil) or (ABitmap.Width <= 0) or (ABitmap.Height <= 0) then
+  begin
+    AReason := 'no picture';
+    Exit;
+  end;
+  Data := TMemoryStream.Create;
+  try
+    try
+      ABitmap.SaveToStreamAsPng(Data);
+      Data.Position := 0;
+      PngFormat := RegisterClipboardFormat('image/png');
+      Clipboard.Clear;
+      Result := Clipboard.AddFormat(PngFormat, Data);
+      if not Result then
+        AReason := 'the clipboard did not take it';
+    except
+      on E: Exception do
+        AReason := E.Message;
+    end;
+  finally
+    Data.Free;
+  end;
 end;
 
 {$ENDIF}

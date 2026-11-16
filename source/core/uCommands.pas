@@ -68,6 +68,9 @@ type
     { Day 31 (user): random order, kept as it is when it is random already
       (a zone set to "random"; the menu's entry shuffles again). }
     cmdSortRandomKeep,
+    { Day 40 (user): the order last chosen from the context menu in this
+      zone (Value = Ord(TMouseZone); a zone set to "context menu"). }
+    cmdSortForZone,
     cmdParentDirectory,  { browse from the parent of the opened folder }
     cmdRescan,
 
@@ -114,7 +117,8 @@ type
     cmdSortPanel,        { open the sort panel (else the edge opens it) }
     cmdDeleteImage,      { move the image into the deleted-files folder }
     cmdUndo,             { take back the last copy / move / delete }
-    cmdSideBySide,       { MView left, Total Commander right (the form does it) }
+    cmdSideBySide,       { MView left, Total Commander right (the form does it);
+                           Value 1 (1.4): side by side, both back to the halves }
 
     { Looking closer (Phase H) }
     cmdFilterPanel,      { open / close the filter panel (else the left edge opens it) }
@@ -154,7 +158,15 @@ type
     cmdSlideShow,
 
     { 1.3 (user): "Open file ..." - a file dialog (the form shows it). }
-    cmdOpenFile
+    cmdOpenFile,
+
+    { 1.4 (user, Double Commander's cm_RemoteSendFolderToInactive): this
+      image's folder into the file manager's inactive panel. }
+    cmdFolderToFM,
+    { 1.4 (user, cm_RemoteCreateSortFromSubdirs): a new folder list of the
+      first-level subfolders of the folder under the file manager's
+      cursor; Value 1: that folder itself first. }
+    cmdSortFromSubdirs
   );
 
   TCommandArgs = record

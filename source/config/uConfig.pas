@@ -130,6 +130,7 @@ type
     FOverlaySolid    : Boolean;
     FOverlayColor    : string;
     FPreviewStrip    : Boolean;
+    FSmallImageZoom  : Integer;
 
     { Navigation }
 
@@ -164,6 +165,7 @@ type
     FMouseHideTime   : Integer;
     FZonesEnabled    : Boolean;
     FEdgeWidth       : Integer;
+    FZoneMenuSort    : string;    { Day 40: per zone, the context menu entry 1..5 }
     FBottomEdgeMs    : Integer;
     FTopEdgeMs       : Integer;
 
@@ -197,11 +199,16 @@ type
     FImageFolder     : string;
     FShowDirHint     : Boolean;
     FTotalCommander  : string;
+    FDoubleCommander : string;    { [Sort] DoubleCommander (1.4) }
+    FDirManager      : Integer;   { [Sort] DirManager (1.4) }
     FFollowTC        : Integer;
+    FShowInFM        : Integer;   { [FileManager] ShowInFileManager (1.4) }
+    FDCThumbnails    : Integer;   { [FileManager] DCThumbnails (1.4, Day 40) }
+    FCursorSyncMs    : Integer;   { [FileManager] CursorSyncMs (1.4, Day 40) }
     FDirPreviewFiles : Integer;
     FDirPreviewDelay : Integer;
     FDirPreviewStep  : Integer;
-    FTCSlideShow     : Boolean;   { [Sort] TCSlideShowMode (Day 29) }
+    FTCSlideShow     : Boolean;   { [FileManager] DirPreviewSlideShow (Day 29; 1.4: was TCSlideShowMode) }
     { [Sort] RapidFolder1 .. RapidFolder0 (1.1, user), by slot (0 = key 1
       .. 9 = key 0): as written; '' = Selection<digit>. }
     FRapidFolders    : array[0..9] of string;
@@ -299,6 +306,10 @@ type
     { [View] PreviewStrip (1.1, user): the preview strip at the top is
       pinned open; written when it is switched on / off. }
     property PreviewStrip    : Boolean read FPreviewStrip write FPreviewStrip;
+    { [View] SmallImageZoom (1.4, user: icons looked lost at 100 % and
+      blocky filling the screen): an image smaller than this percentage
+      of the window's height opens at it; 0 = off (fill the window). }
+    property SmallImageZoom  : Integer read FSmallImageZoom;
 
     { Navigation }
 
@@ -360,6 +371,11 @@ type
       mouse resting at the bottom edge (zones off) switches zoom mode,
       at the top edge it opens the preview strip; 0 ms = off. }
     property EdgeWidth       : Integer read FEdgeWidth;
+    { Day 40 (user): a zone set to "context menu" browses in the order last
+      picked from the context menu there. AZone: 0..3 (top left, top right,
+      bottom left, bottom right). }
+    function ZoneMenuSort(AZone: Integer): TSortMode;
+    procedure SetZoneMenuSort(AZone: Integer; AMode: TSortMode);
     property BottomEdgeMs    : Integer read FBottomEdgeMs;
     property TopEdgeMs       : Integer read FTopEdgeMs;
 
@@ -424,7 +440,28 @@ type
     property ShowDirectoryHint: Boolean read FShowDirHint;
     { TOTALCMD64.EXE for "side by side"; '' = find it (registry). }
     property TotalCommander  : string read FTotalCommander;
-    { Follow Total Commander (Day 23): 0 = no, 1 = its active panel's
+    { [Sort] DoubleCommander (1.4): doublecmd(.exe); '' = find it. }
+    property DoubleCommander : string read FDoubleCommander;
+    { [Sort] DirManager (1.4, user): the file manager VersariteViewer works
+      with, 0 = Double Commander (default), 1 = Total Commander (Windows
+      only). Taken at the start (uFileManager.SelectFileManager). }
+    property DirManager      : Integer read FDirManager;
+    { The configured program of the file manager in use. }
+    function FileManagerProgram: string;
+    { [Sort] ShowInFileManager (1.4, user): a click on a sort button
+      shows its folder in the file manager (Double Commander): 0 = no,
+      1 = its other (inactive) panel (default), 2 = its active panel. }
+    property ShowInFileManager: Integer read FShowInFM;
+    { [FileManager] DCThumbnails (1.4, user): Double Commander's thumbnail
+      view switched on once when a freshly started one connects: 0 = no
+      (default), 1 = its inactive panel, 2 = its active panel. }
+    property DCThumbnails: Integer read FDCThumbnails;
+    { [FileManager] CursorSyncMs (1.4, user): following Double Commander,
+      the image VV shows goes under its cursor once it has stayed this
+      long (no skimming); 0 = never, else 100..3000. Default 300 (was 700). }
+    property CursorSyncMs: Integer read FCursorSyncMs;
+    { [FileManager] FollowDirManager (Day 23; 1.4: was FollowTotalCommander),
+      the file manager in use: 0 = no, 1 = its active panel's
       folder, 2 = and the file under its cursor. }
     property FollowTotalCommander: Integer read FFollowTC write FFollowTC;
     { Total Commander dir preview (1.1): the folder under its cursor plays
@@ -435,7 +472,7 @@ type
       DirPreviewLonger / DirPreviewShorter change DirPreviewDelayMs
       (default 100). }
     property DirPreviewStepMs: Integer read FDirPreviewStep;
-    { [Sort] TCSlideShowMode (Day 29, user): 1 = the dir preview keeps
+    { [FileManager] DirPreviewSlideShow (Day 29, user): 1 = the dir preview keeps
       playing with VersariteViewer in front (a slide show, until the dir
       preview is switched off); 0 = it waits while VersariteViewer has the
       focus (default). The command SlideShowMode switches it (SaveSort
@@ -526,6 +563,7 @@ implementation
 uses
   Math,
   uEdition,
+  uFileManager,
   uSafeFile;
 
 const
@@ -558,8 +596,12 @@ const
   KEY_OVERLAY_SOLID     = 'OverlaySolid';
   KEY_OVERLAY_COLOR     = 'OverlayColor';
   KEY_PREVIEW_STRIP     = 'PreviewStrip';
+  KEY_SMALL_IMAGE_ZOOM  = 'SmallImageZoom';
   KEY_ZONES_ENABLED     = 'ZonesEnabled';
   KEY_EDGE_WIDTH        = 'EdgeWidth';
+  KEY_ZONE_MENU_SORT    = 'ZoneMenuSort';
+  { Context menu entry 3 (by name, A - Z) in every zone. }
+  DefaultZoneMenuSort   = '3333';
   KEY_BOTTOM_EDGE_MS    = 'BottomEdgeMs';
   KEY_TOP_EDGE_MS       = 'TopEdgeMs';
   KEY_SORT_MODE         = 'SortMode';
@@ -603,11 +645,22 @@ const
   KEY_IMAGE_FOLDER      = 'DefaultImageFolder';
   KEY_SHOW_DIR_HINT     = 'ShowDirectoryHint';
   KEY_TOTAL_COMMANDER   = 'TotalCommander';
-  KEY_FOLLOW_TC         = 'FollowTotalCommander';
+  KEY_DOUBLE_COMMANDER  = 'DoubleCommander';
+  KEY_DIR_MANAGER       = 'DirManager';
+  KEY_FOLLOW_TC         = 'FollowDirManager';       { 1.4 (user); before: FollowTotalCommander }
+  KEY_FOLLOW_TC_OLD     = 'FollowTotalCommander';
+  KEY_SHOW_IN_FM        = 'ShowInFileManager';
+  KEY_DC_THUMBNAILS     = 'DCThumbnails';
+  KEY_CURSOR_SYNC       = 'CursorSyncMs';
   KEY_DIR_PREVIEW_FILES = 'DirPreviewFiles';
   KEY_DIR_PREVIEW_DELAY = 'DirPreviewDelayMs';
   KEY_DIR_PREVIEW_STEP  = 'DirPreviewStepMs';
-  KEY_TC_SLIDE_SHOW     = 'TCSlideShowMode';
+  KEY_TC_SLIDE_SHOW     = 'DirPreviewSlideShow';    { 1.4; before: TCSlideShowMode }
+  KEY_TC_SLIDE_SHOW_OLD = 'TCSlideShowMode';
+  { 1.4 (user, Day 39): the file manager's keys in a section of their
+    own, high up in the ini (before: in [Sort]; read from there while an
+    older ini has them, moved at the next write). }
+  FileManagerSection    = 'FileManager';
   KEY_RAPID_FOLDER      = 'RapidFolder';        { + the digit: RapidFolder1 .. RapidFolder0 }
   KEY_CLOSE_MINIMIZES   = 'CloseButtonMinimizes';
   KEY_SIDE_SCREENS      = 'SideBySideScreens';
@@ -637,6 +690,156 @@ function TakeIniNote: string;
 begin
   Result := IniNote;
   IniNote := '';
+end;
+
+{ Where a file manager key is read from: [FileManager], or [Sort] in an
+  ini from before 1.4. }
+function FMSection(AIni: TCustomIniFile; const AKey: string): string;
+begin
+  if AIni.ValueExists(FileManagerSection, AKey) then
+    Result := FileManagerSection
+  else
+    Result := SortSection;
+end;
+
+{ A renamed key (1.4): its new name, else its old name ([FileManager] or
+  [Sort]); ADefault if neither is there. }
+function ReadRenamed(AIni: TCustomIniFile; const ANew, AOld, ADefault: string): string;
+begin
+  if AIni.ValueExists(FileManagerSection, ANew) then
+    Result := AIni.ReadString(FileManagerSection, ANew, ADefault)
+  else
+    Result := AIni.ReadString(FMSection(AIni, AOld), AOld, ADefault);
+end;
+
+{ 1.4 (user, Day 39): the ini in a fixed order, the same at every write.
+  Sections: [Startup], [FileManager], [Window], [View], [Navigation],
+  [Sort], [DirList1] ... [DirListN], [Filters], [Magnifier], [InfoLine],
+  [Mouse], [Renderer], [Performance], then any other (an edition's own,
+  one VV doesn't know) as they were, [Debug] last. Keys: [FileManager]
+  and [Sort] in the order below (any other key after them, as it was);
+  the other sections as written (their order is Save's, or the user's:
+  [InfoLine]). Blank lines between sections; comments in the file are
+  not kept (VV writes none). }
+procedure TidyIni(AIni: TMemIniFile);
+const
+  FirstSections: array[0..4] of string = (
+    'Startup', FileManagerSection, 'Window', 'View', 'Navigation');
+  MiddleSections: array[0..5] of string = (
+    'Filters', 'Magnifier', 'InfoLine', 'Mouse', 'Renderer', 'Performance');
+  LastSections: array[0..0] of string = ('Debug');
+  { The manager first, then each one's program and its settings, then
+    what both use. }
+  FileManagerKeys: array[0..10] of string = (
+    KEY_DIR_MANAGER,
+    KEY_DOUBLE_COMMANDER, KEY_SHOW_IN_FM, KEY_DC_THUMBNAILS, KEY_CURSOR_SYNC,
+    KEY_TOTAL_COMMANDER,
+    KEY_FOLLOW_TC, KEY_DIR_PREVIEW_FILES, KEY_DIR_PREVIEW_DELAY,
+    KEY_DIR_PREVIEW_STEP, KEY_TC_SLIDE_SHOW);
+  { The list shown, the panel, its folders; Rapid sorting; recent ones. }
+  SortKeys: array[0..9] of string = (
+    'List', KEY_SORT_EDGE_DELAY, KEY_SORT_EDGE_WIDTH, KEY_SORT_PANEL_LINES,
+    KEY_SORT_PINNED, KEY_SHOW_DIR_HINT, KEY_DELETED_FOLDER, KEY_ICON_FOLDER,
+    KEY_IMAGE_FOLDER, '');
+var
+  Sections, Order, Keys, Done, Lines: TStringList;
+  I, J, N: Integer;
+  S: string;
+
+  function IndexOfText(AList: TStringList; const AName: string): Integer;
+  var
+    K: Integer;
+  begin
+    for K := 0 to AList.Count - 1 do
+      if SameText(AList[K], AName) then
+        Exit(K);
+    Result := -1;
+  end;
+
+  procedure TakeSection(const AName: string);
+  var
+    K: Integer;
+  begin
+    K := IndexOfText(Sections, AName);
+    if (K >= 0) and (IndexOfText(Order, Sections[K]) < 0) then
+      Order.Add(Sections[K]);
+  end;
+
+  function DirListNumber(const AName: string): Integer;
+  begin
+    if SameText(Copy(AName, 1, 7), 'DirList') then
+      Result := StrToIntDef(Copy(AName, 8, MaxInt), -1)
+    else
+      Result := -1;
+  end;
+
+  procedure AddKey(const ASection, AKey: string);
+  begin
+    if (IndexOfText(Done, AKey) < 0) and AIni.ValueExists(ASection, AKey) then
+    begin
+      Lines.Add(AKey + '=' + AIni.ReadString(ASection, AKey, ''));
+      Done.Add(AKey);
+    end;
+  end;
+
+begin
+  Sections := TStringList.Create;
+  Order := TStringList.Create;
+  Keys := TStringList.Create;
+  Done := TStringList.Create;
+  Lines := TStringList.Create;
+  try
+    AIni.ReadSections(Sections);
+    for S in FirstSections do
+      TakeSection(S);
+    TakeSection(SortSection);
+    { [DirList1] ... in their numbers' order. }
+    for N := 1 to 999 do
+      for I := 0 to Sections.Count - 1 do
+        if DirListNumber(Sections[I]) = N then
+          TakeSection(Sections[I]);
+    for S in MiddleSections do
+      TakeSection(S);
+    for I := 0 to Sections.Count - 1 do
+      if (IndexOfText(Order, Sections[I]) < 0) and not SameText(Sections[I], LastSections[0]) then
+        Order.Add(Sections[I]);
+    for S in LastSections do
+      TakeSection(S);
+
+    for I := 0 to Order.Count - 1 do
+    begin
+      if Lines.Count > 0 then
+        Lines.Add('');
+      Lines.Add('[' + Order[I] + ']');
+      Done.Clear;
+      if SameText(Order[I], FileManagerSection) then
+        for S in FileManagerKeys do
+          AddKey(Order[I], S)
+      else if SameText(Order[I], SortSection) then
+      begin
+        for S in SortKeys do
+          if S <> '' then
+            AddKey(Order[I], S);
+        for J := 1 to 10 do
+          AddKey(Order[I], KEY_RAPID_FOLDER + IntToStr(J mod 10));
+        for J := 1 to 99 do
+          AddKey(Order[I], 'Recent' + IntToStr(J));
+      end;
+      { The rest as it was. }
+      Keys.Clear;
+      AIni.ReadSection(Order[I], Keys);
+      for J := 0 to Keys.Count - 1 do
+        AddKey(Order[I], Keys[J]);
+    end;
+    AIni.Clear;
+    AIni.SetStrings(Lines);
+  finally
+    Lines.Free;
+    Done.Free;
+    Keys.Free;
+    Order.Free;
+    Sections.Free;
+  end;
 end;
 
 { The ini in memory, read from AFileName (none: empty). Written back
@@ -676,6 +879,9 @@ begin
   NewText := TStringList.Create;
   OldText := TStringList.Create;
   try
+    { VV's own ini (it has [Startup]): in its fixed order (1.4). }
+    if AIni.SectionExists('Startup') then
+      TidyIni(AIni);
     AIni.GetStrings(NewText);
     NewText.Text := IniTextWithEndLine(NewText.Text);
     if AOnlyIfChanged and FileExists(AFileName) and ReadTextFile(AFileName, Old) then
@@ -755,8 +961,10 @@ begin
   FOverlaySolid    := False;
   FOverlayColor    := 'White';
   FPreviewStrip    := False;
+  FSmallImageZoom  := 33;
   FZonesEnabled    := True;
   FEdgeWidth       := 12;
+  FZoneMenuSort    := DefaultZoneMenuSort;
   FBottomEdgeMs    := 1000;
   FTopEdgeMs       := 500;
 
@@ -806,7 +1014,12 @@ begin
   FImageFolder     := '';
   FShowDirHint     := False;
   FTotalCommander  := '';
+  FDoubleCommander := '';
+  FDirManager      := dmNone; { Day 40 (user): none unless chosen }
   FFollowTC        := 0;      { Day 24 (user): off by default }
+  FShowInFM        := 1;      { 1.4 (user): on by default, the other panel }
+  FDCThumbnails    := 0;
+  FCursorSyncMs    := 300;
   FDirPreviewFiles := 3;
   FDirPreviewDelay := 1000;
   FDirPreviewStep  := 100;
@@ -939,6 +1152,7 @@ begin
     FOverlaySolid    := Ini.ReadBool(SEC_VIEW, KEY_OVERLAY_SOLID, FOverlaySolid);
     FOverlayColor    := Trim(Ini.ReadString(SEC_VIEW, KEY_OVERLAY_COLOR, FOverlayColor));
     FPreviewStrip    := Ini.ReadBool(SEC_VIEW, KEY_PREVIEW_STRIP, FPreviewStrip);
+    FSmallImageZoom  := Ini.ReadInteger(SEC_VIEW, KEY_SMALL_IMAGE_ZOOM, FSmallImageZoom);
 
     FSortMode   := StringToSortMode(Ini.ReadString(SEC_NAVIGATION, KEY_SORT_MODE, ''), FSortMode);
     FRecursive  := Ini.ReadBool(SEC_NAVIGATION, KEY_RECURSIVE, FRecursive);
@@ -967,6 +1181,7 @@ begin
     FMouseHideTime := Ini.ReadInteger(SEC_MOUSE, KEY_MOUSE_HIDE_TIME, FMouseHideTime);
     FZonesEnabled  := Ini.ReadBool(SEC_MOUSE, KEY_ZONES_ENABLED, FZonesEnabled);
     FEdgeWidth     := EnsureRange(Ini.ReadInteger(SEC_MOUSE, KEY_EDGE_WIDTH, FEdgeWidth), 2, 60);
+    FZoneMenuSort  := Trim(Ini.ReadString(SEC_MOUSE, KEY_ZONE_MENU_SORT, FZoneMenuSort));
     FBottomEdgeMs  := EnsureRange(Ini.ReadInteger(SEC_MOUSE, KEY_BOTTOM_EDGE_MS, FBottomEdgeMs), 0, 10000);
     FTopEdgeMs     := EnsureRange(Ini.ReadInteger(SEC_MOUSE, KEY_TOP_EDGE_MS, FTopEdgeMs), 0, 10000);
 
@@ -990,14 +1205,33 @@ begin
     if FImageFolder = '' then
       FImageFolder := ExcludeTrailingPathDelimiter(UserPicturesDirectory);
     FShowDirHint     := Ini.ReadBool(SortSection, KEY_SHOW_DIR_HINT, FShowDirHint);
-    FTotalCommander  := Trim(Ini.ReadString(SortSection, KEY_TOTAL_COMMANDER, FTotalCommander));
-    FFollowTC        := Ini.ReadInteger(SortSection, KEY_FOLLOW_TC, FFollowTC);
-    FDirPreviewFiles := Max(0, Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_FILES, FDirPreviewFiles));
-    FDirPreviewDelay := EnsureRange(Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_DELAY, FDirPreviewDelay),
+    FTotalCommander  := Trim(Ini.ReadString(FMSection(Ini, KEY_TOTAL_COMMANDER), KEY_TOTAL_COMMANDER, FTotalCommander));
+    FDoubleCommander := Trim(Ini.ReadString(FMSection(Ini, KEY_DOUBLE_COMMANDER), KEY_DOUBLE_COMMANDER, FDoubleCommander));
+    FDirManager      := EnsureRange(Ini.ReadInteger(FMSection(Ini, KEY_DIR_MANAGER), KEY_DIR_MANAGER, FDirManager), dmNone, dmTotalCommander);
+    { Has an effect only until the file manager object is made (the
+      start); a change in the ini waits for the next start. }
+    SelectFileManager(FDirManager);
+    FFollowTC        := StrToIntDef(ReadRenamed(Ini, KEY_FOLLOW_TC, KEY_FOLLOW_TC_OLD,
+      IntToStr(FFollowTC)), FFollowTC);
+    FShowInFM        := EnsureRange(Ini.ReadInteger(FMSection(Ini, KEY_SHOW_IN_FM), KEY_SHOW_IN_FM, FShowInFM), 0, 2);
+    FDCThumbnails    := EnsureRange(Ini.ReadInteger(FileManagerSection, KEY_DC_THUMBNAILS, FDCThumbnails), 0, 2);
+    { 0 = off, else 100..3000 ms (below 100 every skimmed image would
+      go across, above 3 s it no longer feels connected). }
+    FCursorSyncMs    := Ini.ReadInteger(FileManagerSection, KEY_CURSOR_SYNC, FCursorSyncMs);
+    if FCursorSyncMs > 0 then
+      FCursorSyncMs := EnsureRange(FCursorSyncMs, 100, 3000)
+    else
+      FCursorSyncMs := 0;
+    { The program for the file manager in use (1.4, Day 40: Double
+      Commander without one is not connected to at all). }
+    SetFileManagerProgram(FileManagerProgram);
+    FDirPreviewFiles := Max(0, Ini.ReadInteger(FMSection(Ini, KEY_DIR_PREVIEW_FILES), KEY_DIR_PREVIEW_FILES, FDirPreviewFiles));
+    FDirPreviewDelay := EnsureRange(Ini.ReadInteger(FMSection(Ini, KEY_DIR_PREVIEW_DELAY), KEY_DIR_PREVIEW_DELAY, FDirPreviewDelay),
       0, 60000);
-    FDirPreviewStep  := EnsureRange(Ini.ReadInteger(SortSection, KEY_DIR_PREVIEW_STEP, FDirPreviewStep),
+    FDirPreviewStep  := EnsureRange(Ini.ReadInteger(FMSection(Ini, KEY_DIR_PREVIEW_STEP), KEY_DIR_PREVIEW_STEP, FDirPreviewStep),
       10, 10000);
-    FTCSlideShow     := Ini.ReadBool(SortSection, KEY_TC_SLIDE_SHOW, FTCSlideShow);
+    FTCSlideShow     := Trim(ReadRenamed(Ini, KEY_TC_SLIDE_SHOW, KEY_TC_SLIDE_SHOW_OLD,
+      IntToStr(Ord(FTCSlideShow)))) = '1';
     for I := 0 to High(FRapidFolders) do
       FRapidFolders[I] := Trim(Ini.ReadString(SortSection,
         KEY_RAPID_FOLDER + IntToStr((I + 1) mod 10), FRapidFolders[I]));
@@ -1078,6 +1312,7 @@ begin
     Ini.WriteBool(SEC_VIEW, KEY_OVERLAY_SOLID, FOverlaySolid);
     Ini.WriteString(SEC_VIEW, KEY_OVERLAY_COLOR, FOverlayColor);
     Ini.WriteBool(SEC_VIEW, KEY_PREVIEW_STRIP, FPreviewStrip);
+    Ini.WriteInteger(SEC_VIEW, KEY_SMALL_IMAGE_ZOOM, FSmallImageZoom);
 
     Ini.WriteString(SEC_NAVIGATION, KEY_SORT_MODE, SortModeToString(FSortMode));
     Ini.WriteBool(SEC_NAVIGATION, KEY_RECURSIVE, FRecursive);
@@ -1106,6 +1341,7 @@ begin
     Ini.WriteInteger(SEC_MOUSE, KEY_MOUSE_HIDE_TIME, FMouseHideTime);
     Ini.WriteBool(SEC_MOUSE, KEY_ZONES_ENABLED, FZonesEnabled);
     Ini.WriteInteger(SEC_MOUSE, KEY_EDGE_WIDTH, FEdgeWidth);
+    Ini.WriteString(SEC_MOUSE, KEY_ZONE_MENU_SORT, FZoneMenuSort);
     Ini.WriteInteger(SEC_MOUSE, KEY_BOTTOM_EDGE_MS, FBottomEdgeMs);
     Ini.WriteInteger(SEC_MOUSE, KEY_TOP_EDGE_MS, FTopEdgeMs);
 
@@ -1202,8 +1438,14 @@ begin
 end;
 
 procedure TConfig.WriteSort(AIni: TCustomIniFile);
+const
+  MovedToFileManager: array[0..8] of string = (
+    KEY_DIR_MANAGER, KEY_DOUBLE_COMMANDER, KEY_TOTAL_COMMANDER, KEY_FOLLOW_TC_OLD,
+    KEY_SHOW_IN_FM, KEY_DIR_PREVIEW_FILES, KEY_DIR_PREVIEW_DELAY, KEY_DIR_PREVIEW_STEP,
+    KEY_TC_SLIDE_SHOW_OLD);
 var
   I: Integer;
+  S: string;
 begin
   AIni.WriteInteger(SortSection, KEY_SORT_EDGE_DELAY, FSortEdgeDelayMs);
   AIni.WriteInteger(SortSection, KEY_SORT_EDGE_WIDTH, FSortEdgeWidth);
@@ -1215,12 +1457,27 @@ begin
   for I := 0 to High(FRapidFolders) do
     AIni.WriteString(SortSection, KEY_RAPID_FOLDER + IntToStr((I + 1) mod 10), FRapidFolders[I]);
   AIni.WriteBool(SortSection, KEY_SHOW_DIR_HINT, FShowDirHint);
-  AIni.WriteString(SortSection, KEY_TOTAL_COMMANDER, FTotalCommander);
-  AIni.WriteInteger(SortSection, KEY_FOLLOW_TC, FFollowTC);
-  AIni.WriteInteger(SortSection, KEY_DIR_PREVIEW_FILES, FDirPreviewFiles);
-  AIni.WriteInteger(SortSection, KEY_DIR_PREVIEW_DELAY, FDirPreviewDelay);
-  AIni.WriteInteger(SortSection, KEY_DIR_PREVIEW_STEP, FDirPreviewStep);
-  AIni.WriteBool(SortSection, KEY_TC_SLIDE_SHOW, FTCSlideShow);
+  { 1.4 (Day 39): the file manager's keys in [FileManager]; an older
+    ini's copies in [Sort] go. }
+  AIni.WriteInteger(FileManagerSection, KEY_DIR_MANAGER, FDirManager);
+  AIni.WriteString(FileManagerSection, KEY_DOUBLE_COMMANDER, FDoubleCommander);
+  AIni.WriteString(FileManagerSection, KEY_TOTAL_COMMANDER, FTotalCommander);
+  AIni.WriteInteger(FileManagerSection, KEY_FOLLOW_TC, FFollowTC);
+  AIni.WriteInteger(FileManagerSection, KEY_SHOW_IN_FM, FShowInFM);
+  AIni.WriteInteger(FileManagerSection, KEY_DC_THUMBNAILS, FDCThumbnails);
+  AIni.WriteInteger(FileManagerSection, KEY_CURSOR_SYNC, FCursorSyncMs);
+  AIni.WriteInteger(FileManagerSection, KEY_DIR_PREVIEW_FILES, FDirPreviewFiles);
+  AIni.WriteInteger(FileManagerSection, KEY_DIR_PREVIEW_DELAY, FDirPreviewDelay);
+  AIni.WriteInteger(FileManagerSection, KEY_DIR_PREVIEW_STEP, FDirPreviewStep);
+  AIni.WriteBool(FileManagerSection, KEY_TC_SLIDE_SHOW, FTCSlideShow);
+  for S in MovedToFileManager do
+    if AIni.ValueExists(SortSection, S) then
+      AIni.DeleteKey(SortSection, S);
+  { The old names of the renamed keys (1.4) go from [FileManager] too. }
+  if AIni.ValueExists(FileManagerSection, KEY_FOLLOW_TC_OLD) then
+    AIni.DeleteKey(FileManagerSection, KEY_FOLLOW_TC_OLD);
+  if AIni.ValueExists(FileManagerSection, KEY_TC_SLIDE_SHOW_OLD) then
+    AIni.DeleteKey(FileManagerSection, KEY_TC_SLIDE_SHOW_OLD);
   FSortFolders.SaveToIni(AIni);
   { Containers are never kept (Day 25, user: transient in the panel);
     an old [Containers] section of the first Lab builds goes. }
@@ -1327,7 +1584,7 @@ type
   end;
 
 const
-  KeyHelpTable: array[0..45] of TKeyHelp = (
+  KeyHelpTable: array[0..47] of TKeyHelp = (
     (Section: SEC_STARTUP; Key: KEY_OPEN_LAST_SESSION;
      Text: 'Not used any more: started without a file or folder, VersariteViewer shows this editor; "View images" opens the last session.'),
     (Section: SEC_STARTUP; Key: KEY_LAST_DIRECTORY;
@@ -1421,6 +1678,19 @@ const
     (Section: SEC_MOUSE; Key: KEY_EDGE_WIDTH;
      Text: 'How close to the top / bottom edge of the view the mouse must rest, in pixels '
        + '(default 12, scaled for the screen; 2 .. 60).'),
+    (Section: SEC_MOUSE; Key: KEY_ZONE_MENU_SORT;
+     Text: 'Browsing order of the zones set to "context menu" on the "Mouse & keys" page '
+       + '(written by VersariteViewer when an order is picked from the context menu in such '
+       + 'a zone; can be edited here). Four digits, one per zone:' + LineEnding
+       + '  1st = top left, 2nd = top right, 3rd = bottom left, 4th = bottom right' + LineEnding
+       + 'Each digit:' + LineEnding
+       + '  1 = by date, newest first' + LineEnding
+       + '  2 = by date, oldest first' + LineEnding
+       + '  3 = by name, A - Z' + LineEnding
+       + '  4 = by name, Z - A' + LineEnding
+       + '  5 = random' + LineEnding
+       + 'Default 3333. Zones set to by date / by name / random use that order; with the zones '
+       + 'off, the order picked in the context menu ([Navigation] SortMode) counts everywhere.'),
     (Section: SEC_MOUSE; Key: KEY_BOTTOM_EDGE_MS;
      Text: 'With the zones off: the mouse resting this long (ms) at the bottom edge switches '
        + 'zoom mode on / off (the wheel zooms at the mouse instead of going to the next / '
@@ -1439,6 +1709,11 @@ const
      Text: '1 = the preview strip (the folder''s images along the top) stays open, also after a '
        + 'restart. Written by VersariteViewer when it is switched on / off (right-click menu, '
        + 'Esc, the PreviewStrip command).'),
+    (Section: SEC_VIEW; Key: KEY_SMALL_IMAGE_ZOOM;
+     Text: 'Small images (icons, tiny pictures): an image smaller than this percentage of the window''s '
+       + 'height opens at that size instead of filling the window, where it looks blocky. '
+       + '33 = a third of the height (default); 0 = off, small images fill the window as before '
+       + '(0 .. 90). The fit command (or the toggle''s second press) still fills the window.'),
     (Section: SEC_RENDERER; Key: KEY_USE_MIPMAPS;
      Text: '1 = smooth reduced images on the GPU (mipmaps).'),
     (Section: SEC_RENDERER; Key: KEY_USE_GPU;
@@ -1538,7 +1813,7 @@ begin
     Exit('1 = Auto black / white point for every image from the start (default): each image is '
       + 'stretched to its own range, "[auto]" in the info line. 0 = off at the start. '
       + 'Double-click Auto on the filter panel switches it for the session.');
-  if SameText(ASection, SortSection) then
+  if SameText(ASection, SortSection) or SameText(ASection, FileManagerSection) then
   begin
     if SameText(AKey, KEY_SORT_EDGE_DELAY) then
       Exit('ms the mouse rests at the right edge of the window until the sort panel opens (default 500). '
@@ -1570,14 +1845,14 @@ begin
         + ' in DefaultImageFolder (default). Made when missing; read when Rapid sorting is '
         + 'switched on.');
     if SameText(AKey, KEY_TC_SLIDE_SHOW) then
-      Exit('Total Commander dir preview: 1 = the folder''s images keep playing also with '
+      Exit('Dir preview: 1 = the folder''s images keep playing also with '
         + 'VersariteViewer in front (it has the focus: the keys and buttons work on it, e.g. '
         + 'DirPreviewLonger / DirPreviewShorter) - a slide show, until the dir preview is '
         + 'switched off in the right-click menu. 0 = the preview waits while VersariteViewer has '
-        + 'the focus, and goes on when Total Commander is in front again (default). The command '
+        + 'the focus, and goes on when the file manager is in front again (default). The command '
         + 'SlideShowMode (on the "Mouse & keys" page) switches it; written by VersariteViewer.');
     if SameText(AKey, KEY_DIR_PREVIEW_STEP) then
-      Exit('Total Commander dir preview: how many milliseconds the commands DirPreviewLonger / '
+      Exit('Dir preview: how many milliseconds the commands DirPreviewLonger / '
         + 'DirPreviewShorter (assign them to a key or mouse button on the "Mouse & keys" page) '
         + 'add to or take from DirPreviewDelayMs (default 100; 10 .. 10000). Shorter goes down '
         + 'to 0 = paused; longer goes on (the slide show from the image shown, the dir preview '
@@ -1591,17 +1866,40 @@ begin
     if SameText(AKey, KEY_ICON_FOLDER) then
       Exit('Folder with .ico / .png icons for the sort panel. Empty = "icons" next to VersariteViewer.exe.');
     if SameText(AKey, KEY_FOLLOW_TC) then
-      Exit('Follow Total Commander: 0 = no (default); 1 = when its active panel changes folder, VersariteViewer opens '
-        + 'that folder; 2 = also the image under its cursor (VersariteViewer as Total Commander''s '
-        + 'viewer). Also in the right-click menu.');
+      Exit('Follow the file manager (DirManager): 0 = no (default); 1 = when its active panel '
+        + 'changes folder, VersariteViewer opens that folder; 2 = also the image under its cursor '
+        + '(VersariteViewer as the file manager''s viewer). Also in the right-click menu.');
+    if SameText(AKey, KEY_SHOW_IN_FM) then
+      Exit('A click on a sort button shows its folder in the file manager (Double Commander; '
+        + 'Total Commander can''t be told): 0 = no; 1 = in its inactive panel (default: the active '
+        + 'one, which VersariteViewer may follow, stays); 2 = in its active panel. '
+        + 'Only while it runs.');
     if SameText(AKey, KEY_TOTAL_COMMANDER) then
       Exit('Total Commander (TOTALCMD64.EXE) for "Side by side". Empty = found by VersariteViewer.');
+    if SameText(AKey, KEY_DOUBLE_COMMANDER) then
+      Exit('Double Commander (doublecmd.exe, the build with the remote control patch). Needed: '
+        + 'empty (or not there), VersariteViewer does not connect to Double Commander at all and '
+        + 'shows a notice instead.');
+    if SameText(AKey, KEY_DC_THUMBNAILS) then
+      Exit('Double Commander''s thumbnail view, switched on once when a freshly started Double '
+        + 'Commander connects: 0 = no (default); 1 = in its inactive panel; 2 = in its active panel.');
+    if SameText(AKey, KEY_CURSOR_SYNC) then
+      Exit('Following Double Commander in mode 2 (FollowDirManager=2): the image VersariteViewer shows goes '
+        + 'under Double Commander''s cursor (its folder too) once it has stayed this many '
+        + 'milliseconds, so skimming doesn''t make it jump. 0 = never, else 100 to 3000. Default 300. Not during a '
+        + 'slide show or the dir preview.');
+    if SameText(AKey, KEY_DIR_MANAGER) then
+      Exit('The file manager VersariteViewer works with (side by side, follow, sort buttons): '
+        + '0 = none (default: no file manager features, no notices); 1 = Double Commander '
+        + '(its remote control must be on); 2 = Total Commander (Windows only). Each needs its '
+        + 'program''s path below (DoubleCommander= / TotalCommander=); no installation is '
+        + 'looked for. Takes effect at the next start.');
     if SameText(AKey, KEY_DIR_PREVIEW_FILES) then
-      Exit('Total Commander dir preview (right-click menu): with Total Commander''s cursor on a '
+      Exit('Dir preview (right-click menu): with the file manager''s cursor on a '
         + 'folder, its first images play as a slide show, round and round, in the order of the '
         + 'images (name / date / random). How many: default 3; 0 = all.');
     if SameText(AKey, KEY_DIR_PREVIEW_DELAY) then
-      Exit('Slide show and Total Commander dir preview: how long each image stays, in '
+      Exit('Slide show and dir preview: how long each image stays, in '
         + 'milliseconds (default 1000; 0 .. 60000; 0 = paused: the image stays until '
         + 'DirPreviewLonger). The dir preview shows the quick views (speed first), the full size '
         + 'only with DirPreviewFiles=0 and more than 1000 ms, or paused.');
@@ -1671,6 +1969,16 @@ begin
   Result := IncludeTrailingPathDelimiter(Result);
 end;
 
+function TConfig.FileManagerProgram: string;
+begin
+  case FDirManager of
+    dmTotalCommander:  Result := FTotalCommander;
+    dmDoubleCommander: Result := FDoubleCommander;
+  else
+    Result := '';
+  end;
+end;
+
 function TConfig.SaveDirectory: string;
 var
   Ini: TMemIniFile;
@@ -1726,6 +2034,47 @@ begin
     end;
   except
     { A read-only folder: the window just opens at its default place. }
+  end;
+end;
+
+function TConfig.ZoneMenuSort(AZone: Integer): TSortMode;
+var
+  Digit: Integer;
+begin
+  Digit := 0;
+  if (AZone >= 0) and (AZone < 4) and (Length(FZoneMenuSort) > AZone) then
+    Digit := Ord(FZoneMenuSort[AZone + 1]) - Ord('0');
+  if (Digit < 1) or (Digit > Ord(High(TSortMode)) + 1) then
+    Digit := 3;
+  Result := TSortMode(Digit - 1);
+end;
+
+procedure TConfig.SetZoneMenuSort(AZone: Integer; AMode: TSortMode);
+var
+  S: string;
+  I: Integer;
+  Ini: TMemIniFile;
+begin
+  if (AZone < 0) or (AZone > 3) then
+    Exit;
+  { Four valid digits first (a hand-edited or short value). }
+  SetLength(S, 4);
+  for I := 0 to 3 do
+    S[I + 1] := Chr(Ord('1') + Ord(ZoneMenuSort(I)));
+  S[AZone + 1] := Chr(Ord('1') + Ord(AMode));
+  if S = FZoneMenuSort then
+    Exit;
+  FZoneMenuSort := S;
+  try
+    Ini := OpenIniFile(FIniFileName);
+    try
+      Ini.WriteString(SEC_MOUSE, KEY_ZONE_MENU_SORT, FZoneMenuSort);
+      CommitIni(Ini, FIniFileName, False);
+    finally
+      Ini.Free;
+    end;
+  except
+    { A read-only folder: it just isn't remembered. }
   end;
 end;
 
@@ -1802,6 +2151,8 @@ begin
 
   if (FZoomStepPercent < 1) or (FZoomStepPercent > 200) then
     FZoomStepPercent := 20;
+  if (FSmallImageZoom < 0) or (FSmallImageZoom > 90) then
+    FSmallImageZoom := 33;
 
   if FDecodeDelayMs < 0 then
     FDecodeDelayMs := 0;

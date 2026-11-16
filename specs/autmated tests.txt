@@ -1,0 +1,698 @@
+Compiling TestNavigation.lpr ...
+Free Pascal Compiler version 3.2.2 [2026/02/20] for x86_64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+Target OS: Win64 for x64
+Compiling TestNavigation.lpr
+Compiling c:\projects\mview\source\core\uNavigator.pas
+Linking TestNavigation.exe
+1720 lines compiled, 0.6 sec, 224096 bytes code, 9924 bytes data
+Compiling TestExif.lpr ...
+Free Pascal Compiler version 3.2.2 [2026/02/20] for x86_64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+Target OS: Win64 for x64
+Compiling TestExif.lpr
+Linking TestExif.exe
+363 lines compiled, 0.5 sec, 192800 bytes code, 9588 bytes data
+Compiling TestMouse.lpr ...
+Free Pascal Compiler version 3.2.2 [2026/02/20] for x86_64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+Target OS: Win64 for x64
+Compiling TestMouse.lpr
+Compiling c:\projects\mview\source\core\uCommands.pas
+Compiling c:\projects\mview\source\mouse\uMouseProfile.pas
+Compiling c:\projects\mview\source\mouse\uMouseEngine.pas
+Linking TestMouse.exe
+2553 lines compiled, 0.5 sec, 213872 bytes code, 10740 bytes data
+Compiling TestSort.lpr ...
+Free Pascal Compiler version 3.2.2 [2026/02/20] for x86_64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+Target OS: Win64 for x64
+Compiling TestSort.lpr
+Linking TestSort.exe
+552 lines compiled, 0.6 sec, 255088 bytes code, 10628 bytes data
+Compiling TestFilters.lpr ...
+Free Pascal Compiler version 3.2.2 [2026/02/20] for x86_64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+Target OS: Win64 for x64
+Compiling TestFilters.lpr
+Compiling c:\projects\mview\source\utility\uFilters.pas
+Linking TestFilters.exe
+774 lines compiled, 0.4 sec, 99584 bytes code, 6212 bytes data
+Building TestGif.lpi with lazbuild ...
+InitializeFppkg failed: Could not find a fpc executable in the PATH
+Hint: (11030) Start of reading config file C:\lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.cfg
+Hint: (11031) End of reading config file C:\lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.cfg
+Free Pascal Compiler version 3.2.2 [2026/02/20] for x86_64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+(1002) Target OS: Win64 for x64
+(3104) Compiling TestGif.lpr
+(9022) Compiling resource c:\projects\mview\test\lib\x86_64-win64\TestGif.obj
+(9015) Linking c:\projects\mview\test\TestGif.exe
+(1008) 686 lines compiled, 3.0 sec, 2733056 bytes code, 148612 bytes data
+(1022) 2 hint(s) issued
+
+MView navigation test
+=====================
+Test tree: C:\Users\ADMINI~1\AppData\Local\Temp\mview_nav_test
+
+-- Natural sort and formats --
+  PASS  Image2 < Image10
+  PASS  image2 < Image10 (case ignored)
+  PASS  scan_9 < scan_010
+  PASS  a < a1
+  PASS  10 > 9
+  PASS  D2 < D10
+  PASS  .JPG is supported
+  PASS  .tiff is supported
+  PASS  .webp is not (v1 has no decoder)
+  PASS  .txt is not
+
+-- TDirectoryTree --
+  PASS  recursive: 8 directories
+  PASS  depth-first, natural order: root A A1 A2 B C D2 D10
+  PASS  NextDirectory(A) = A1
+  PASS  NextDirectory(D10) = '' (end)
+  PASS  PreviousDirectory(root) = '' (start)
+  PASS  IndexOf is case-insensitive
+  PASS  non-recursive: root only
+
+-- TDirectoryImages --
+  PASS  A: notes.txt is not an image
+  PASS  A1: 3 images
+  PASS  name order: a1_2, a1_3, a1_10
+  PASS  date, newest first: a1_2 first
+  PASS  same date: a1_3 before a1_10 (by name)
+  PASS  date, oldest first: a1_3, a1_10, a1_2
+
+-- Browsing the whole tree (wrap: tree) --
+  PASS  root folder has no images: starts on A1\a1_2
+  PASS  root = the opened folder
+  PASS  next, next: a1_10
+  PASS  next: skips empty A2, lands on B\b.jpg
+  PASS  next: skips C, D2, D10, root, A and wraps to a1_2
+  PASS  previous from a1_2: back to B\b.jpg
+  PASS  previous from b.jpg: LAST image of A1 (a1_10)
+  PASS  next directory from A1: B
+  PASS  previous directory from B: FIRST image of A1
+
+-- Wrap-around options --
+  PASS  file opened: root is its parent folder
+  PASS  no wrap: next after the last image fails
+  PASS    ...and stays on b.jpg
+  PASS  folder wrap: previous from a1_2 goes to a1_10 (same folder)
+  PASS  folder wrap: next from a1_10 goes to a1_2 (same folder)
+  PASS  folder wrap: next directory still changes folders
+  PASS  single folder: next from the last image wraps to the first
+  PASS  single folder: previous from the first wraps to the last
+  PASS  single folder: next directory has nowhere to go
+  PASS  one image only: next reports no change
+  PASS    ...and stays on b.jpg
+  PASS  empty tree: no current image
+  PASS  empty tree: next fails
+
+-- Opening files, resuming, sort changes --
+  PASS  file opened: that file is current
+  PASS  file opened: root is the parent folder (A)
+  PASS  sort change keeps the current file
+  PASS    ...at its new position (2nd)
+  PASS  toggle from date: by name
+  PASS    ...still on a1_10
+  PASS  resume: folder opened, file selected
+  PASS  resume: root is the folder
+  PASS  resume file outside the tree is ignored
+
+-- Background tree (Phase B) --
+  PASS  cancelled scan: Build returns False
+  PASS  uncancelled scan: Build returns True
+  PASS  deferred: tree not ready yet
+  PASS  deferred: empty root has no image yet
+  PASS  deferred: next has nowhere to go yet
+  PASS  SetTree moves on to the first folder with images
+  PASS    ...tree ready
+  PASS  deferred: opened file is current at once
+  PASS  deferred: previous works inside the folder
+  PASS  deferred: no wrap at the end while the tree is missing
+  PASS  SetTree keeps the current image
+  PASS  with the tree: next wraps to a1_2 (A1 is the only folder with images under A)
+
+-- Files ahead (preloading) --
+  PASS  3 ahead of a1_2: a1_3, a1_10, then B\b
+  PASS  10 ahead: stops before coming round to a1_2 again
+  PASS  2 behind a1_2: wraps to b, then a1_10
+  PASS  asking does not move
+  PASS  0 ahead: empty
+  PASS  no wrap, last image: nothing ahead
+  PASS  no wrap, behind b: a1_10, a1_3, a1_2
+  PASS  wrap per folder: a1_2, a1_3 and stop
+  PASS  tree not known yet: only its own folder, no wrap
+
+-- No disk access (Day 19) --
+  PASS  tree with images: A1 has 3
+  PASS    B has 1 (notes.txt left out)
+  PASS    C is listed, empty
+  PASS  not recursive, with images: one folder, 3 images
+  PASS  OpenListed starts on the given file
+  PASS    no tree yet: no folder change
+  PASS  SetTree keeps the current image
+  PASS  next: a1_10
+  PASS  next crosses into B, from the tree's lists
+  PASS  ListedKey knows b.jpg
+  PASS  ListedKey: a file not listed
+  PASS  previous directory: back to A1 (A2 empty)
+
+-- Climbing at the end of the tree (ClimbUp) --
+  PASS  folder opened: it is the root
+  PASS  its parent is no drive: may climb
+  PASS  next folder at the end: no step
+  PASS    ...climbing wanted
+  PASS    ...still on a1_2
+  PASS  previous folder: climbing wanted too
+  PASS  next image inside the folder: a step, no climbing
+  PASS  last image, next: no wrap to a1_2, climbing wanted
+  PASS  ClimbUp off: last image, next wraps to a1_2 as before
+  PASS  ClimbUp off: next folder asks for nothing
+  PASS  inside the tree: next folder steps as before (A1 -> B is outside: climb)
+
+-- Files moved away and back (sorting) --
+  PASS  starts on a1_3
+  PASS  current moved away: reported as changed
+  PASS  ... the next image is current (a1_10)
+  PASS  ... two images left in A1
+  PASS  another file moved away: current unchanged
+  PASS  ... one image left
+  PASS  moved back: listed again, current unchanged
+  PASS  added twice: listed once
+  PASS  SelectFile: a1_3 current again
+  PASS  not an image: not added
+  PASS  SelectFile a1_10
+  PASS  last of the folder moved away: next folder (B)
+
+=====================
+110 passed, 0 failed
+
+MView EXIF orientation test
+
+-- Headers built in memory --
+  PASS  little-endian (II), values 1..8
+  PASS  big-endian (MM), values 1..8
+  PASS  orientation as second entry
+  PASS  after a JFIF APP0 segment
+  PASS  EXIF without orientation: 1
+  PASS  value 9 (invalid): 1
+  PASS  wrong type (LONG instead of SHORT): 1
+  PASS  cut off inside the EXIF block: 1
+  PASS  not a JPEG: 1
+  PASS  IFD offset outside the data: 1
+  PASS  no data: 1
+  PASS  5..8 swap width and height, 1..4 do not
+
+-- Test pictures --
+  PASS  orient_1.jpg reads 1
+  PASS  orient_2.jpg reads 2
+  PASS  orient_3.jpg reads 3
+  PASS  orient_4.jpg reads 4
+  PASS  orient_5.jpg reads 5
+  PASS  orient_6.jpg reads 6
+  PASS  orient_7.jpg reads 7
+  PASS  orient_8.jpg reads 8
+
+-- EXIF thumbnails (uJpegHeader) --
+  PASS  thumb_plain: header read
+  PASS  thumb_plain: 1600 x 1200
+  PASS  thumb_plain: orientation 1
+  PASS  thumb_plain: thumbnail is a JPEG
+  PASS  thumb_letterbox: header read
+  PASS  thumb_letterbox: 1920 x 1080
+  PASS  thumb_letterbox: thumbnail
+  PASS  thumb_orient6: header read (big-endian EXIF)
+  PASS  thumb_orient6: stored 1600 x 1200
+  PASS  thumb_orient6: orientation 6
+  PASS  thumb_orient6: thumbnail
+  PASS  nothumb: header read
+  PASS  nothumb: no thumbnail
+  PASS  exif\orient_1: header read, no thumbnail
+  PASS  missing file: False
+
+-- AspectCrop --
+  PASS  same shape: whole thumbnail
+  PASS  16:9 in 160x120: bars top/bottom cut
+  PASS  9:16 in 160x120: bars left/right cut
+  PASS  under 2 % off: whole thumbnail
+  PASS  empty: no crash
+
+40 passed, 0 failed
+
+MView mouse language test
+=========================
+
+-- Profile --
+  PASS  built-in profile: no errors
+  PASS  bottom left: wheel down = next image (from Anywhere)
+  PASS  bottom right: wheel down = zoom in (its own)
+  PASS  top left: wheel up = turn right
+  PASS  keys: Space = next image; Esc is fixed, not in the profile
+  PASS  zone names and orders
+  PASS  three commands in a row, names not case sensitive
+  PASS  a fourth command is cut off (and reported)
+  PASS  None in a zone switches the Anywhere entry off there
+  PASS    ...other zones still use it
+  PASS  "X2 =" with nothing: off
+  PASS  zone name read
+  PASS  an old "Esc = Back" line: accepted, ignored (Esc is fixed)
+  PASS  7 problems reported
+  PASS    with line numbers
+  PASS  save, read, save: identical
+  PASS    and it means the same
+  PASS  Assign copies (later changes to the source don't reach it)
+
+-- Zones --
+  PASS  corners
+  PASS  just right of the middle, coming from the left: still left
+  PASS    ...without a previous zone: right
+  PASS    ...clearly right (beyond the band): right
+  PASS  just above the middle, coming from below: still bottom
+
+-- Engine --
+  PASS  entering a zone shows its name
+  PASS  moving inside it: nothing
+  PASS  bottom left, wheel towards you: sort by date, then next image
+  PASS  top right, wheel away: sort by name, then previous image
+  PASS  two thirds of a notch: no step yet
+  PASS    the third part: one step
+  PASS  bottom right, wheel towards you: zoom in at the middle of the view (zones on)
+  PASS    a third of a notch away: zoom out by a third at once
+  PASS  top left, wheel away: turn right 5 degrees
+  PASS  zones off: bottom right wheel = next image, no zoom, no sort, no zone name
+  PASS    bottom left (by date): next image, but no sort by date
+  PASS  edit zone: click = edit mode on
+  PASS    double-click = edit mode off (and not on)
+  PASS  double-click: fit <-> 100 % at the mouse, on the second press
+  PASS    ...once
+  PASS  click, with a double-click there: waits
+  PASS    still waiting at 300 ms
+  PASS    runs after the double-click time
+  PASS  double-click: only the double-click runs
+  PASS  no double-click in that zone: the click runs at once
+  PASS  drag: pan, no click
+  PASS    drag start reported where the button went down (for a selection)
+  PASS    and where the drag is
+  PASS  right click: the menu, where the mouse is
+  PASS  gesture to the right: shown while it is made
+  PASS    on release: next folder, no menu
+  PASS    and the preview is cleared
+  PASS  diagonal stroke: nothing (no menu either)
+  PASS  tilt right, held: one next folder
+  PASS    after a pause, tilt left: previous folder
+  PASS    tilt right again at once (other way): next folder
+  PASS  X1: zoom mode on
+  PASS    the wheel zooms everywhere
+  PASS    ...at the mouse (zoom mode), not at the middle
+  PASS    a Browser Back key right after X1 is its echo: ignored
+  PASS  Esc (Back): leaves the mode
+  PASS  Esc again: Back for TMView (edit mode off, else the settings editor)
+  PASS  arrow down: next image
+  PASS  arrow up: previous image
+  PASS  arrow right: next folder
+  PASS  arrow left: previous folder
+  PASS  Ctrl+V: paste
+  PASS  Space, Enter, D from [Keys]
+  PASS  other keys are not used
+  PASS  focus lost: the waiting click is dropped
+
+-- Hamana profile --
+  PASS  Hamana.mouse: no errors
+  PASS  top right: wheel steps images by name
+  PASS  bottom left: wheel steps images by date
+  PASS  elsewhere the wheel zooms (down = in, up = out)
+  PASS  gestures as in Hamana: folders, parent, exit
+  PASS  right click = original size, X2 = menu, X1 = zoom mode
+  PASS  top left: click = edit mode on, double-click = off
+  PASS  wheel click and Enter = fullscreen, Space = next image
+  PASS  engine, top right: sort by name, then next image
+  PASS  engine, bottom right: zoom in (towards you), no image step
+  PASS  engine: right click = original size at once (no double-click wait)
+  PASS  engine: X2 = the menu
+
+=========================
+80 passed, 0 failed
+
+MView sorting test (Phase G)
+UniqueFileName
+  PASS  free name stays
+  PASS  taken: _1
+  PASS  _1 taken too: _2
+  PASS  folder without trailing delimiter
+  PASS  no extension: noext_1
+  PASS  a folder of that name counts as taken
+ExecuteFileJob
+  PASS  copy: OK
+  PASS  copy: the copy is there
+  PASS  copy: the original stays
+  PASS  copy: ResultFile
+  PASS  copy: same content
+  PASS  copy: size reported
+  PASS  copy again: never overwritten, a_1.jpg
+  PASS  move: OK
+  PASS  move: gone from the source
+  PASS  move: there
+  PASS  missing source: reported
+  PASS  missing folder: reported, not made
+  PASS  missing folder: the file stays
+  PASS  CreateTarget: the folder is made and the file moved
+  PASS  undo: back in its folder
+  PASS  log: header
+  PASS  log: one line per job
+  PASS  log: a copy is logged
+  PASS  log: delete and undo are marked
+  PASS  log: failures say why
+TFileMover (thread)
+  PASS  busy after Add
+  PASS  all five delivered (on the main thread)
+  PASS  in order
+  PASS  all OK
+  PASS  not busy any more
+  PASS  freed with jobs waiting: fine
+TSortFolders
+  PASS  empty
+  PASS  add: index 0
+  PASS  trailing delimiter dropped
+  PASS  add beyond Count: refused
+  PASS  three slots
+  PASS  colours differ
+  PASS  recent: newest first
+  PASS  replace: colour and icon stay
+  PASS  replace: name follows
+  PASS  move: last to first
+  PASS  ini: same count
+  PASS  ini: same folders
+  PASS  ini: colour and icon
+  PASS  ini: recent folders
+  PASS  ini: keys of a removed slot are gone
+  PASS  ini: two slots after remove
+  PASS  at most MaxSortSlots
+  PASS  recent: at most MaxRecentFolders
+  PASS  ParseSlotColor
+  PASS  ParseSlotColor: unknown -> default
+  PASS  FolderDisplayName
+  PASS  IconBaseName
+  PASS  IconBaseName of a drive: no colon
+faWrite (Make icon)
+  PASS  write: folder made, file written
+  PASS  write: nothing renamed the first time
+  PASS  write: size
+  PASS  write again: the old one is Good_previous.ico
+  PASS  write again: the new one has the new content
+  PASS  third time: Good_previous_1.ico (nothing lost)
+uIconFile
+  PASS  directory: three entries
+  PASS  entry 1: depth from the DIB (4)
+  PASS  entry 2: PNG, 64 x 64 from its header
+  PASS  size 2: the 32-bit 2x2 (best depth of the smallest large enough)
+  PASS  size 32: the 64 px PNG (smallest at least 32)
+  PASS  size 128: none that large, the largest (64 px)
+  PASS  32-bit: decoded
+  PASS  32-bit: top left blue, half transparent (top row first)
+  PASS  32-bit: bottom right green
+  PASS  4-bit: decoded
+  PASS  4-bit: top left transparent (AND mask)
+  PASS  4-bit: top right red, opaque
+  PASS  4-bit: bottom left red
+  PASS  4-bit: bottom right black, opaque
+  PASS  a PNG entry is not decoded as DIB
+  PASS  not an icon: False
+  PASS  cut short: False
+  PASS  WriteIconFile: read back, two PNG entries
+  PASS  WriteIconFile: 256 is stored as 0 in the directory
+
+80 passed, 0 failed
+
+MView filter test (Phase H)
+Neutral
+  PASS  NeutralFilters is neutral
+  PASS  SameFilters with itself
+  PASS  no colour step when neutral
+  PASS  tone table is the identity
+  PASS  a pixel stays as it is
+  PASS  a changed gamma is not neutral
+  PASS  SameFilters sees the change
+Tone (black / white point, brightness, contrast, gamma)
+  PASS  below the black point: 0
+  PASS  at the white point: 255
+  PASS  in between: stretched (127 -> 190)
+  PASS  gamma 2: 128 -> 64
+  PASS  gamma keeps black and white
+  PASS  contrast -100 %: flat grey
+  PASS  contrast +50 %: 64 -> 7, 192 -> 250
+  PASS  ContrastFactor(0) = 1
+  PASS  ContrastFactor(1) = 20
+  PASS  brightness +100 %: 0 -> 128, 128 -> 255
+Colour (saturation, hue, invert)
+  PASS  saturation 0: grey at the luma (200,50,50 -> 95)
+  PASS  hue: grey stays grey
+  PASS  hue: a colour changes
+  PASS  invert: 10,20,30 -> 245,235,225
+  PASS  invert needs the colour step
+  PASS  FilterPixel (prepared) = FilterRGB
+Settings (ranges, bar, steps)
+  PASS  black stays below white
+  PASS  white stays above black
+  PASS  gamma clamped to 5
+  PASS  hue clamped to -180
+  PASS  SetFilter invert
+  PASS  gamma 1.0 sits in the middle of its bar
+  PASS  bar middle -> gamma 1.0
+  PASS  brightness 0 sits in the middle
+  PASS  bar and value round trip (saturation 2.2)
+  PASS  a wheel step snaps to neutral when passing it
+  PASS  three steps up: +6 %
+  PASS  wheel up on Invert: on
+  PASS  wheel down on Invert: off
+Auto (black / white point from the histogram)
+  PASS  empty histogram: no change
+  PASS  one grey level: no change
+  PASS  two levels: black 50, white 200
+  PASS  outliers ignored: black 20, white 219
+File name suffix
+  PASS  neutral: no suffix
+  PASS  _b+10_g0.80_inv
+
+42 passed, 0 failed
+
+MView GIF test
+==============
+
+-- GIF test suite (images\gif\frames) --
+  PASS  animated_loop.gif: decoded
+  PASS  animated_loop.gif: 4 frames as the reference
+  PASS  animated_loop.gif:   loops forever
+  PASS  animated_loop_interlaced.gif: decoded
+  PASS  animated_loop_interlaced.gif: 4 frames as the reference
+  PASS  animated_loop_interlaced.gif:   loops forever
+  PASS  animated_loop_variable_delay.gif: decoded
+  PASS  animated_loop_variable_delay.gif: 4 frames as the reference
+  PASS  animated_loop_variable_delay.gif:   loops forever
+  PASS  animated_noloop.gif: decoded
+  PASS  animated_noloop.gif: 4 frames as the reference
+  PASS  animated_noloop.gif:   plays once
+  PASS  animated_transparent_firstframerestoreprev_loop.gif: decoded
+  PASS  animated_transparent_firstframerestoreprev_loop.gif: 4 frames as the reference
+  PASS  animated_transparent_firstframerestoreprev_loop.gif:   loops forever
+  PASS  animated_transparent_frame_norestore_loop.gif: decoded
+  PASS  animated_transparent_frame_norestore_loop.gif: 4 frames as the reference
+  PASS  animated_transparent_frame_norestore_loop.gif:   loops forever
+  PASS  animated_transparent_frame_restorebackground_loop.gif: decoded
+  PASS  animated_transparent_frame_restorebackground_loop.gif: 4 frames as the reference
+  PASS  animated_transparent_frame_restorebackground_loop.gif:   loops forever
+  PASS  animated_transparent_frame_restoreprev_loop.gif: decoded
+  PASS  animated_transparent_frame_restoreprev_loop.gif: 4 frames as the reference
+  PASS  animated_transparent_frame_restoreprev_loop.gif:   loops forever
+  PASS  animated_transparent_loop.gif: decoded
+  PASS  animated_transparent_loop.gif: 4 frames as the reference
+  PASS  animated_transparent_loop.gif:   loops forever
+  PASS  animated_transparent_loop_frames_out_of_bounds.gif: decoded
+  PASS  animated_transparent_loop_frames_out_of_bounds.gif: 4 frames as the reference
+  PASS  animated_transparent_loop_frames_out_of_bounds.gif:   loops forever
+  PASS  animated_transparent_restoreprev_loop.gif: decoded
+  PASS  animated_transparent_restoreprev_loop.gif: 4 frames as the reference
+  PASS  animated_transparent_restoreprev_loop.gif:   loops forever
+  PASS  static_nontransparent.gif: decoded
+  PASS  static_nontransparent.gif: 1 frames as the reference
+  PASS  static_transparent.gif: decoded
+  PASS  static_transparent.gif: 1 frames as the reference
+
+-- Test GIFs (images\gif\expected.txt) --
+  PASS  disposal2_transparent.gif: decoded
+  PASS  disposal2_transparent.gif: 320 x 240
+  PASS  disposal2_transparent.gif: 20 frames
+  PASS  disposal2_transparent.gif: delays 1600 ms in all
+  PASS  disposal2_transparent.gif: every frame as expected
+  PASS  disposal2_transparent.gif: frame 0 again after the last
+  PASS  disposal2_transparent.gif: first frame alone
+  PASS  disposal2_transparent.gif:   same picture
+  PASS  disposal2_transparent.gif:   more frames follow: yes
+  PASS  disposal2_transparent.gif: start of the file only: first frame, more to come
+  PASS  disposal3.gif: decoded
+  PASS  disposal3.gif: 320 x 240
+  PASS  disposal3.gif: 13 frames
+  PASS  disposal3.gif: delays 1300 ms in all
+  PASS  disposal3.gif: every frame as expected
+  PASS  disposal3.gif: frame 0 again after the last
+  PASS  disposal3.gif: first frame alone
+  PASS  disposal3.gif:   same picture
+  PASS  disposal3.gif:   more frames follow: yes
+  PASS  disposal3.gif: start of the file only: first frame, more to come
+  PASS  ffmpeg_cut.gif: decoded
+  PASS  ffmpeg_cut.gif: 320 x 180
+  PASS  ffmpeg_cut.gif: 1 frames
+  PASS  ffmpeg_cut.gif: delays 70 ms in all
+  PASS  ffmpeg_cut.gif: every frame as expected
+  PASS  ffmpeg_cut.gif: frame 0 again after the last
+  PASS  ffmpeg_cut.gif: first frame alone
+  PASS  ffmpeg_cut.gif:   same picture
+  PASS  ffmpeg_cut.gif:   more frames follow: no
+  PASS  ffmpeg_testsrc.gif: decoded
+  PASS  ffmpeg_testsrc.gif: 320 x 180
+  PASS  ffmpeg_testsrc.gif: 30 frames
+  PASS  ffmpeg_testsrc.gif: delays 2000 ms in all
+  PASS  ffmpeg_testsrc.gif: every frame as expected
+  PASS  ffmpeg_testsrc.gif: frame 0 again after the last
+  PASS  ffmpeg_testsrc.gif: first frame alone
+  PASS  ffmpeg_testsrc.gif:   same picture
+  PASS  ffmpeg_testsrc.gif:   more frames follow: yes
+  PASS  ffmpeg_testsrc.gif: start of the file only: first frame, more to come
+  PASS  frame_outside_canvas.gif: decoded
+  PASS  frame_outside_canvas.gif: 200 x 150
+  PASS  frame_outside_canvas.gif: 10 frames
+  PASS  frame_outside_canvas.gif: delays 1000 ms in all
+  PASS  frame_outside_canvas.gif: every frame as expected
+  PASS  frame_outside_canvas.gif: frame 0 again after the last
+  PASS  frame_outside_canvas.gif: first frame alone
+  PASS  frame_outside_canvas.gif:   same picture
+  PASS  frame_outside_canvas.gif:   more frames follow: yes
+  PASS  frame_outside_canvas.gif: start of the file only: first frame, more to come
+  PASS  interlaced.gif: decoded
+  PASS  interlaced.gif: 320 x 240
+  PASS  interlaced.gif: 6 frames
+  PASS  interlaced.gif: delays 1800 ms in all
+  PASS  interlaced.gif: every frame as expected
+  PASS  interlaced.gif: frame 0 again after the last
+  PASS  interlaced.gif: first frame alone
+  PASS  interlaced.gif:   same picture
+  PASS  interlaced.gif:   more frames follow: yes
+  PASS  interlaced.gif: start of the file only: first frame, more to come
+  PASS  interlaced_cut.gif: decoded
+  PASS  interlaced_cut.gif: 320 x 240
+  PASS  interlaced_cut.gif: 1 frames
+  PASS  interlaced_cut.gif: delays 300 ms in all
+  PASS  interlaced_cut.gif: every frame as expected
+  PASS  interlaced_cut.gif: frame 0 again after the last
+  PASS  interlaced_cut.gif: first frame alone
+  PASS  interlaced_cut.gif:   same picture
+  PASS  interlaced_cut.gif:   more frames follow: no
+  PASS  interlaced_odd_size.gif: decoded
+  PASS  interlaced_odd_size.gif: 257 x 131
+  PASS  interlaced_odd_size.gif: 1 frames
+  PASS  interlaced_odd_size.gif: delays 100 ms in all
+  PASS  interlaced_odd_size.gif: every frame as expected
+  PASS  interlaced_odd_size.gif: frame 0 again after the last
+  PASS  interlaced_odd_size.gif: first frame alone
+  PASS  interlaced_odd_size.gif:   same picture
+  PASS  interlaced_odd_size.gif:   more frames follow: no
+  PASS  local_palettes.gif: decoded
+  PASS  local_palettes.gif: 320 x 240
+  PASS  local_palettes.gif: 6 frames
+  PASS  local_palettes.gif: delays 1800 ms in all
+  PASS  local_palettes.gif: every frame as expected
+  PASS  local_palettes.gif: frame 0 again after the last
+  PASS  local_palettes.gif: first frame alone
+  PASS  local_palettes.gif:   same picture
+  PASS  local_palettes.gif:   more frames follow: yes
+  PASS  local_palettes.gif: start of the file only: first frame, more to come
+  PASS  still.gif: decoded
+  PASS  still.gif: 320 x 240
+  PASS  still.gif: 1 frames
+  PASS  still.gif: delays 100 ms in all
+  PASS  still.gif: every frame as expected
+  PASS  still.gif: frame 0 again after the last
+  PASS  still.gif: first frame alone
+  PASS  still.gif:   same picture
+  PASS  still.gif:   more frames follow: no
+  PASS  still_cut.gif: decoded
+  PASS  still_cut.gif: 320 x 240
+  PASS  still_cut.gif: 1 frames
+  PASS  still_cut.gif: delays 100 ms in all
+  PASS  still_cut.gif: every frame as expected
+  PASS  still_cut.gif: frame 0 again after the last
+  PASS  still_cut.gif: first frame alone
+  PASS  still_cut.gif:   same picture
+  PASS  still_cut.gif:   more frames follow: no
+  PASS  truncated.gif: decoded
+  PASS  truncated.gif: 320 x 240
+  PASS  truncated.gif: 4 frames
+  PASS  truncated.gif: delays 400 ms in all
+  PASS  truncated.gif: every frame as expected
+  PASS  truncated.gif: frame 0 again after the last
+  PASS  truncated.gif: first frame alone
+  PASS  truncated.gif:   same picture
+  PASS  truncated.gif:   more frames follow: yes
+  PASS  truncated.gif: start of the file only: first frame, more to come
+  PASS  zero_delay.gif: decoded
+  PASS  zero_delay.gif: 320 x 240
+  PASS  zero_delay.gif: 10 frames
+  PASS  zero_delay.gif: delays 1000 ms in all
+  PASS  zero_delay.gif: every frame as expected
+  PASS  zero_delay.gif: frame 0 again after the last
+  PASS  zero_delay.gif: first frame alone
+  PASS  zero_delay.gif:   same picture
+  PASS  zero_delay.gif:   more frames follow: yes
+  PASS  zero_delay.gif: start of the file only: first frame, more to come
+  PASS  ..\Test.gif: decoded
+  PASS  ..\Test.gif: 800 x 704
+  PASS  ..\Test.gif: 126 frames
+  PASS  ..\Test.gif: delays 8390 ms in all
+  PASS  ..\Test.gif: every frame as expected
+  PASS  ..\Test.gif: frame 0 again after the last
+  PASS  ..\Test.gif: first frame alone
+  PASS  ..\Test.gif:   same picture
+  PASS  ..\Test.gif:   more frames follow: yes
+  PASS  ..\Test.gif: start of the file only: first frame, more to come
+
+-- Damaged data --
+  PASS  not_a_gif.gif (a PNG): not taken as GIF
+  PASS  header only: no image, no crash
+  PASS  disposal3.gif cut off at every length: no exception
+  PASS  disposal3.gif with random bytes changed (300 times): no exception
+  PASS  huge_frame.gif: the first frame only
+  PASS  huge_first_frame.gif: refused as too large
+
+-- Cancel, memory limit --
+  PASS  cancel: EGifCancelled
+  PASS  memory limit: fewer frames, and a note
+         (7 frames: only the first 7 frames (memory limit 97 KB))
+
+-- Frame clock --
+  PASS  frame 0 at the start
+  PASS  99 ms: still frame 0
+  PASS  100 ms: frame 1
+  PASS  151 ms: frame 2 (due at 150)
+  PASS  next in 199 ms
+  PASS  349 ms: still frame 2
+  PASS  350 ms: back to frame 0
+  PASS  nothing skipped so far
+  PASS  late (160 ms): frame 2, frame 1 skipped
+  PASS  stalled 5 s: goes on with frame 1, nothing raced through
+  PASS    and the next is due 50 ms later
+  PASS  zero delays: Advance returns
+  PASS  play once: at 350 ms it stays on the last frame
+  PASS    and never moves again
+  PASS  play twice: at 350 ms back to frame 0
+  PASS    at 650 ms the last frame of the second play
+  PASS    at 700 ms finished, stays there
+  PASS  one frame: never advances
+
+==============
+198 passed, 0 failed
+
+Press any key to continue . . .
+
+c:\projects\mview\test>

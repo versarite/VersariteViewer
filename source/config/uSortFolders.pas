@@ -157,6 +157,10 @@ type
     { CycleList(ADir) would show a new, empty list (the arrow is drawn red,
       Day 27). False while there is no occupied list at all. }
     function NextIsNew(ADir: Integer): Boolean;
+    { 1.4 (user, Double Commander's cm_RemoteCreateSortFromSubdirs): a new,
+      empty list after the occupied ones, shown. False: Rapid Selection,
+      or there are MaxSortLists lists already. }
+    function NewList: Boolean;
 
     { Rapid Selection (Day 27): on = the ten fixed slots, AFolders[0] for
       key 1 .. AFolders[9] for key 0 (full paths; [Sort] RapidFolder1 ..
@@ -388,9 +392,16 @@ begin
 end;
 
 procedure TSortFolders.NoteUsed(const AFolder: string);
+var
+  F: string;
 begin
-  if Dynamic and (Trim(AFolder) <> '') then
-    FUsed.Add(ExcludeTrailingPathDelimiter(AFolder));
+  if not Dynamic or (Trim(AFolder) = '') then
+    Exit;
+  F := ExcludeTrailingPathDelimiter(AFolder);
+  { Once per ApplyUse (1.4). A run of files sorted one after the other
+    into the same folder is noted only once: TMView (TFileJob.SameRun). }
+  if FUsed.IndexOf(F) < 0 then
+    FUsed.Add(F);
 end;
 
 function TSortFolders.HasUse: Boolean;
@@ -514,6 +525,47 @@ begin
   SyncDynamic;
   FCurrent := Pos;
   FSlots := Copy(FLists[FCurrent], 0, Length(FLists[FCurrent]));
+end;
+
+function TSortFolders.NewList: Boolean;
+var
+  Kept: TSortSlotLists;
+  KeptDynamic: array of Boolean;
+  I, NewClip: Integer;
+begin
+  Result := False;
+  if FRapid then
+    Exit;
+  ApplyUse;
+  StoreCurrent;
+  SyncDynamic;
+  { As CycleList: empty lists go, the others keep their order. }
+  Kept := nil;
+  KeptDynamic := nil;
+  NewClip := -1;
+  for I := 0 to High(FLists) do
+    if Length(FLists[I]) > 0 then
+    begin
+      if I = FClipList then
+        NewClip := Length(Kept);
+      SetLength(Kept, Length(Kept) + 1);
+      Kept[High(Kept)] := FLists[I];
+      SetLength(KeptDynamic, Length(Kept));
+      KeptDynamic[High(KeptDynamic)] := FDynamic[I];
+    end;
+  if Length(Kept) >= MaxSortLists then
+    Exit;
+  SetLength(Kept, Length(Kept) + 1);
+  Kept[High(Kept)] := nil;
+  SetLength(KeptDynamic, Length(Kept));
+  KeptDynamic[High(KeptDynamic)] := False;
+  FClipList := NewClip;
+  FLists := Kept;
+  FDynamic := KeptDynamic;
+  SyncDynamic;
+  FCurrent := High(FLists);
+  FSlots := nil;
+  Result := True;
 end;
 
 function TSortFolders.NextIsNew(ADir: Integer): Boolean;

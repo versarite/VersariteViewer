@@ -87,6 +87,11 @@ function DecodeFits(AWidth, AHeight: Int64; AExtraBytes: Int64; out AReason: str
 
 implementation
 
+{$IFDEF LINUX}
+uses
+  Linux;
+{$ENDIF}
+
 {$IFDEF WINDOWS}
 type
   TMemStatusEx = record
@@ -113,6 +118,10 @@ function PhysicalMemoryBytes: Int64;
 var
   Status: TMemStatusEx;
 {$ENDIF}
+{$IFDEF LINUX}
+var
+  Info: TSysInfo;
+{$ENDIF}
 begin
   if CachedPhysical > 0 then
     Exit(CachedPhysical);
@@ -122,6 +131,15 @@ begin
   Status.dwLength := SizeOf(Status);
   if GuardGlobalMemoryStatusEx(Status) and (Status.ullTotalPhys > 0) then
     Result := Int64(Status.ullTotalPhys);
+  {$ENDIF}
+  {$IFDEF LINUX}
+  { 1.4: sysinfo(2); the sizes count in units of mem_unit bytes. }
+  FillChar(Info, SizeOf(Info), 0);
+  if (Sysinfo(@Info) = 0) and (Info.totalram > 0) then
+    if Info.mem_unit > 1 then
+      Result := Int64(Info.totalram) * Int64(Info.mem_unit)
+    else
+      Result := Int64(Info.totalram);
   {$ENDIF}
   CachedPhysical := Result;
 end;

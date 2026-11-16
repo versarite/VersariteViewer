@@ -173,6 +173,12 @@ type
   TRenderer = class(TObject)
   private
     FZoomStepPercent: Double;
+    { [View] SmallImageZoom (1.4): percent of the window height a small
+      image opens at (0 = off). FSmallFit: the fit view keeps a small
+      image at that size - set for a new image and ResetView, cleared by
+      FitToScreen (asked for: fill the window). }
+    FSmallImageZoom: Integer;
+    FSmallFit: Boolean;
     FMessage: string;
     FInfoText: string;
     FInfoFontName: string;       { '' = the standard font }
@@ -340,6 +346,7 @@ type
 
     property Image: IDecodedImage read FImage;
     property ZoomStepPercent: Double read FZoomStepPercent write FZoomStepPercent;
+    property SmallImageZoom: Integer read FSmallImageZoom write FSmallImageZoom;
     property InfoText: string read FInfoText write FInfoText;
     { The info line's font ([InfoLine] Font / FontSize, Day 24). }
     property InfoFontName: string read FInfoFontName write FInfoFontName;
@@ -424,6 +431,11 @@ type
     function BadgeRoom: Integer;
     { The badge is under this point of the view (the last paint's size). }
     function BadgeHit(AX, AY: Integer): Boolean;
+    { 1.4 (user, Day 40): the height the sort panel leaves free at the
+      bottom right, so the badge stays visible and clickable under it
+      (its label, its 6 px to the bottom, a little room above). 0 while
+      there is no badge. }
+    function BadgeReserve: Integer;
     property BadgeText: string read FBadgeText;
     property BadgeOn: Boolean read FBadgeOn write FBadgeOn;
     { Its picture (nil = none); BadgeVersion changes with it. }
@@ -616,6 +628,8 @@ constructor TRenderer.Create;
 begin
   inherited Create;
   FZoomStepPercent := 20.0;
+  FSmallImageZoom := 33;
+  FSmallFit := True;
   FShowInfo := True;
   FLastScale := 0;
   FInputMode := imBrowse;
@@ -670,6 +684,18 @@ begin
   Y0 := FSurfaceHeight - Bmp.Height - 6;
   Result := (AX >= X0 - 3) and (AX < X0 + Bmp.Width + 3)
     and (AY >= Y0 - 3) and (AY < Y0 + Bmp.Height + 3);
+end;
+
+function TRenderer.BadgeReserve: Integer;
+var
+  Bmp: TBGRABitmap;
+begin
+  Result := 0;
+  if not FBadgeOn then
+    Exit;
+  Bmp := BadgeBitmap;
+  if Bmp <> nil then
+    Result := Bmp.Height + 6 + 6;
 end;
 
 { Bold dark text on a rounded label: light blue or amber; see-through
@@ -809,7 +835,7 @@ end;
 function TRenderer.ScaleFor(AWidth, AHeight: Integer): Double;
 var
   LogW, LogH: Integer;
-  Rad, BoxW, BoxH: Double;
+  Rad, BoxW, BoxH, Small: Double;
 begin
   Result := 0;
   LogicalSize(LogW, LogH);
@@ -823,7 +849,18 @@ begin
     Rad := DegToRad(FView.Angle);
     BoxW := LogW * Abs(Cos(Rad)) + LogH * Abs(Sin(Rad));
     BoxH := LogW * Abs(Sin(Rad)) + LogH * Abs(Cos(Rad));
-    Result := Min(AWidth / BoxW, AHeight / BoxH) * FView.Zoom;
+    Result := Min(AWidth / BoxW, AHeight / BoxH);
+    { A small image (icon) fills the window blocky: it opens at
+      SmallImageZoom % of the window height instead - if it is smaller
+      than that at 100 %, and never beyond the fit. Not a 3D model (its
+      picture is made for the window). }
+    if FSmallFit and (FSmallImageZoom > 0) and not FModelShown then
+    begin
+      Small := FSmallImageZoom / 100.0 * AHeight / BoxH;
+      if (Small > 1.0) and (Small < Result) then
+        Result := Small;
+    end;
+    Result := Result * FView.Zoom;
   end
   else
     Result := FView.Zoom;
@@ -834,6 +871,7 @@ begin
   FImage := AImage;
   if not AKeepView then
   begin
+    FSmallFit := True;
     FView.Mode := vmFit;
     FView.Zoom := 1.0;
     FView.PanX := 0;
@@ -853,6 +891,7 @@ var
   OldTurns: Integer;
 begin
   OldTurns := QuarterTurns;
+  FSmallFit := True;
   FView.Mode := vmFit;
   FView.Zoom := 1.0;
   FView.PanX := 0;
@@ -935,6 +974,7 @@ end;
 
 procedure TRenderer.FitToScreen;
 begin
+  FSmallFit := False;      { asked for: fill the window, small or not }
   FView.Mode := vmFit;
   FView.Zoom := 1.0;
   FView.PanX := 0;

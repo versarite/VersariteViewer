@@ -127,8 +127,8 @@ unit uMView;
                   uRenderer, uAnimation, uMouseProfile, uJobQueue,
                   uIOGate, uMemoryGuard, uImageSaver, uStopwatch,
                   uSortFolders, uSortPanel, uFileMover, uFilters,
-                  uFilterImage, uFilterPanel, uTCFollow, uImageFormats
-  implementation: uMouseEngine, uIconFile, uTotalCommander, uExtensions
+                  uFilterImage, uFilterPanel, uFileManager, uImageFormats
+  implementation: uMouseEngine, uIconFile, uExtensions
                   (the edition's layers: repaint, mouse)
   Libraries:      Classes, SysUtils, Math, Controls, ExtCtrls,
                   Graphics, Clipbrd, BGRABitmap, BGRABitmapTypes,
@@ -274,7 +274,7 @@ uses
   uFilters,
   uFilterImage,
   uFilterPanel,
-  uTCFollow,
+  uFileManager,
   uDirPeek,
   uExifOrientation,
   uImageFormats,
@@ -321,6 +321,8 @@ type
   { The panel's "..." corner of slot ASlot, or its "+" (ASlot = -1):
     the form shows the folder menu / dialog at AScreen. }
   TSortMenuEvent = procedure(ASlot: Integer; const AScreen: TPoint) of object;
+  { 1.4 (Day 40): run a mouse / key action by its name; False: unknown. }
+  TNamedActionEvent = function(const AName: string): Boolean of object;
 
 
   TMView = class(TObject)
@@ -463,6 +465,13 @@ type
     FStripThumbs: TFolderThumbs;
     FStripKey: string;
     FStripPress: Integer;
+    { 1.4: the folder whose strip thumbnails were asked for ahead (the
+      strip hidden): folder | count | sort order. }
+    FStripPreloadKey: string;
+    { 1.4: the folder last shown in the file manager by a sort button,
+      and when (ShowSortFolderInFM). }
+    FFMShownFolder: string;
+    FFMShownMs: Double;
     FMover: TFileMover;
     FUndo: array of TUndoEntry;
     FImageUndo: array of TImageUndoEntry;
@@ -472,6 +481,14 @@ type
     FMoves: array of TMoveUnderWay;
     FPanelPress: TPanelHit;      { where a button went down on the panel }
     FPanelPressX, FPanelPressY: Integer;
+    FPanelReserve: Integer;          { room left under the sort panel for the badge }
+    { 1.4 (Day 40, user): no file manager traffic while the sort panel is
+      clicked (each question to Double Commander holds the window for a
+      moment: a double-click's second click came too late, a press and
+      release were read as a swipe). Until then; and the folder a click
+      shows in the file manager, sent once that is over. }
+    FPanelQuietUntil: Double;
+    FFMShowSlot: Integer;
     { Copy / move need a double click on a button (user, Day 21: single
       clicks sorted too easily): the first click of the pair. }
     FSlotClickSlot: Integer;     { -1 = none }
@@ -539,6 +556,25 @@ type
     { Day 32 (user): after a copy / move the zoom / rotate mode ends (the
       mouse engine's, the main form's business). }
     FOnEndModes: TNotifyEvent;
+    FOnNamedAction: TNamedActionEvent;
+    { 1.4 (user): commands that are the main form's business (its menu,
+      side by side). }
+    FOnFormCommand: TCommandEvent;
+    { 1.4 (user): a right click on the file manager badge opens the menu
+      only once the double-click time is over (FBadgeMenuAtMs, 0 = none
+      waiting); a second right click before that puts both windows back
+      to the halves of side by side. }
+    FBadgeMenuAtMs: Double;
+    FBadgeMenuX, FBadgeMenuY: Integer;
+    FBadgeRightDown: Boolean;
+    { 1.4 (user): the run of files sorted one after the other into one
+      folder - a dynamic list moves that folder up once per run, for
+      copies (you step to the next file yourself) and moves (it comes by
+      itself) alike. FSortRunNext: the files next to the last one sorted;
+      the run goes on when one of them is sorted into the same folder. }
+    FSortRunFolder: string;
+    FSortRunList: Integer;
+    FSortRunNext: array of string;
     { Stage 2: the buttons' icons and the missing-folder check (read on
       their own thread), and whether the panel was open at the last
       UpdatePanel (opening reads the icon folder again). }
@@ -559,6 +595,11 @@ type
     FFilterExtraDrag: Integer;
     FFilterExtraDragX: Integer;
     FFilterExtraDragPos: Double;
+    { 1.4: a drag in the filter panel, coalesced (X11 delivers every
+      motion event, Windows only the latest position): the newest point,
+      applied once the waiting events are through (ApplyFilterMove). }
+    FFilterMoveX, FFilterMoveY: Integer;
+    FFilterMoveQueued: Boolean;
 
     { A 3D model shown (1.3, .stl): its file, its controls in the
       filter panel (FStlSection; the view is kept there), the info
@@ -625,14 +666,30 @@ type
     FNoShaderNoteShown: Boolean; { "filters not available" said once }
     { Follow Total Commander (Day 23): asked every PollMs; what it showed
       last (a change is acted on, not the state: MView's own browsing is
-      never pulled back). Primed: the first answer is only noted. }
-    FFollower: TTCFollower;
+      never pulled back). Primed: the first answer is only noted.
+      1.4: asked through the file manager (uFileManager.FileManager). }
     FFollowMode: Integer;        { 0 off, 1 folder, 2 folder and cursor }
     FFollowFolder: string;
     FFollowFile: string;
     FFollowPrimed: Boolean;
     FFollowPollMs: Double;
     FFollowNoteShown: Boolean;
+    { 1.4 (user): messages Double Commander sends on its own (cm_SendTree),
+      fetched twice a second whatever the follow mode. }
+    FFMEventPollMs: Double;
+    { 1.4 (user, Day 40): VV -> Double Commander while following. }
+    FSyncSeenFile: string;           { the image shown, and since when }
+    FSyncSeenMs: Double;
+    FSyncSentFile: string;           { the last one put under its cursor }
+    FSortSentMode: Integer;          { VV's order sent (-1: none yet) }
+    FFMSetupNoteMs: Double;          { the "needs its program" notice, last shown }
+    FSyncIOMs: Double;               { Double Commander asked last (4 times a second at most) }
+    FSyncHoldMs: Double;             { until then its cursor is noted, not followed }
+    { 1.4 (user): the image that follows one VV moved / deleted - put
+      under the file manager's cursor at once, so its cursor doesn't go to
+      the next file in its own order (any order other than natural). }
+    FSyncPushFile: string;
+    FFollowLastOn: Integer;          { the last follow mode other than off (1 / 2) }
     { A folder being opened for it: the image its cursor moves to
       meanwhile is shown when the folder is ready (not opened again). }
     FFollowOpening: Boolean;
@@ -740,12 +797,16 @@ type
     procedure RememberPreviewStrip;
     procedure SyncStrip(AForce: Boolean = False);
     procedure UpdateStrip(ARequest: Boolean = True);
+    procedure PreloadStrip;
     procedure HandleStripThumb(const AFileName: string; ABitmap: TBGRABitmap);
     function HandleStripMouse(AKind: TOverlayMouseKind; AButton: TOverlayButton;
       AX, AY, AWheel: Integer): Boolean;
     procedure RapidKey(ADigit: Integer);
     procedure TCFolderLocked;
     procedure SetSort(AMode: TSortMode);
+    { ARemember = False: a zone's order while browsing from it; the
+      chosen order ([Navigation] SortMode) stays as it is. }
+    procedure ApplySort(AMode: TSortMode; ARemember: Boolean);
     procedure ShowZone(AZone: Integer);
     procedure ShowGesturePreview(AZone, AValue: Integer);
     procedure LoadMouseProfile;
@@ -841,6 +902,8 @@ type
     procedure HandleIconWritten(const AResult: TFileJobResult);
     { Filters (Phase H). }
     procedure UpdateFilterPanel;
+    procedure ApplyFilterMove;
+    procedure AsyncFilterMove(AData: PtrInt);
     procedure FiltersForNewImage(const AImage: IDecodedImage);
     function FilterMark: string;
     function ColourMark: string;
@@ -848,12 +911,24 @@ type
     function RefreshHistogram: Boolean;
     procedure ApplyAuto(AReport: Boolean);
     procedure PollTotalCommander;
+    procedure PollFileManagerEvents;
+    { 1.4 (user): this image's folder into the file manager's inactive
+      panel (cmdFolderToFM). }
+    procedure SendFolderToFM;
+    { 1.4 (user): a new folder list of the first-level subfolders of the
+      folder under the file manager's cursor; AWithFolder: that folder
+      first (cmdSortFromSubdirs). }
+    procedure SortListFromSubdirs(AWithFolder: Boolean);
+    procedure FormCommand(ACommand: TCommand; AX, AY, AValue: Double);
+    function ContinuesSortRun(const AFileName, AFolder: string): Boolean;
+    procedure SyncFileManager;
+    procedure AddTreeToSortList(const AFields: TStringArray);
     procedure StartDirPreview(const AFolder: string);
     procedure StopDirPreview;
     { cmdDirPreviewDelay: DirPreviewDelayMs one DirPreviewStepMs longer
       (ADir > 0) or shorter, written to the ini at once. }
     procedure StepDirPreviewDelay(ADir: Integer);
-    { [Sort] TCSlideShowMode on / off (cmdTCSlideShow), written at once. }
+    { [FileManager] DirPreviewSlideShow on / off (cmdTCSlideShow), written at once. }
     procedure SetTCSlideShow(AOn: Boolean);
     procedure StepDirPreview;
     procedure StepSlideShow;
@@ -868,6 +943,8 @@ type
     { [Navigation] Recursive, except while following Total Commander
       (user, Day 23: then always just the folder). }
     function UseRecursive: Boolean;
+    { The file manager is there and running (1.4). }
+    function FileManagerRunning: Boolean;
     procedure UserFilters(const AFilters: TFilterSettings);
     function BestPixels: IDecodedImage;
     { The filters, mirror and turn into a copy of AImg's pixels (as on
@@ -897,6 +974,8 @@ type
     { The order of the images (Day 27, testers: the right-click menu);
       Random again shuffles anew. }
     procedure SetSortOrder(AMode: TSortMode);
+    { From the context menu; AZone: where the mouse was (-1: zones off). }
+    procedure SetSortOrderFromMenu(AMode: TSortMode; AZone: Integer);
     function SortOrder: TSortMode;
     { The drawing surface and its renderer, chosen by the form. TMView
       takes over the renderer (and frees the default CPU one). }
@@ -1039,6 +1118,9 @@ type
     { Browse slot ASlot's folder (a swipe left or right over its button,
       a wheel click on it, or its "..." menu). }
     procedure OpenSortFolder(ASlot: Integer);
+    { 1.4: a sort button clicked: its folder shown in the file manager
+      ([Sort] ShowInFileManager). }
+    procedure ShowSortFolderInFM(ASlot: Integer);
     { A copy, move or delete (or undo) is waiting or running: shutting
       down waits for the one running (the form allows it more time). }
     function FileJobsBusy: Boolean;
@@ -1048,6 +1130,12 @@ type
     function SortStartFolder(ASlot: Integer): string;
     property OnSortMenu: TSortMenuEvent read FOnSortMenu write FOnSortMenu;
     property OnEndModes: TNotifyEvent read FOnEndModes write FOnEndModes;
+    { Double Commander's cm_ViewerCommand (Day 40): the form runs it on
+      the view's mouse engine. }
+    property OnNamedAction: TNamedActionEvent read FOnNamedAction write FOnNamedAction;
+    { 1.4: the main form's commands (cmdShowMenu, cmdSideBySide) asked by
+      the view itself (the badge's right click). }
+    property OnFormCommand: TCommandEvent read FOnFormCommand write FOnFormCommand;
 
     { Icons (stage 2, spec §9.7). SlotIconFile: the icon file slot ASlot
       uses: its own (Slot<n>Icon, a name in the icon folder or a full
@@ -1100,7 +1188,7 @@ type
     function ShownSizeText: string;
     procedure ResizeToShown;
 
-    { Follow Total Commander (Day 23, [Sort] FollowTotalCommander): 0 =
+    { Follow the file manager (Day 23, [FileManager] FollowDirManager): 0 =
       off, 1 = its active panel's folder, 2 = and the image under its
       cursor (MView as its viewer). Saved at once. }
     procedure SetFollowMode(AMode: Integer);
@@ -1133,16 +1221,20 @@ type
 implementation
 
 uses
+  {$IFNDEF WINDOWS}
+  Unix,         { statfs: the free space on Linux (1.4) }
+  {$ENDIF}
   LCLIntf,      { GetKeyState: the aiming loupe sees a release (Day 28) }
   LCLType,
   Forms,
+  uNaturalSort,       { the subfolders of a new folder list (1.4) }
   uMouseEngine,
   uIconFile,
-  uTotalCommander,
   uImageScaling,
   uClipboardImage,
   uSafeFile,
   uEdition,
+  uDriveHealth,       { a failing drive: no preloads from it, a notice (1.4) }
   uZipContainer;      { ZIP / CBZ as containers (1.1): registers itself }
 
 type
@@ -1313,6 +1405,8 @@ begin
   FPreviewHeight := 1080;
   FLastStep := cmdNextImage;
   FDirection := 1;
+  FSortSentMode := -1;           { VV's order not sent to Double Commander yet }
+  FFMShowSlot := -1;
   FTypicalBytes := 0;
   FNoRoom := TStringList.Create;
   FNoRoom.CaseSensitive := False;
@@ -1336,6 +1430,8 @@ end;
 
 destructor TMView.Destroy;
 begin
+  { A coalesced filter drag still queued (1.4). }
+  Application.RemoveAsyncCalls(Self);
   { Settings first: if a worker hangs in the shutdown below, the
     watchdog may end the process (uWatchdog), and they are saved. Not
     again after BeginClose: the settings screen may have saved since. }
@@ -1344,7 +1440,8 @@ begin
     FConfig.ShowInfo := FRenderer.ShowInfo;
     FConfig.ShowDiagnostics := FRenderer.ShowDiagnostics;
     KeepLensSettings;
-    FConfig.SortMode := FNavigator.SortMode;
+    { SortMode: kept up to date by SetSort (a zone's order of the
+      moment is not saved). }
     FConfig.Save;
   end;
 
@@ -1387,7 +1484,6 @@ begin
   FStrip.Free;
   FPanel.Free;
   FFilterPanel.Free;
-  FFollower.Free;
   FDirPeek.Free;
   FIcons.Free;
   FConfig.Free;
@@ -1401,7 +1497,8 @@ begin
     FConfig.ShowInfo := FRenderer.ShowInfo;
     FConfig.ShowDiagnostics := FRenderer.ShowDiagnostics;
     KeepLensSettings;
-    FConfig.SortMode := FNavigator.SortMode;
+    { SortMode: kept up to date by SetSort (a zone's order of the
+      moment is not saved). }
     FConfig.Save;
     FSettingsSaved := True;
   end;
@@ -1530,6 +1627,28 @@ begin
   FScannerNoteShown := False;
 end;
 
+{ VV's commands as the file manager's buttons can send them (Double
+  Commander's cm_ViewerCommand cmd=<name>): TAB-separated name=caption,
+  in the order of the Mouse & keys page; RapidKey (needs a digit key) left
+  out. Day 40. }
+function CommandFieldsForFM: string;
+var
+  A: TMouseAction;
+  Caption: string;
+begin
+  Result := '';
+  for A := Succ(Low(TMouseAction)) to High(TMouseAction) do
+  begin
+    if A = maRapidKey then
+      Continue;
+    Caption := StringReplace(MouseActionCaption(A), 'Total Commander', FMName, [rfReplaceAll]);
+    Caption := StringReplace(StringReplace(Caption, #9, ' ', [rfReplaceAll]), '=', '-', [rfReplaceAll]);
+    if Result <> '' then
+      Result := Result + #9;
+    Result := Result + MouseActionName(A) + '=' + Caption;
+  end;
+end;
+
 procedure TMView.Initialize;
 var
   CacheMB, Workers: Integer;
@@ -1544,6 +1663,7 @@ begin
   FNavigator.SetSortMode(FConfig.SortMode);
 
   FRenderer.ZoomStepPercent := FConfig.ZoomStepPercent;
+  FRenderer.SmallImageZoom := FConfig.SmallImageZoom;
   { Before the scheduler starts its workers, which read it. }
   FMediaLoader.AutoRotate := FConfig.AutoRotate;
   FMediaLoader.UseWic := FConfig.UseWic;
@@ -1621,7 +1741,13 @@ begin
     FFilterPanel.Show;
   PanelOpacityPercent := FConfig.PanelOpacity;
   ArchivesEnabled := FConfig.Archives;
+  { VV's commands for the file manager's buttons (Day 40). }
+  SetFileManagerCommands(CommandFieldsForFM);
   FFollowMode := FConfig.FollowTotalCommander;
+  if FileManager = nil then
+    FFollowMode := 0;            { no file manager chosen (DirManager=0) }
+  if FFollowMode > 0 then
+    FFollowLastOn := FFollowMode;
   UpdateFollowBadge;    { there from the start, see-through until it follows }
   { [Filters] AutoFilter: Auto for every image from the start. }
   FAutoOn := FConfig.AutoFilter;
@@ -1640,6 +1766,7 @@ begin
   if (ARenderer = nil) or (ARenderer = FRenderer) then
     Exit;
   ARenderer.ZoomStepPercent := FRenderer.ZoomStepPercent;
+  ARenderer.SmallImageZoom := FRenderer.SmallImageZoom;
   ARenderer.ShowInfo := FRenderer.ShowInfo;
   ARenderer.ShowDiagnostics := FRenderer.ShowDiagnostics;
   ARenderer.OverlaySolid := FConfig.OverlaySolid;
@@ -2559,6 +2686,11 @@ procedure TMView.HandleImageReady(const AImage: IDecodedImage);
 var
   SameFileShown: Boolean;
 begin
+  { A preload skipped because its drive has read errors (1.4, Day 40):
+    not an error of the file, nothing kept; asked for again later. }
+  if AImage.IsError and (AImage.ErrorMessage = DriveSkippedMessage) then
+    Exit;
+
   { A preview request for a file without a thumbnail: not an error of
     the file, just "don't ask again". The Screen decode follows. }
   if AImage.IsError and (AImage.ErrorMessage = NoPreviewMessage) then
@@ -2904,6 +3036,10 @@ begin
 end;
 
 procedure TMView.Execute(ACommand: TCommand; const AArgs: TCommandArgs);
+var
+  Zone: Integer;
+  ZoneSort: TSortMode;
+  HaveZoneSort: Boolean;
 begin
   { Day 29 (user): an unsaved image is not lost to a wheel turned by
     accident. }
@@ -3027,6 +3163,30 @@ begin
     cmdSortRandomKeep:
       if FNavigator.SortMode <> smRandom then
         SetSort(smRandom);
+    { Browsing from a zone with an order (by date / by name / random /
+      context menu): that order for now, not remembered as the chosen
+      order, so with the zones off (and after a restart) the order from
+      the context menu counts again. Random stays as it is (no new
+      shuffle on every step). }
+    cmdSortForZone:
+      begin
+        Zone := Round(AArgs.Value);
+        if (Zone >= Ord(Low(TMouseZone))) and (Zone <= Ord(High(TMouseZone))) then
+        begin
+          HaveZoneSort := True;
+          case FMouseProfile.ZoneOrder(TMouseZone(Zone)) of
+            zoDate: ZoneSort := smDateDescending;
+            zoName: ZoneSort := smFileNameAscending;
+            zoRandom: ZoneSort := smRandom;
+            zoMenu: ZoneSort := FConfig.ZoneMenuSort(Zone);
+          else
+            HaveZoneSort := False;
+          end;
+          if HaveZoneSort and not ((ZoneSort = smRandom)
+            and (FNavigator.SortMode = smRandom)) then
+            ApplySort(ZoneSort, False);
+        end;
+      end;
 
     cmdParentDirectory:
       begin
@@ -3159,6 +3319,10 @@ begin
       SetDirPreview(not FDirPreview);
     cmdSlideShow:
       SetSlideShow(not FSlideShow);
+    cmdFolderToFM:
+      SendFolderToFM;
+    cmdSortFromSubdirs:
+      SortListFromSubdirs(Round(AArgs.Value) = 1);
 
     cmdExit:
       begin
@@ -3411,8 +3575,8 @@ begin
     Text := Text + Format('     (+%d ms simulated delay)', [FConfig.DecodeDelayMs]);
 
   { Following Total Commander: what it answered last. }
-  if (FFollowMode > 0) and Assigned(FFollower) and (FFollower.Info <> '') then
-    Text := Text + '     TC ' + FFollower.Info;
+  if (FFollowMode > 0) and Assigned(FileManager) and (FileManager.Info <> '') then
+    Text := Text + '     TC ' + FileManager.Info;
 
   FRenderer.DiagnosticsText := Text;
 end;
@@ -3535,6 +3699,19 @@ begin
   SetSort(AMode);
 end;
 
+{ Day 40 (user): picked from the context menu with the mouse in a zone
+  set to "context menu": that zone keeps it for its browsing. }
+procedure TMView.SetSortOrderFromMenu(AMode: TSortMode; AZone: Integer);
+begin
+  SetSort(AMode);
+  if (AZone >= Ord(Low(TMouseZone))) and (AZone <= Ord(High(TMouseZone)))
+    and (FMouseProfile.ZoneOrder(TMouseZone(AZone)) = zoMenu) then
+  begin
+    FConfig.SetZoneMenuSort(AZone, AMode);
+    ShowStatus('this zone browses in this order from now on', 3000);
+  end;
+end;
+
 function TMView.SortOrder: TSortMode;
 begin
   Result := FNavigator.SortMode;
@@ -3542,6 +3719,15 @@ end;
 
 procedure TMView.SetSort(AMode: TSortMode);
 begin
+  ApplySort(AMode, True);
+end;
+
+procedure TMView.ApplySort(AMode: TSortMode; ARemember: Boolean);
+begin
+  { The chosen order, also when the list already is in it (a zone's
+    order of the moment). }
+  if ARemember then
+    FConfig.SortMode := AMode;
   { Random again: a new shuffle (Day 27). }
   if (AMode = smRandom) and (FNavigator.SortMode = smRandom) then
   begin
@@ -3555,7 +3741,6 @@ begin
   if FNavigator.SortMode = AMode then
     Exit;
   FNavigator.SetSortMode(AMode);
-  FConfig.SortMode := AMode;
   UpdateWanted;                 { other neighbours now }
   UpdateInfo;
 end;
@@ -3617,6 +3802,31 @@ begin
   FNoticeLastMs := DirectoryHintMs;
 end;
 
+{$IFNDEF WINDOWS}
+{ The bytes free for this user in AFolder's file system; -1 = unknown
+  or a network file system (NFS, SMB / CIFS, SSHFS). }
+function UnixFreeBytes(const AFolder: string): Int64;
+const
+  NfsMagic = $6969;
+  SmbMagic = $517B;
+  CifsMagic = LongInt($FF534D42);
+  Smb2Magic = LongInt($FE534D42);
+  FuseMagic = $65735546;
+var
+  Info: TStatFS;
+begin
+  Result := -1;
+  FillChar(Info, SizeOf(Info), 0);
+  if FpStatFS(PChar(AFolder), @Info) <> 0 then
+    Exit;
+  case LongInt(Info.fstype) of
+    NfsMagic, SmbMagic, CifsMagic, Smb2Magic, FuseMagic:
+      Exit;
+  end;
+  Result := Int64(Info.bavail) * Int64(Info.bsize);
+end;
+{$ENDIF}
+
 {$IFDEF WINDOWS}
 function MViewGetDriveTypeW(lpRootPathName: PWideChar): LongWord; stdcall;
   external 'kernel32.dll' name 'GetDriveTypeW';
@@ -3659,6 +3869,23 @@ begin
   finally
     MViewSetErrorMode(OldMode);
   end;
+  {$ELSE}
+  { 1.4, Linux: statfs(2) of the folder; the drive's name is the folder
+    itself (there are no drive letters). A network file system is not
+    asked (it may hang), as on Windows. }
+  ADrive := AFolder;
+  Result := UnixFreeBytes(AFolder);
+  {$ENDIF}
+end;
+
+{ The drive a folder is on, for the free space: "D:" on Windows; on
+  Linux (1.4) the folder itself (statfs answers for its file system). }
+function DiskOf(const AFolder: string): string;
+begin
+  {$IFDEF WINDOWS}
+  Result := ExtractFileDrive(AFolder);
+  {$ELSE}
+  Result := ExcludeTrailingPathDelimiter(AFolder);
   {$ENDIF}
 end;
 
@@ -3676,18 +3903,18 @@ begin
     Folders.CaseSensitive := False;
     { Each drive once. }
     if FNavigator.HasCurrentImage then
-      Folders.Add(ExtractFileDrive(RealFolderOf(FNavigator.CurrentFileName)));
+      Folders.Add(DiskOf(RealFolderOf(FNavigator.CurrentFileName)));
     for I := 0 to FConfig.SortFolders.Count - 1 do
-      Folders.Add(ExtractFileDrive(FConfig.SortFolders.Slot(I).Folder));
-    Folders.Add(ExtractFileDrive(FConfig.DeletedFilesFolder));
-    Folders.Add(ExtractFileDrive(UserDocumentsDirectory));
+      Folders.Add(DiskOf(FConfig.SortFolders.Slot(I).Folder));
+    Folders.Add(DiskOf(FConfig.DeletedFilesFolder));
+    Folders.Add(DiskOf(UserDocumentsDirectory));
     Worst := -1;
     WorstDrive := '';
     for I := 0 to Folders.Count - 1 do
     begin
       if Folders[I] = '' then
         Continue;
-      FreeB := LocalFreeBytes(Folders[I] + '\', Drive);
+      FreeB := LocalFreeBytes(IncludeTrailingPathDelimiter(Folders[I]), Drive);
       if (FreeB >= 0) and (FreeB < DiskLowBytes) and ((Worst < 0) or (FreeB < Worst)) then
       begin
         Worst := FreeB;
@@ -4841,6 +5068,7 @@ var
   Shot: string;
   NoticeT: Double;
   NoticeShown: Boolean;
+  TroubleDrive, TroubleWhat: string;
 begin
   AimTick;
   PollStlPicture;
@@ -4962,10 +5190,25 @@ begin
     end;
   end;
 
-  { The preview strip: closes 1 s after the mouse left it. }
+  { The preview strip: closes 1 s after the mouse left it. Hidden: its
+    thumbnails made ahead (1.4). }
   if Assigned(FStrip) and FStrip.Visible then
+  begin
     if FStrip.Tick(NowMs) then
       UpdateStrip(False);
+  end
+  else
+    PreloadStrip;
+
+  { A drive with read errors (1.4, Day 40, a user's memory stick): said
+    once per drive and trouble, in red like a full drive. }
+  if TakeDriveNotice(TroubleDrive, TroubleWhat) then
+  begin
+    FlashNotice(Format('Drive %s has read errors: copy the images off it, then check it (chkdsk)',
+      [TroubleDrive]), 3);
+    ShowStatus(Format('drive %s: %s - no more preloading from it for %d s',
+      [TroubleDrive, TroubleWhat, BackOffMs div 1000]), 15000);
+  end;
 
   { A drive almost full (Day 27): checked every few seconds. }
   if FConfig.DiskWarning and (NowMs - FDiskCheckMs >= DiskCheckEveryMs) then
@@ -4998,11 +5241,39 @@ begin
   end;
 
   { Follow Total Commander: a few times a second. }
-  if (FFollowMode > 0) and (NowMs - FFollowPollMs >= 200) then
+  if (FFollowMode > 0) and (NowMs - FFollowPollMs >= 200) and (NowMs >= FPanelQuietUntil) then
   begin
     FFollowPollMs := NowMs;
     PollTotalCommander;
   end;
+
+  { The folder of the sort button clicked, in the file manager - once the
+    clicking is over (Day 40). }
+  if (FFMShowSlot >= 0) and (NowMs >= FPanelQuietUntil) then
+  begin
+    ShowSortFolderInFM(FFMShowSlot);
+    FFMShowSlot := -1;
+  end;
+
+  { The badge's single right click (1.4): the menu, now that no second
+    click came. }
+  if (FBadgeMenuAtMs > 0) and (NowMs >= FBadgeMenuAtMs) then
+  begin
+    FBadgeMenuAtMs := 0;
+    FormCommand(cmdShowMenu, FBadgeMenuX, FBadgeMenuY, 0);
+  end;
+
+  { 1.4: Double Commander's own messages (its cm_SendTree button). }
+  if (NowMs - FFMEventPollMs >= 500) and (NowMs >= FPanelQuietUntil) then
+  begin
+    FFMEventPollMs := NowMs;
+    PollFileManagerEvents;
+  end;
+
+  { 1.4 (Day 40): VV's image and order to Double Commander, its start
+    settings, or the notice that it needs its program. }
+  if NowMs >= FPanelQuietUntil then
+    SyncFileManager;
 
   { The slide show's next image (Day 29); it overrides the dir preview
     (1.3, user: with both on, nothing played - the dir preview waits
@@ -5054,6 +5325,10 @@ begin
     Err := TDecodedImage.CreateError(Key, Format('%s (no answer for %d s): %s',
       [DiskNotRespondingText, StuckReadMs div 1000, FileName]));
     FCache.Put(Err);
+    { 1.4 (Day 40): its drive is in trouble - the replacement worker
+      must not go on with the next preload from it. }
+    NoteDriveTrouble(FileName, Format('no answer for %d s reading %s',
+      [StuckReadMs div 1000, ExtractFileName(FileName)]));
     ShowStatus('disk not responding: ' + ExtractFileName(FileName), 10000);
 
     if SameText(FileName, FNavigator.CurrentFileName) then
@@ -5128,7 +5403,7 @@ end;
   and before mouse events, laid out again only when the size changed. }
 procedure TMView.SyncPanelLayout;
 var
-  W, H: Integer;
+  W, H, Reserve: Integer;
   Scale: Double;
 begin
   if (FPanel = nil) or (FSurface = nil) then
@@ -5136,12 +5411,17 @@ begin
   W := FSurface.ClientWidth;
   H := FSurface.ClientHeight;
   Scale := Screen.PixelsPerInch / 96;
-  if (W = FPanelViewW) and (H = FPanelViewH) and (Scale = FPanelScale) then
+  { 1.4 (user, Day 40): the sort panel ends above the file manager badge
+    (bottom right), which stays visible and clickable. }
+  Reserve := FRenderer.BadgeReserve;
+  if (W = FPanelViewW) and (H = FPanelViewH) and (Scale = FPanelScale)
+    and (Reserve = FPanelReserve) then
     Exit;
   FPanelViewW := W;
   FPanelViewH := H;
   FPanelScale := Scale;
-  FPanel.SetViewSize(W, H, Scale);
+  FPanelReserve := Reserve;
+  FPanel.SetViewSize(W, Max(0, H - Reserve), Scale);
   UpdatePanel;
   if Assigned(FFilterPanel) then
   begin
@@ -5192,9 +5472,37 @@ begin
   SyncPanelLayout;
   { The "TC" label (bottom right): a click cycles following Total
     Commander off / its folder / and its cursor (user, Day 23). }
-  if (AKind = omDown) and (AButton = obLeft) and FRenderer.BadgeHit(AX, AY) then
+  { Not where the open sort panel lies over it (1.4, Day 40): a click on a
+    sort button there switched following on. }
+  if (AKind = omDown) and (AButton = obLeft) and FRenderer.BadgeHit(AX, AY)
+    and not (FPanel.Visible and FPanel.Contains(AX, AY)) then
   begin
     SetFollowMode((FFollowMode + 1) mod 3);
+    Exit(True);
+  end;
+  { A right double-click there (1.4, user): side by side, both windows
+    back to the halves. A single right click still opens the menu, once
+    the double-click time is over (PumpDeliveries). }
+  if (AKind = omDown) and (AButton = obRight) and FRenderer.BadgeHit(AX, AY)
+    and not (FPanel.Visible and FPanel.Contains(AX, AY)) then
+  begin
+    FBadgeRightDown := True;
+    if FBadgeMenuAtMs > 0 then
+    begin
+      FBadgeMenuAtMs := 0;
+      FormCommand(cmdSideBySide, 0, 0, 1);
+    end
+    else
+    begin
+      FBadgeMenuAtMs := NowMs + FDoubleClickMs;
+      FBadgeMenuX := AX;
+      FBadgeMenuY := AY;
+    end;
+    Exit(True);
+  end;
+  if (AKind = omUp) and (AButton = obRight) and FBadgeRightDown then
+  begin
+    FBadgeRightDown := False;
     Exit(True);
   end;
   { The preview strip (top, Day 27) and the filter panel (left edge)
@@ -5251,11 +5559,14 @@ begin
         FPanelPressButton := AButton;
         FPanelPressX := AX;
         FPanelPressY := AY;
+        FPanelQuietUntil := NowMs + 30000;     { until released }
       end;
 
     omUp:
       begin
         Result := True;
+        { Quiet for a double-click's second click (and its release). }
+        FPanelQuietUntil := NowMs + FDoubleClickMs + 200;
         { A swipe over a button, to the right (Day 21, user) or to the
           left (Day 24, user): into its folder. Else it acts on release,
           where it was pressed (like a button). }
@@ -5267,7 +5578,10 @@ begin
           if FPanelPress.Part = ppContainer then
             OpenContainerInView(FPanelPress.Slot)     { a .lif (M2c) }
           else
+          begin
             OpenSlotFolder(FPanelPress.Slot);
+            FFMShowSlot := FPanelPress.Slot;   { shown there afterwards }
+          end;
         end
         else if (FPanelPress.Part <> ppNone) and (Hit.Part = FPanelPress.Part)
           and (Hit.Slot = FPanelPress.Slot) then
@@ -5282,6 +5596,10 @@ procedure TMView.PanelClick(const AHit: TPanelHit; AButton: TOverlayButton);
 var
   P: TPoint;
 begin
+  { 1.4 (user): any click on a sort button shows its folder in the file
+    manager too ([Sort] ShowInFileManager). }
+  if AHit.Part = ppSlot then
+    FFMShowSlot := AHit.Slot;     { sent when the clicking is over (timer) }
   case AHit.Part of
     ppSlot:
       if AButton = obMiddle then
@@ -5294,6 +5612,9 @@ begin
       end
       else if AButton in [obLeft, obRight] then
       begin
+        { A double click copies / moves: not a visit, so the file manager
+          isn't sent there either (Day 40, user). }
+        FFMShowSlot := -1;
         SortCurrent(AHit.Slot, AButton = obRight);
         { Unpinned: closes after each action (user), once its flash has
           been seen. }
@@ -5451,6 +5772,47 @@ begin
   end;
 end;
 
+{ 1.4 (user): a click on a sort button shows its folder in the file
+  manager ([Sort] ShowInFileManager: which panel; 0 = off). Only in
+  follow mode (1 or 2) and while it runs (it isn't started for this), quietly: the click goes on to do
+  what it does. The same folder again within FMShowRepeatMs (the two
+  clicks of a double click) is not sent twice. }
+procedure TMView.ShowSortFolderInFM(ASlot: Integer);
+const
+  FMShowRepeatMs = 1500;
+  PanelOf: array[1..2] of TFMPanel = (fpInactive, fpActive);
+var
+  FM: TFileManager;
+  Folder: string;
+begin
+  if (FConfig.ShowInFileManager < 1) or (FConfig.ShowInFileManager > 2) then
+    Exit;
+  { Only while VV follows the file manager (user, Day 40): with follow
+    off the two stay independent. }
+  if FFollowMode = 0 then
+    Exit;
+  if (ASlot < 0) or (ASlot >= FConfig.SortFolders.Count) then
+    Exit;
+  FM := FileManager;
+  if (FM = nil) or not FM.CanShowFolder or not FM.IsRunning then
+    Exit;
+  Folder := FConfig.SortFolders.Slot(ASlot).Folder;
+  if (Folder = '') or not DirectoryExists(Folder) then
+    Exit;
+  if (Folder = FFMShownFolder) and (NowMs - FFMShownMs < FMShowRepeatMs) then
+    Exit;
+  { Day 40 (user: in follow mode, a copy / move by double click still took
+    VV into the sort folder): what the file manager shows after VV sent
+    it there is noted, not followed - VV sent it, VV doesn't go along. }
+  FSyncHoldMs := NowMs + 2000;
+  if FM.ShowFolder(Folder, PanelOf[FConfig.ShowInFileManager]) then
+  begin
+    FFMShownFolder := Folder;
+    FFMShownMs := NowMs;
+    FSyncHoldMs := NowMs + 2000;
+  end;
+end;
+
 procedure TMView.OpenSortFolder(ASlot: Integer);
 var
   Slot: TSortSlot;
@@ -5551,6 +5913,15 @@ begin
   FNavigator.RemoveFile(AJob.Source);
   FCache.DropFile(AJob.Source);
   M.FollowedBy := FNavigator.CurrentFileName;
+  { Following the file manager's cursor (mode 2), 1.4 (user): the file
+    leaves its panel too, and its cursor goes to the next file in ITS
+    order. VV leads here: that move is noted, not followed, and VV's next
+    image goes under its cursor at once (SyncFileManager). }
+  if FFollowMode = 2 then
+  begin
+    FSyncHoldMs := NowMs + 3000;
+    FSyncPushFile := M.FollowedBy;
+  end;
   QueueJob(AJob);
   M.JobId := AJob.Id;
   SetLength(FMoves, Length(FMoves) + 1);
@@ -5603,6 +5974,7 @@ begin
     bytes) is not copied again; a move puts this one into the
     deleted-files folder as dup1_<name> instead. }
   Job.DuplicateDir := FConfig.DeletedFilesFolder;
+  Job.SameRun := ContinuesSortRun(FileName, Slot.Folder);
 
   { Day 32 (user): sorting goes on at once - the magnifier and the zoom /
     rotate mode end, and the slide show / dir preview counts the next
@@ -6050,12 +6422,15 @@ begin
     delete and undo: the bottom line. }
   { A dynamic list (Day 32): the folder goes up, once the mouse has left
     the panel. }
-  if (J.Kind = fjSort) and AResult.OK then
+  if (J.Kind = fjSort) and AResult.OK and not J.SameRun then
   begin
     FConfig.SortFolders.NoteUsed(J.TargetDir);
     if Assigned(FPanel) and not FPanel.MouseOnPanel then
       ApplySortUse;
   end;
+  { A failed one ends the run: the next file counts afresh (1.4). }
+  if (J.Kind = fjSort) and not AResult.OK then
+    FSortRunFolder := '';
   if Assigned(FPanel) then
   begin
     if J.Kind = fjSort then
@@ -6169,6 +6544,33 @@ begin
       FStripThumbs.Request(FStrip.WantedFiles, FStrip.ThumbSize);
   end;
   Refresh;
+end;
+
+{ 1.4 (user: on Linux the strip's thumbnails came only once the mouse
+  was over it): while the strip is hidden, a folder's thumbnails are
+  asked for once the user has rested on it StripPreloadDelayMs, so the
+  strip has them when it opens. The thumbnail thread gives way to the
+  image on screen (I/O gate) and a newer list replaces this one. }
+procedure TMView.PreloadStrip;
+const
+  StripPreloadDelayMs = 1500;
+var
+  Key: string;
+begin
+  if (FStrip = nil) or FStrip.Visible or (FSurface = nil) then
+    Exit;
+  if (not FNavigator.HasCurrentImage) or FSkim or FSlideShow then
+    Exit;
+  if NowMs - FCommandMs < StripPreloadDelayMs then
+    Exit;
+  Key := FNavigator.CurrentDirectory + '|' + IntToStr(FNavigator.ImageCount) + '|'
+    + IntToStr(Ord(FNavigator.SortMode));
+  if Key = FStripPreloadKey then
+    Exit;
+  FStripPreloadKey := Key;
+  FStrip.SetViewSize(FSurface.ClientWidth, FSurface.ClientHeight, Screen.PixelsPerInch / 96);
+  SyncStrip(True);
+  FStripThumbs.Request(FStrip.WantedFiles, FStrip.ThumbSize);
 end;
 
 procedure TMView.HandleStripThumb(const AFileName: string; ABitmap: TBGRABitmap);
@@ -6863,7 +7265,12 @@ end;
 function TMView.UseRecursive: Boolean;
 begin
   Result := FConfig.Recursive
-    and not ((FFollowMode > 0) and (FindTotalCommanderWindow <> 0));
+    and not ((FFollowMode > 0) and FileManagerRunning);
+end;
+
+function TMView.FileManagerRunning: Boolean;
+begin
+  Result := (FileManager <> nil) and FileManager.IsRunning;
 end;
 
 procedure TMView.SetFollowMode(AMode: Integer);
@@ -6871,11 +7278,19 @@ var
   WasRecursive: Boolean;
   Note: string;
 begin
+  { No file manager chosen (DirManager=0, Day 40): nothing to follow. }
+  if (AMode > 0) and (FileManager = nil) then
+  begin
+    ShowNote(NoFileManagerNote, 6000);
+    Exit;
+  end;
   if (AMode < 0) or (AMode > 2) then
     AMode := 1;
   WasRecursive := UseRecursive;
   FFollowMode := AMode;
-  FFollowing := FindTotalCommanderWindow <> 0;   { the label's colour at once }
+  if AMode > 0 then
+    FFollowLastOn := AMode;
+  FFollowing := FileManagerRunning;   { the label's colour at once }
   UpdateFollowBadge;
   { Subfolders on / off with it: the image's folder again, now. Also an
     empty folder (no image on screen): it stayed flat, and with following
@@ -6890,17 +7305,18 @@ begin
   end;
   FFollowPrimed := False;      { start from what it shows now }
   FFollowNoteShown := False;
-  FreeAndNil(FFollower);       { asks afresh (e.g. whether it knows the cursor) }
+  if FileManager <> nil then
+    FileManager.Restart;       { asks afresh (e.g. whether it knows the cursor) }
   FConfig.FollowTotalCommander := AMode;
   FConfig.SaveSort;
   case AMode of
-    0: Note := 'Follow Total Commander: off';
-    1: Note := 'Follow Total Commander: its folder';
+    0: Note := 'Follow ' + FMName + ': off';
+    1: Note := 'Follow ' + FMName + ': its folder';
   else
-    Note := 'Follow Total Commander: its folder and the image under its cursor';
+    Note := 'Follow ' + FMName + ': its folder and the image under its cursor';
   end;
-  if (AMode > 0) and (FindTotalCommanderWindow = 0) then
-    Note := Note + '   (Total Commander isn''t running)';
+  if (AMode > 0) and not FileManagerRunning then
+    Note := Note + '   (' + FMName + ' isn''t running)';
   ShowStatus(Note, 4000);
 end;
 
@@ -6908,34 +7324,456 @@ end;
   another folder is opened (the scanner checks it); in mode 2 the image
   under its cursor is shown (from the lists when it is in the folder
   shown, else opened with its folder). }
+{ 1.4 (user): one message from the file manager per call (only Double
+  Commander sends any). }
+{ 1.4 (user, Day 40), from the timer:
+  - Double Commander chosen but no program configured ([FileManager]
+    DoubleCommander= empty or not there): VV doesn't connect at all and
+    shows a notice, like the one for a full drive (every 20 s while the
+    sort panel or following would want it; at the start once).
+  - A freshly started Double Commander: thumbnails per DCThumbnails, and
+    VV's order again.
+  - Following it: VV's order (name / date; Random has no match there)
+    goes to its active panel when it changes; in follow mode 2 the image
+    VV shows goes under its cursor once it has stayed CursorSyncMs (no skimming), not
+    during the slide show or the dir preview. What is sent is noted as
+    what Double Commander shows, so following doesn't take it for a move
+    of its own. }
+procedure TMView.SyncFileManager;
+const
+  SetupNoteEveryMs = 20000;
+var
+  FM: TFileManager;
+  Cur: string;
+  Mode: TSortMode;
+  Sent, CursorDue, Urgent: Boolean;
+begin
+  FM := FileManager;
+  if FM = nil then
+    Exit;
+  if not FM.IsConfigured then
+  begin
+    if (FFMSetupNoteMs = 0) or ((FFollowMode > 0) and (NowMs - FFMSetupNoteMs >= SetupNoteEveryMs)) then
+    begin
+      FFMSetupNoteMs := Max(1.0, NowMs);
+      FlashNotice(EditionText(FMName + ' needs its path: VersariteViewer.ini, [FileManager] '
+        + StringReplace(FMName, ' ', '', [rfReplaceAll]) + '='), 3);
+      { Steady, 3 s (user, Day 40: flashing it was too short to read). }
+      FNoticeSteady := True;
+      FNoticeLastMs := 3000;
+      ShowStatus(FMName + ': ' + FM.Info, 10000);
+    end;
+    Exit;
+  end;
+
+  { The image shown, and since when (every tick: skimming resets it). }
+  if FNavigator.HasCurrentImage then
+    Cur := FNavigator.CurrentFileName
+  else
+    Cur := '';
+  if not SameText(Cur, FSyncSeenFile) then
+  begin
+    FSyncSeenFile := Cur;
+    FSyncSeenMs := NowMs;
+  end;
+
+  { Double Commander is asked 4 times a second at most - except for the
+    image that has just become due (Day 40, user: the cursor came up to
+    a quarter second late on top of CursorSyncMs). }
+  { The image after one VV moved / deleted (StartMove): at once, without
+    the CursorSyncMs wait; gone when another image is shown. }
+  if (FSyncPushFile <> '') and not SameText(Cur, FSyncPushFile) then
+    FSyncPushFile := '';
+  Urgent := (FSyncPushFile <> '') and (FFollowMode = 2) and (FConfig.CursorSyncMs > 0);
+  CursorDue := Urgent or ((FFollowMode = 2) and (FConfig.CursorSyncMs > 0) and (Cur <> '')
+    and (NowMs - FSyncSeenMs >= FConfig.CursorSyncMs) and not SameText(Cur, FSyncSentFile));
+  if (NowMs - FSyncIOMs < 250) and not CursorDue then
+    Exit;
+  FSyncIOMs := NowMs;
+
+  if FM.TakeFreshStart then
+  begin
+    FSortSentMode := -1;
+    if FConfig.DCThumbnails > 0 then
+      FM.SetThumbnails(FConfig.DCThumbnails);
+  end;
+
+  if FFollowMode = 0 then
+    Exit;
+
+  Mode := FNavigator.SortMode;
+  if (Ord(Mode) <> FSortSentMode) and (Mode <> smRandom) then
+  begin
+    case Mode of
+      smDateDescending:     Sent := FM.SetSort('date', True);
+      smDateAscending:      Sent := FM.SetSort('date', False);
+      smFileNameAscending:  Sent := FM.SetSort('name', False);
+      smFileNameDescending: Sent := FM.SetSort('name', True);
+    else
+      Sent := False;
+    end;
+    if Sent then
+      FSortSentMode := Ord(Mode);
+  end;
+
+  { The image under Double Commander's cursor: only in follow mode 2
+    (folder and cursor; user, Day 40) - mode 1 follows the folder only. }
+  if (FFollowMode <> 2) or (FConfig.CursorSyncMs <= 0) or FSlideShow or FDirPreview
+    or (FDirFolder <> '') or (Cur = '') then
+    Exit;
+  if not Urgent and ((NowMs - FSyncSeenMs < FConfig.CursorSyncMs) or SameText(Cur, FSyncSentFile)) then
+    Exit;
+  FSyncSentFile := Cur;
+  FSyncPushFile := '';
+  { Already there (VV followed it to this image), or not a file on disk
+    (inside a container): nothing to send. After a move the file
+    manager's cursor is still on the moved file, so it is sent anyway. }
+  if (not Urgent and SameText(Cur, FFollowFile)) or not FileExists(Cur) then
+    Exit;
+  if FM.SetCursor(Cur) then
+  begin
+    FFollowFile := Cur;
+    FFollowFolder := ExcludeTrailingPathDelimiter(ExtractFilePath(Cur));
+    { Another folder loads in Double Commander for a moment (its cursor
+      may sit on another file meanwhile): not followed for that time. }
+    FSyncHoldMs := NowMs + 1000;
+  end;
+end;
+
+procedure TMView.PollFileManagerEvents;
+var
+  FM: TFileManager;
+  F: TStringArray;
+begin
+  FM := FileManager;
+  if (FM = nil) or not FM.NextEvent(F) then
+    Exit;
+  if (Length(F) >= 2) and SameText(F[0], 'TREE') then
+    AddTreeToSortList(F)
+  { Double Commander's cm_ViewerFollowModeOn / Off buttons (Day 40):
+    on = the last mode VV followed with (none yet: folder and image). }
+  { cm_ViewerCommand cmd=<name> (Day 40): any action of the mouse / key
+    settings, by its name. }
+  else if (Length(F) >= 2) and SameText(F[0], 'COMMAND') then
+  begin
+    if not (Assigned(FOnNamedAction) and FOnNamedAction(F[1])) then
+      ShowStatus(FMName + ' sent an unknown command: ' + F[1]
+        + '   (the names of the "Mouse & keys" page, e.g. NextImage, SlideShow)', 6000);
+  end
+  else if (Length(F) >= 2) and SameText(F[0], 'FOLLOW') then
+  begin
+    if SameText(F[1], 'off') then
+    begin
+      if FFollowMode > 0 then
+        SetFollowMode(0);
+    end
+    else if (F[1] = '1') or (F[1] = '2') then
+      SetFollowMode(StrToInt(F[1]))
+    else if FFollowMode = 0 then
+    begin
+      if FFollowLastOn in [1, 2] then
+        SetFollowMode(FFollowLastOn)
+      else
+        SetFollowMode(2);
+    end;
+  end;
+end;
+
+{ The run (1.4, user): sorting AFileName into AFolder goes on from the
+  last sort - the same folder and list, and AFileName one of the files
+  next to the last one sorted (a move shows the next one by itself; for
+  copies you step there). Notes this sort as the run's latest. }
+function TMView.ContinuesSortRun(const AFileName, AFolder: string): Boolean;
+var
+  Ahead, Behind: TStringArray;
+  I: Integer;
+begin
+  Result := False;
+  if SameText(ExcludeTrailingPathDelimiter(AFolder), FSortRunFolder)
+    and (FSortRunList = FConfig.SortFolders.ListIndex) then
+    for I := 0 to High(FSortRunNext) do
+      if SameText(FSortRunNext[I], AFileName) then
+      begin
+        Result := True;
+        Break;
+      end;
+  FSortRunFolder := ExcludeTrailingPathDelimiter(AFolder);
+  FSortRunList := FConfig.SortFolders.ListIndex;
+  Ahead := FNavigator.FilesAhead(1, 1);
+  Behind := FNavigator.FilesAhead(1, -1);
+  FSortRunNext := nil;
+  if Length(Ahead) > 0 then
+  begin
+    SetLength(FSortRunNext, Length(FSortRunNext) + 1);
+    FSortRunNext[High(FSortRunNext)] := Ahead[0];
+  end;
+  if Length(Behind) > 0 then
+  begin
+    SetLength(FSortRunNext, Length(FSortRunNext) + 1);
+    FSortRunNext[High(FSortRunNext)] := Behind[0];
+  end;
+end;
+
+procedure TMView.FormCommand(ACommand: TCommand; AX, AY, AValue: Double);
+var
+  Args: TCommandArgs;
+begin
+  if not Assigned(FOnFormCommand) then
+    Exit;
+  Args.X := AX;
+  Args.Y := AY;
+  Args.Value := AValue;
+  FOnFormCommand(Self, ACommand, Args);
+end;
+
+{ cm_RemoteSendFolderToInactive (1.4, user): the file manager's inactive
+  panel goes to this image's folder (Double Commander: cm_ChangeDir
+  inactivepath=). }
+procedure TMView.SendFolderToFM;
+var
+  FM: TFileManager;
+  Folder: string;
+begin
+  FM := FileManager;
+  if FM = nil then
+  begin
+    ShowNote(NoFileManagerNote, 6000);
+    Exit;
+  end;
+  if not FM.CanShowFolder then
+  begin
+    ShowNote(FMName + ' can''t be told a folder', 5000);
+    Exit;
+  end;
+  Folder := '';
+  if FNavigator.HasCurrentImage then
+    Folder := FolderOnDisk;
+  if Folder = '' then
+  begin
+    ShowNote('No folder shown to send to ' + FMName, 4000);
+    Exit;
+  end;
+  if not FM.IsRunning then
+  begin
+    ShowNote(FMName + ' is not running', 4000);
+    Exit;
+  end;
+  if FM.ShowFolder(Folder, fpInactive) then
+    StatusNote(FMName + '''s other panel: ' + Folder, 4000)
+  else
+    ShowNote(FMName + ' could not show ' + Folder + ': ' + FM.Info, 6000);
+end;
+
+{ cm_RemoteCreateSortFromSubdirs (1.4, user): a new folder list (a new
+  tab of the sort panel) of the first-level subfolders of the folder
+  under the file manager's cursor, in natural order; hidden and system
+  folders left out. AWithFolder: that folder itself first. }
+procedure TMView.SortListFromSubdirs(AWithFolder: Boolean);
+var
+  FM: TFileManager;
+  Folders: TSortFolders;
+  Names: TStringList;
+  SR: TSearchRec;
+  PanelFolder, Cursor, Note: string;
+  I, Added, Left: Integer;
+begin
+  FM := FileManager;
+  if FM = nil then
+  begin
+    ShowNote(NoFileManagerNote, 6000);
+    Exit;
+  end;
+  Folders := FConfig.SortFolders;
+  if Folders.Rapid then
+  begin
+    ShowNote('Switch Rapid selection off to make a new folder list', 5000);
+    Exit;
+  end;
+  if not (FM.IsRunning and FM.Poll(True, PanelFolder, Cursor)) then
+  begin
+    ShowNote(FMName + ' did not answer: is it running, with its remote control on?', 6000);
+    Exit;
+  end;
+  Cursor := ExcludeTrailingPathDelimiter(Cursor);
+  if (Cursor = '') or not DirectoryExists(Cursor) then
+  begin
+    ShowNote('Put ' + FMName + '''s cursor on a folder first', 5000);
+    Exit;
+  end;
+
+  Names := TStringList.Create;
+  try
+    if FindFirst(IncludeTrailingPathDelimiter(Cursor) + AllFilesMask,
+      {$IFDEF WINDOWS}faDirectory or faHidden or faSysFile{$ELSE}faDirectory{$ENDIF}, SR) = 0 then
+    try
+      repeat
+        if ((SR.Attr and faDirectory) = 0) or (SR.Name = '.') or (SR.Name = '..') then
+          Continue;
+        {$IFDEF WINDOWS}
+        if (SR.Attr and (faHidden or faSysFile)) <> 0 then
+          Continue;
+        {$ELSE}
+        if (SR.Name <> '') and (SR.Name[1] = '.') then
+          Continue;
+        {$ENDIF}
+        Names.Add(SR.Name);
+      until FindNext(SR) <> 0;
+    finally
+      FindClose(SR);
+    end;
+    Names.CustomSort(@NaturalCompareStringList);
+    for I := 0 to Names.Count - 1 do
+      Names[I] := IncludeTrailingPathDelimiter(Cursor) + Names[I];
+    if AWithFolder then
+      Names.Insert(0, Cursor);
+    if Names.Count = 0 then
+    begin
+      ShowNote(FolderDisplayName(Cursor) + ' has no subfolders', 4000);
+      Exit;
+    end;
+    if not Folders.NewList then
+    begin
+      ShowNote(Format('No room for another folder list (%d at most)', [MaxSortLists]), 5000);
+      Exit;
+    end;
+    Added := 0;
+    Left := 0;
+    for I := 0 to Names.Count - 1 do
+      if Folders.SetFolder(Folders.Count, Names[I]) >= 0 then
+        Inc(Added)
+      else
+      begin
+        Left := Names.Count - I;     { the list is full }
+        Break;
+      end;
+  finally
+    Names.Free;
+  end;
+
+  if Assigned(FPanel) then
+  begin
+    if not FPanel.Visible then
+      ShowSortPanel(True);
+    FPanel.ScrollToTop;
+  end;
+  SortFoldersChanged(0);
+  Note := Format('New folder list: %d folders of %s', [Added, FolderDisplayName(Cursor)]);
+  if Left > 0 then
+    Note := Note + Format(', %d not (the list is full)', [Left]);
+  StatusNote(Note, 5000);
+end;
+
+{ TREE <folder> <subfolder> ... (Double Commander's cm_SendTree, 1.4,
+  user): the subfolders are added to the list shown in the sort panel
+  (an empty new list: they make it), the ones it has already are left;
+  the panel comes up on the first one added. }
+procedure TMView.AddTreeToSortList(const AFields: TStringArray);
+
+  function SameFolder(const A, B: string): Boolean;
+  begin
+    {$IFDEF WINDOWS}
+    Result := SameText(ExcludeTrailingPathDelimiter(A), ExcludeTrailingPathDelimiter(B));
+    {$ELSE}
+    Result := ExcludeTrailingPathDelimiter(A) = ExcludeTrailingPathDelimiter(B);
+    {$ENDIF}
+  end;
+
+var
+  Folders: TSortFolders;
+  I, J, Index, Added, Known, Left, First: Integer;
+  Found: Boolean;
+  Note: string;
+begin
+  Folders := FConfig.SortFolders;
+  if Folders.Rapid then
+  begin
+    StatusNote(Format('%s sent %d folders: switch Rapid selection off to add them',
+      [FMName, Length(AFields) - 2]), 6000);
+    Exit;
+  end;
+  Added := 0;
+  Known := 0;
+  Left := 0;
+  First := -1;
+  for I := 2 to High(AFields) do
+  begin
+    if Trim(AFields[I]) = '' then
+      Continue;
+    Found := False;
+    for J := 0 to Folders.Count - 1 do
+      if SameFolder(Folders.Slot(J).Folder, AFields[I]) then
+      begin
+        Found := True;
+        Break;
+      end;
+    if Found then
+    begin
+      Inc(Known);
+      Continue;
+    end;
+    Index := Folders.SetFolder(Folders.Count, ExcludeTrailingPathDelimiter(AFields[I]));
+    if Index < 0 then
+    begin
+      Left := High(AFields) - I + 1;     { the list is full }
+      Break;
+    end;
+    if First < 0 then
+      First := Index;
+    Inc(Added);
+  end;
+  if Added > 0 then
+  begin
+    if Assigned(FPanel) and not FPanel.Visible then
+      ShowSortPanel(True);
+    SortFoldersChanged(First);
+  end;
+  Note := Format('%s: %d folders of %s added', [FMName, Added, FolderDisplayName(AFields[1])]);
+  if Known > 0 then
+    Note := Note + Format(', %d were in the list', [Known]);
+  if Left > 0 then
+    Note := Note + Format(', %d not (the list is full)', [Left]);
+  StatusNote(Note, 5000);
+end;
+
 procedure TMView.PollTotalCommander;
 var
   Folder, F, OldInfo: string;
   First, Answered: Boolean;
+  FM: TFileManager;
 begin
-  if FFollower = nil then
-    FFollower := TTCFollower.Create;
-  OldInfo := FFollower.Info;
-  Answered := FFollower.Poll(FFollowMode = 2, Folder, F);
+  FM := FileManager;
+  if FM = nil then
+    Exit;
+  OldInfo := FM.Info;
+  Answered := FM.Poll(FFollowMode = 2, Folder, F);
   { The "TC" badge while it is followed (Total Commander runs; a busy
     moment or an archive doesn't count as gone). }
-  if (FindTotalCommanderWindow <> 0) <> FFollowing then
+  if FM.IsRunning <> FFollowing then
   begin
     FFollowing := not FFollowing;
     UpdateFollowBadge;
   end;
   { The D line shows how Total Commander answers (testing). }
-  if FRenderer.ShowDiagnostics and (FFollower.Info <> OldInfo) then
+  if FRenderer.ShowDiagnostics and (FM.Info <> OldInfo) then
   begin
     UpdateDiagnostics;
     Refresh;
   end;
   if not Answered then
     Exit;
-  if (FFollowMode = 2) and not FFollower.CursorSupported and not FFollowNoteShown then
+  { Just told where to go (SyncFileManager, Day 40): what it shows is
+    noted, not followed, until it has settled. }
+  if NowMs < FSyncHoldMs then
+  begin
+    FFollowFolder := Folder;
+    FFollowFile := F;
+    FFollowPrimed := True;
+    Exit;
+  end;
+  if (FFollowMode = 2) and not FM.CursorSupported and not FFollowNoteShown then
   begin
     FFollowNoteShown := True;
-    ShowStatus('Total Commander doesn''t say which file its cursor is on: following its folder only',
+    ShowStatus(FMName + ' doesn''t say which file its cursor is on: following its folder only',
       8000);
   end;
 
@@ -7024,6 +7862,11 @@ procedure TMView.SetDirPreview(AOn: Boolean);
 begin
   if AOn = FDirPreview then
     Exit;
+  if AOn and (FileManager = nil) then
+  begin
+    ShowNote(NoFileManagerNote, 6000);
+    Exit;
+  end;
   if AOn then
   begin
     FDirPrevFollow := FFollowMode;
@@ -7031,9 +7874,9 @@ begin
       SetFollowMode(2);
     FDirPreview := True;
     if FConfig.DirPreviewFiles = 0 then
-      ShowStatus('Total Commander dir preview: on (a folder under its cursor plays all its images)', 5000)
+      ShowStatus(FMName + ' dir preview: on (a folder under its cursor plays all its images)', 5000)
     else
-      ShowStatus(Format('Total Commander dir preview: on (a folder under its cursor plays its '
+      ShowStatus(Format(FMName + ' dir preview: on (a folder under its cursor plays its '
         + 'first %d images)', [FConfig.DirPreviewFiles]), 5000);
   end
   else
@@ -7042,7 +7885,7 @@ begin
     StopDirPreview;
     if FDirPrevFollow <> 2 then
       SetFollowMode(FDirPrevFollow);
-    ShowStatus('Total Commander dir preview: off', 3000);
+    ShowStatus(FMName + ' dir preview: off', 3000);
   end;
 end;
 
@@ -7135,7 +7978,7 @@ end;
   focus, not Total Commander), the dir preview waits: no slide show, and
   the image shown gets its full version as usual, so a GIF plays. Total
   Commander in front again: the preview goes on. Day 29 (user):
-  [Sort] TCSlideShowMode=1 - it plays on (a slide show). }
+  [FileManager] DirPreviewSlideShow=1 - it plays on (a slide show). }
 function TMView.DirPreviewPaused: Boolean;
 begin
   Result := (FDirFolder <> '') and Application.Active and not FConfig.TCSlideShowMode;
@@ -7326,7 +8169,18 @@ begin
     Style := FFollowMode
   else
     Style := 0;
-  FRenderer.SetBadge('TC', Style);
+  { None chosen (DirManager=0, Day 40): no badge. }
+  if FileManager = nil then
+  begin
+    FRenderer.BadgeOn := False;
+    Refresh;
+    Exit;
+  end;
+  { "TC" / "DC" (1.4): the file manager's initials. }
+  if SameText(FMName, 'Double Commander') then
+    FRenderer.SetBadge('DC', Style)
+  else
+    FRenderer.SetBadge('TC', Style);
   FRenderer.BadgeOn := True;
   Refresh;
 end;
@@ -7843,6 +8697,38 @@ end;
 
 { The mouse over the filter panel: True = taken. A press on it is kept
   until the button goes up (a drag along a row may leave the panel). }
+{ 1.4: the drag's newest point applied (see FFilterMoveQueued). }
+procedure TMView.ApplyFilterMove;
+var
+  F: TFilterSettings;
+  Section: TPanelSection;
+  LocalRow, AX: Integer;
+begin
+  FFilterMoveQueued := False;
+  if (FFilterPanel = nil) or not FFilterPress then
+    Exit;
+  AX := FFilterMoveX;
+  F := FFilters;
+  if FFilterPanel.Dragging and FFilterPanel.DragTo(AX, F) then
+    UserFilters(F);
+  { A section's slider (1.3): relative, as the filters; a click alone
+    changes nothing. }
+  if (FFilterExtraDrag >= 0) and (AX <> FFilterExtraDragX)
+    and PanelSectionAt(FFilterExtraDrag, Section, LocalRow) then
+    try
+      Section.SetSliderPos(LocalRow, FFilterExtraDragPos
+        + (AX - FFilterExtraDragX) / FFilterPanel.BarWidth);
+    except
+    end;
+end;
+
+procedure TMView.AsyncFilterMove(AData: PtrInt);
+begin
+  { Already applied (by the release) or the drag is over: nothing. }
+  if FFilterMoveQueued then
+    ApplyFilterMove;
+end;
+
 function TMView.HandleFilterMouse(AKind: TOverlayMouseKind; AButton: TOverlayButton;
   AX, AY, AWheel: Integer; AButtonDown, ADouble: Boolean): Boolean;
 var
@@ -7863,18 +8749,16 @@ begin
         if FFilterPress then
         begin
           Result := True;
-          F := FFilters;
-          if FFilterPanel.Dragging and FFilterPanel.DragTo(AX, F) then
-            UserFilters(F);
-          { A section's slider (1.3): relative, as the filters; a
-            click alone changes nothing. }
-          if (FFilterExtraDrag >= 0) and (AX <> FFilterExtraDragX)
-            and PanelSectionAt(FFilterExtraDrag, Section, LocalRow) then
-            try
-              Section.SetSliderPos(LocalRow, FFilterExtraDragPos
-                + (AX - FFilterExtraDragX) / FFilterPanel.BarWidth);
-            except
-            end;
+          { 1.4: only the newest point counts; applied after the motion
+            events already waiting (one filter pass and one panel
+            picture per round, not per event). }
+          FFilterMoveX := AX;
+          FFilterMoveY := AY;
+          if not FFilterMoveQueued then
+          begin
+            FFilterMoveQueued := True;
+            Application.QueueAsyncCall(@AsyncFilterMove, 0);
+          end;
         end;
       end;
 
@@ -8000,6 +8884,9 @@ begin
       if FFilterPress then
       begin
         Result := True;
+        { The last point of the drag first (1.4). }
+        if FFilterMoveQueued then
+          ApplyFilterMove;
         FFilterPress := False;
         FFilterPanel.EndDrag;
         FFilterExtraDrag := -1;
@@ -8049,16 +8936,14 @@ begin
     ShowStatus('Combine GIFs: still combining the last two (Esc: cancel)', 4000);
     Exit;
   end;
-  if FFollower = nil then
-    FFollower := TTCFollower.Create;
-  if not FFollower.PanelItems(Left, Right) then
+  if (FileManager = nil) or not FileManager.PanelItems(Left, Right) then
   begin
-    ShowStatus('Combine GIFs: Total Commander is not running', NoteMs);
+    ShowStatus('Combine GIFs: ' + FMName + ' is not running', NoteMs);
     Exit;
   end;
   if (Left = '') or (Right = '') then
   begin
-    ShowStatus('Combine GIFs: cancelled - put Total Commander''s cursor on an animated GIF '
+    ShowStatus('Combine GIFs: cancelled - put ' + FMName + '''s cursor on an animated GIF '
       + 'in each panel', NoteMs);
     Exit;
   end;
@@ -8222,6 +9107,9 @@ const
 function IsFullPath(const APath: string): Boolean;
 begin
   Result := ExtractFileDrive(APath) <> '';
+  {$IFDEF UNIX}
+  Result := Result or ((APath <> '') and (APath[1] = '/'));   { 1.4 }
+  {$ENDIF}
 end;
 
 function TMView.SlotIconFile(ASlot: Integer): string;

@@ -25,7 +25,8 @@ unit uDirectoryTree;
   ----------------
   - Build: read the folders under a root, recursively or not, at most
     MaxScanDepth (32) levels deep. Skip links and junctions, and
-    folders that are both hidden and system.
+    folders that are both hidden and system (Windows); on Linux the
+    dot folders (hidden there) and the kernel's pseudo file systems.
   - With ACollectImages, list every folder's images while it is read
     anyway (Day 19).
   - Stop early when the TCancelCheck asks; Build then returns False
@@ -194,6 +195,10 @@ implementation
 
 const
   MaxScanDepth = 32;
+  { Entries of one folder between two cancel checks (Linux port: a
+    folder of tens of thousands of files kept a newer request - the
+    next image to open - waiting until the whole folder was read). }
+  CancelCheckEvery = 256;
 
 { TDirectoryNode }
 
@@ -259,6 +264,34 @@ end;
   so the warning is switched off for this one procedure. }
 {$PUSH}{$WARN SYMBOL_PLATFORM OFF}
 
+{ A subfolder the tree leaves out. Windows: links / junctions, and
+  folders both hidden and system. Linux (port): links; dot folders,
+  which are the hidden ones there (FPC never sets faSysFile, so the
+  Windows test let ~/.cache, ~/.local, .git ... in, and opening a file
+  in ~/Pictures scanned the whole home folder); and /proc, /sys, /dev,
+  /run, /snap when "/" itself is scanned. }
+function SkipDirectory(const AParentPath: string; const ASearchRec: TSearchRec): Boolean;
+begin
+  Result := True;
+  if (ASearchRec.Name = '.') or (ASearchRec.Name = '..') then
+    Exit;
+  if (ASearchRec.Attr and faSymLink) <> 0 then
+    Exit;
+  {$IFDEF UNIX}
+  if ASearchRec.Name[1] = '.' then
+    Exit;
+  if (AParentPath = '/') or (AParentPath = '') then
+    if (ASearchRec.Name = 'proc') or (ASearchRec.Name = 'sys')
+      or (ASearchRec.Name = 'dev') or (ASearchRec.Name = 'run')
+      or (ASearchRec.Name = 'snap') then
+      Exit;
+  {$ELSE}
+  if (ASearchRec.Attr and (faHidden or faSysFile)) = (faHidden or faSysFile) then
+    Exit;
+  {$ENDIF}
+  Result := False;
+end;
+
 { Recursively discovers subdirectories of ANode and attaches them as
   children, in natural name order. Does nothing if the tree was built
   as non-recursive. }
@@ -270,6 +303,7 @@ var
   ChildPath, Prefix: string;
   Child: TDirectoryNode;
   Descend: Boolean;
+  Entries: Integer;
 begin
   if FCancelled then
     Exit;
@@ -292,17 +326,20 @@ begin
 
   Names := TStringList.Create;
   try
+    Entries := 0;
     if FindFirst(Prefix + '*', faAnyFile, SearchRec) = 0 then
     begin
       try
         repeat
+          Inc(Entries);
+          if (Entries mod CancelCheckEvery = 0) and Assigned(FCancel) and FCancel() then
+          begin
+            FCancelled := True;
+            Break;
+          end;
           if (SearchRec.Attr and faDirectory) <> 0 then
           begin
-            if Descend
-              and ((SearchRec.Attr and faSymLink) = 0)
-              and ((SearchRec.Attr and (faHidden or faSysFile)) <> (faHidden or faSysFile))
-              and (SearchRec.Name <> '.')
-              and (SearchRec.Name <> '..') then
+            if Descend and not SkipDirectory(ANode.Path, SearchRec) then
               Names.Add(SearchRec.Name);
           end
           { A container (.lif, only with an edition's reader; user, Day

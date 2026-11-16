@@ -63,7 +63,7 @@ unit uTCFollow;
 
   Used by
   -------
-  uMView
+  uTotalCommander (TTotalCommanderLink, 1.4; before: uMView)
 }
 
 {$mode ObjFPC}{$H+}

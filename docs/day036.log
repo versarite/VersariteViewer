@@ -1,0 +1,78 @@
+Day 36 (2026-11-05) - the Linux port begins: Lazarus 4.8, the file manager layer (VersariteViewer 1.4)
+
+The projects moved to a new computer (user), Lazarus 4.8 there; everything compiles. Goal (user):
+a Linux version (Ubuntu 24.04, GNOME on Wayland) that works with Double Commander, which needs a
+small patch so programs can ask it what it shows. Decided: one code base (no second repository),
+the port on a branch "linux" of the existing repository, merged when it runs on the user's Ubuntu;
+the Double Commander patch in a fork of doublecmd/doublecmd.
+
+1. docs\Linux_port_inventory.md: the Windows-only parts unit by unit and their Linux replacements.
+   Widget set GTK2 (an X11 program under XWayland: it may place its own window, OpenGL through
+   GLX); what Wayland takes away (global hotkey, other programs' windows).
+2. Lazarus 4.8 built here from the official GitHub mirror (tag lazarus_4_8, FPC 3.2.2), so the
+   test builds match the user's; its OpenGL example runs on GTK2 under a virtual X display
+   (Mesa llvmpipe). Ubuntu needs libgtk2.0-dev, libgl-dev, libglu1-mesa.
+3. The file manager layer (step 2 of the port): uFileManager.TFileManager - is it running /
+   shown, its program, open a folder, place / move its window, the folder and file under its
+   cursor (Poll), the two panels' items (Combine GIFs), Info, Restart. uTotalCommander.
+   TTotalCommanderLink is the Windows implementation (the old functions and uTCFollow behind it),
+   registered in its initialization section; FileManager is nil where none is registered.
+   TMView (following, the TC badge, subfolders while following, Combine GIFs, the D line) and
+   TMainForm (side by side from the settings screen and the menu, fullscreen with side by side,
+   two screens) call only FileManager now; no Total Commander window handle is left in them.
+   Behaviour unchanged; the notes still say "Total Commander" (they follow the file manager's
+   name when Double Commander comes).
+   Checked: both editions build (win64); TestNavigation 153, TestMouse 98, TestSort 172,
+   TestStl 25, TestGifJoin 32, TestExtensions 80 - all pass. New TestFileManager.lpr (plain fpc,
+   in build_test.bat): Total Commander registered on Windows and every question "no" while it
+   isn't running; another implementation registered in its place is made once and answers -
+   26 checks on Windows, 15 on Linux (it compiles and runs there natively).
+4. Step 3 of the port (user: "go ahead"): VersariteViewer builds for Linux (Lazarus 4.8, GTK2) and
+   runs. Most units already had non-Windows branches; the first Linux build compiled at once.
+   Linux branches made today:
+   - uGLRenderer: OpenGL functions through glXGetProcAddressARB; glGenerateMipmap only with
+     OpenGL 3 or the framebuffer extension (GLX gives an address for any name). Before: no
+     mipmaps, no filter shader on Linux.
+   - uMemoryGuard, uImageCache: the computer's memory from sysinfo(2) (was a fixed guess).
+   - uStopwatch: the monotonic clock (clock_gettime), the process age from /proc.
+   - uWatchdog: the deadline ends the process with _exit (FpExit), no finalization.
+   - uSingleInstance: a Unix domain socket in the abstract namespace, one per edition and
+     user; a new start hands its path over and ends (77 ms), the running one answers "OK";
+     no answer within 5 s: it runs on its own. Accepted on a 100 ms timer, no thread.
+   - uClipboardImage: Copy image puts a PNG (image/png) on the clipboard.
+   - uMView: free disk space by statfs(2) of each folder (network file systems not asked);
+     IsFullPath knows "/".
+   - uMainForm: fullscreen through the window manager (WindowState wsFullScreen, EWMH), which
+     GNOME honours under Wayland as well.
+   Checked under a virtual X display with a window manager (Openbox), Mesa llvmpipe:
+   fullscreen; JPEG, PNG, TIFF, animated GIF (11 frames), STL drawn by OpenGL with mipmaps and
+   the filter shader; stepping through a folder tree with the wheel; Esc to the settings screen;
+   on "Mouse & keys" / "Try it here" the side buttons (X1 zoom mode, X2 rotate mode) and the
+   tilt wheel (previous / next folder) arrive under GTK2; Ctrl+C gives an 800 x 526 PNG on the
+   clipboard; a second start hands its file to the running one.
+   Tests natively on Linux: TestNavigation 153, TestMouse 98, TestSort 172, TestFileManager 15,
+   TestStl 25, TestGifJoin 32, TestExtensions 80 - all pass. Windows: both editions build, the
+   same tests pass (TestFileManager 26), the program starts under Wine. The Image Lab builds for
+   Linux too (not tried further).
+   Noted for later: paths are compared without case (SameText), Linux names are case-sensitive;
+   Documents / Pictures are ~/Documents and ~/Pictures (localised XDG folders not read yet);
+   the GPU renderer also runs on Mesa's software OpenGL (llvmpipe), usable for these sizes.
+5. Double Commander (user: "test internally without publishing, then ask opinions"). Its
+   current source (master 0d3888b, 2026-11-04) built here for GTK2 with Lazarus 4.8. A proposed
+   remote control channel added to it (C:\projects\double commander: the patch, the changed
+   files, README): uRemoteControl, off by default (Behaviours/RemoteControl); a Unix socket in
+   $XDG_RUNTIME_DIR (else /tmp/doublecmd-<uid>, 0700), the caller's user id checked; pairing
+   (the first HELLO asks Double Commander's user, a token is handed out); GET ACTIVE / PATH /
+   CURSOR / VIEW / WINDOW, SET WINDOW, CMD from an allow-list (no deleting, moving, running);
+   cm_MakeDir path= without the dialog; the thumbnail commands with state=on / off.
+   VersariteViewer: uDoubleCommander.TDoubleCommanderLink, the file manager on Linux (registered
+   there; Total Commander stays on Windows); the pairing answer is waited for without blocking,
+   every question at most 300 ms; the token in VersariteViewer.dctoken next to the ini. Notes,
+   menu entries, the settings screen's button and the badge ("DC") name the file manager in use
+   (uFileManager.FMName). uSingleInstance: only the same user's programs are listened to
+   (SO_PEERCRED).
+   Checked together under a virtual display: Double Commander asked, Yes, token kept; VV follows
+   its cursor (TIFF, animated GIF); "Side by side with Double Commander" puts VV on the left
+   half and Double Commander on the right. Both editions still build for Windows and Linux.
+   User: Double Commander runs on Windows too - with this two-way channel it may replace Total
+   Commander there as well (needs the named pipe on Double Commander's side).

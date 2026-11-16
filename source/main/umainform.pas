@@ -209,6 +209,8 @@ type
     FCombineGifsItem: TMenuItem;    { 1.3: only side by side with Total Commander }
     { The order of the images (Day 27, testers): Tag = the TSortMode. }
     FSortOrderItems: array[TSortMode] of TMenuItem;
+    { The zone the mouse was in when the menu opened (-1: zones off). }
+    FMenuZone: Integer;
     { The edition's own entries (uExtensions, M0), before "About";
       Tag = the entry's index. None in MView. }
     FExtensionItems: array of TMenuItem;
@@ -309,6 +311,7 @@ type
     procedure HandleDynamicMenuClick(Sender: TObject);
     procedure HandleSortPinClick(Sender: TObject);
     procedure HandleEndModes(Sender: TObject);
+    function HandleNamedAction(const AName: string): Boolean;
     procedure HandleDeleteMenuClick(Sender: TObject);
     procedure HandleUndoMenuClick(Sender: TObject);
     { Sorting (Phase G): the slot menu and what it does. }
@@ -356,11 +359,15 @@ type
     { AFolder: Total Commander's folder when no image is shown yet (the
       start, [Startup] Mode=2); '' = the current image's. }
     procedure ToggleSideBySide(const AFolder: string = '');
+    { 1.4 (user): side by side, both windows back to the halves (one of
+      them was resized meanwhile); not side by side: it starts. }
+    procedure RestoreSideBySide;
     procedure StartSideBySide(AData: PtrInt);
-    procedure PlaceTotalCommander(AWindow: THandle);
-    { Two screens (FSideScreens 1 / 2): Total Commander's window AWindow
-      and MView on different screens; '' = nothing to say, else the note. }
-    function ArrangeTwoScreens(AWindow: THandle): string;
+    procedure PlaceTotalCommander;
+    { Two screens (FSideScreens 1 / 2): the file manager's window (1.4:
+      uFileManager) and MView on different screens; '' = nothing to say,
+      else the note. }
+    function ArrangeTwoScreens: string;
     function OtherMonitor(AMonitor: TMonitor): TMonitor;
     procedure MoveSelfToWork(const AFrom, ATo: TRect);
     procedure CheckSideBySideWait;
@@ -397,6 +404,7 @@ var
 implementation
 
 uses
+  {$IFDEF LCLGTK2} gtk2, {$ENDIF}
   LCLIntf,
   Themes,
   StdCtrls,
@@ -405,6 +413,8 @@ uses
   Math,
   BGRABitmap,
   uTotalCommander,
+  uDoubleCommander,
+  uFileManager,
   uMousePage,
   uEdition,
   uExtensions,
@@ -481,6 +491,13 @@ begin
     and not FileExists(EditionOldIniFileName)        { 1.1: not new, renamed }
     and FileExists(Dir + EditionId + WelcomeSuffix) then
     Result := Dir + EditionId + WelcomeSuffix;
+end;
+
+{ The ini key with the file manager's program (1.4): [Sort]
+  DoubleCommander= or TotalCommander=. }
+function FMKey: string;
+begin
+  Result := StringReplace(FMName, ' ', '', [rfReplaceAll]);
 end;
 
 { [Startup] Mode is 1 or 2 (read before any window is made). }
@@ -588,6 +605,8 @@ begin
   FMView.OnSettingsRequest := @HandleSettingsRequest;
   FMView.OnSortMenu := @HandleSortMenu;
   FMView.OnEndModes := @HandleEndModes;
+  FMView.OnNamedAction := @HandleNamedAction;
+  FMView.OnFormCommand := @HandleCommand;
 
   { The menu (spec §3.1), opened by the mouse profile's Menu command
     (right click by default). Its order and grouping are the user's
@@ -599,16 +618,19 @@ begin
   { MView to the left half, Total Commander to the right, in this
     image's folder; again: back. Bold, deep green (user). }
   FSideItem := TMenuItem.Create(FPopupMenu);
-  FSideItem.Caption := 'Side by side with Total Commander';
+  FSideItem.Caption := 'Side by side with ' + FMName;
   FSideItem.OnClick := @HandleSideBySideMenuClick;
   FSideItem.OnDrawItem := @HandleStrongMenuDraw;
   FSideItem.OnMeasureItem := @HandleStrongMenuMeasure;
   FSideItem.Tag := StrongGreenTag;
+  { No file manager chosen (DirManager=0, Day 40): its entries hidden. }
+  FSideItem.Visible := FileManager <> nil;
   FPopupMenu.Items.Add(FSideItem);
   { Follow Total Commander: its folder, or also the image under its
     cursor (MView as its viewer). Tag = the mode. Bold (user). }
   Item := TMenuItem.Create(FPopupMenu);
-  Item.Caption := 'Follow Total Commander';
+  Item.Caption := 'Follow ' + FMName;
+  Item.Visible := FileManager <> nil;
   Item.OnDrawItem := @HandleStrongMenuDraw;
   Item.OnMeasureItem := @HandleStrongMenuMeasure;
   FPopupMenu.Items.Add(Item);
@@ -628,15 +650,17 @@ begin
   end;
   { The folder under Total Commander's cursor as a slide show (1.1). }
   FDirPreviewItem := TMenuItem.Create(FPopupMenu);
-  FDirPreviewItem.Caption := 'Total Commander dir preview  (a folder under its cursor plays)';
+  FDirPreviewItem.Caption := FMName + ' dir preview  (a folder under its cursor plays)';
   FDirPreviewItem.OnClick := @HandleDirPreviewMenuClick;
+  FDirPreviewItem.Visible := FileManager <> nil;
   FPopupMenu.Items.Add(FDirPreviewItem);
   { The two animated GIFs under Total Commander's cursors into one (1.3,
     user): enabled only side by side with a running Total Commander. Two
     ways (user): the frames as they are, or the smaller one scaled to fit
     the larger (Tag = Ord(TGifJoinSize)). }
   FCombineGifsItem := TMenuItem.Create(FPopupMenu);
-  FCombineGifsItem.Caption := 'Combine GIFs  (Total Commander: left, then right)';
+  FCombineGifsItem.Caption := 'Combine GIFs  (' + FMName + ': left, then right)';
+  FCombineGifsItem.Visible := FileManager <> nil;
   FPopupMenu.Items.Add(FCombineGifsItem);
   Item := TMenuItem.Create(FPopupMenu);
   Item.Caption := 'Original sizes';
@@ -1135,7 +1159,8 @@ procedure TMainForm.HandleEditorSideBySide(Sender: TObject);
 var
   Config: TConfig;
   Work, LeftHalf: TRect;
-  Wnd: THandle;
+  FM: TFileManager;
+  Running: Boolean;
   Exe, Folder, Configured: string;
   Mid: Integer;
 begin
@@ -1149,7 +1174,7 @@ begin
     try
       Config.Load;
       Folder := Config.LastDirectory;
-      Configured := Config.TotalCommander;
+      Configured := Config.FileManagerProgram;
       FSideScreens := Config.SideBySideScreens;
     except
       { Unreadable ini: Documents, and look for Total Commander. }
@@ -1161,11 +1186,19 @@ begin
     Folder := UserDocumentsDirectory;
   Folder := ExcludeTrailingPathDelimiter(Folder);
 
-  Wnd := FindTotalCommanderWindow;
-  Exe := TotalCommanderExe(Configured, Wnd);
-  if (Wnd = 0) and (Exe = '') then
+  FM := FileManager;
+  if FM = nil then
   begin
-    FEditor.ShowNote('Total Commander not found: put its path into [Sort] TotalCommander= above, '
+    FEditor.ShowNote(NoFileManagerNote + ' (Save, then start VersariteViewer again)');
+    Exit;
+  end;
+  Running := (FM <> nil) and FM.IsRunning;
+  Exe := '';
+  if FM <> nil then
+    Exe := FM.ProgramPath(Configured);
+  if (not Running) and (Exe = '') then
+  begin
+    FEditor.ShowNote(FMName + ' not found: put its path into [FileManager] ' + FMKey + '= above, '
       + 'and Save.');
     Exit;
   end;
@@ -1187,9 +1220,9 @@ begin
       BoundsRect := LeftHalf;
   end;
 
-  if (Exe <> '') and not OpenInTotalCommander(Exe, Folder) then
+  if (Exe <> '') and not FM.Open(Exe, Folder) then
   begin
-    FEditor.ShowNote('Total Commander could not be started: ' + Exe);
+    FEditor.ShowNote(FMName + ' could not be started: ' + Exe);
     Exit;
   end;
 
@@ -1199,14 +1232,14 @@ begin
     FEditorSideTimer.Interval := 100;
     FEditorSideTimer.OnTimer := @HandleEditorSideTimer;
   end;
-  if Wnd <> 0 then
+  if Running then
   begin
     if FSideScreens > 0 then
-      FEditor.ShowNote(ArrangeTwoScreens(Wnd) + ', in ' + Folder)
-    else if PlaceWindow(Wnd, FSideRight) then
-      FEditor.ShowNote('Total Commander side by side, in ' + Folder)
+      FEditor.ShowNote(ArrangeTwoScreens + ', in ' + Folder)
+    else if FM.PlaceAt(FSideRight) then
+      FEditor.ShowNote(FMName + ' side by side, in ' + Folder)
     else
-      FEditor.ShowNote('Total Commander could not be moved (does it run as administrator?)');
+      FEditor.ShowNote(FMName + ' could not be moved (does it run as administrator?)');
     { It gets the folder a moment later and may bring itself up where it
       was: placed once more. }
     FEditorSideUntil := 0;
@@ -1216,51 +1249,53 @@ begin
   begin
     FEditorSideUntil := GetTickCount64 + 60000;
     FEditorSideAgainAt := 0;
-    FEditor.ShowNote('starting Total Commander ...');
+    FEditor.ShowNote('starting ' + FMName + ' ...');
   end;
   FEditorSideTimer.Enabled := True;
 end;
 
 procedure TMainForm.HandleEditorSideTimer(Sender: TObject);
 var
-  Wnd: THandle;
+  FM: TFileManager;
+  Running: Boolean;
 begin
-  Wnd := FindTotalCommanderWindow;
+  FM := FileManager;
+  Running := (FM <> nil) and FM.IsRunning;
   if (FEditorSideAgainAt > 0) and (GetTickCount64 >= FEditorSideAgainAt) then
   begin
     FEditorSideAgainAt := 0;
-    if Wnd <> 0 then
+    if Running then
     begin
       if FSideScreens > 0 then
-        ArrangeTwoScreens(Wnd)
+        ArrangeTwoScreens
       else
-        PlaceWindow(Wnd, FSideRight);
+        FM.PlaceAt(FSideRight);
     end;
   end;
   if FEditorSideUntil > 0 then
   begin
-    if (Wnd <> 0) and IsWindowVisible(Wnd) then
+    if Running and FM.IsShown then
     begin
       FEditorSideUntil := 0;
       if FSideScreens > 0 then
       begin
         if Assigned(FEditor) then
-          FEditor.ShowNote(ArrangeTwoScreens(Wnd));
+          FEditor.ShowNote(ArrangeTwoScreens);
       end
-      else if PlaceWindow(Wnd, FSideRight) then
+      else if FM.PlaceAt(FSideRight) then
       begin
         if Assigned(FEditor) then
-          FEditor.ShowNote('Total Commander side by side');
+          FEditor.ShowNote(FMName + ' side by side');
       end
       else if Assigned(FEditor) then
-        FEditor.ShowNote('Total Commander could not be moved (does it run as administrator?)');
+        FEditor.ShowNote(FMName + ' could not be moved (does it run as administrator?)');
       FEditorSideAgainAt := GetTickCount64 + 600;
     end
     else if GetTickCount64 > FEditorSideUntil then
     begin
       FEditorSideUntil := 0;
       if Assigned(FEditor) then
-        FEditor.ShowNote('Total Commander''s window did not appear');
+        FEditor.ShowNote(FMName + '''s window did not appear');
     end;
   end;
   if (FEditorSideUntil = 0) and (FEditorSideAgainAt = 0) then
@@ -1556,7 +1591,10 @@ begin
   { Placing windows is the window's business. }
   if ACommand = cmdSideBySide then
   begin
-    ToggleSideBySide;
+    if Round(AArgs.Value) = 1 then
+      RestoreSideBySide
+    else
+      ToggleSideBySide;
     Exit;
   end;
   { A dialog is the window's business too. }
@@ -1589,7 +1627,7 @@ begin
       FDynamicItem.Enabled := not FMView.RapidSelection;
       FPreviewStripItem.Checked := FMView.PreviewStripPinned;
       FDirPreviewItem.Checked := FMView.DirPreview;
-      FCombineGifsItem.Enabled := FSideBySide and (FindTotalCommanderWindow <> 0);
+      FCombineGifsItem.Enabled := FSideBySide and (FileManager <> nil) and FileManager.IsRunning;
       FLockFiltersItem.Checked := FMView.FiltersLocked;
       FApplyFiltersItem.Enabled := FMView.CanApplyFilters;
       { What goes into the copy (Day 26: the measurement too). }
@@ -1621,6 +1659,9 @@ begin
         FResizeItem.Caption := 'Resize to the size shown (' + FMView.ShownSizeText + ')'
       else
         FResizeItem.Caption := 'Resize to the size shown';
+      FMenuZone := -1;
+      if (ViewInput <> nil) and ViewInput.ZonesEnabled then
+        FMenuZone := Ord(ViewInput.Zone);
       FMenuOpen := True;
       try
         FPopupMenu.PopUp(P.X, P.Y);
@@ -1849,6 +1890,13 @@ begin
 end;
 
 { A copy / move was started (Day 32): the zoom / rotate mode ends. }
+{ Double Commander's cm_ViewerCommand (Day 40): the action of that name on
+  the view's mouse engine, as from a key. }
+function TMainForm.HandleNamedAction(const AName: string): Boolean;
+begin
+  Result := Assigned(ViewInput) and ViewInput.RunNamedAction(AName);
+end;
+
 procedure TMainForm.HandleEndModes(Sender: TObject);
 begin
   if Assigned(ViewInput) then
@@ -1973,7 +2021,7 @@ end;
 procedure TMainForm.HandleSortOrderMenuClick(Sender: TObject);
 begin
   if Sender is TMenuItem then
-    FMView.SetSortOrder(TSortMode(TMenuItem(Sender).Tag));
+    FMView.SetSortOrderFromMenu(TSortMode(TMenuItem(Sender).Tag), FMenuZone);
 end;
 
 procedure TMainForm.HandleSlideShowMenuClick(Sender: TObject);
@@ -2103,8 +2151,17 @@ begin
     NewItem(nil, 'Rename ...  (in this list)', @HandleSortRenameClick);
     { A new folder beside this one or inside it, "<name>_001", added to
       the list below this button (Day 27, testers). }
-    NewItem(nil, 'Make folder  (beside this one)', @HandleSortMakeFolderClick, 0);
-    NewItem(nil, 'Make subfolder  (inside this one)', @HandleSortMakeFolderClick, 1);
+    { 1.4 (user): Double Commander makes it (not Total Commander). }
+    if (FileManager <> nil) and FileManager.CanMakeFolder then
+    begin
+      NewItem(nil, 'Make folder  (beside this one, by ' + FMName + ')', @HandleSortMakeFolderClick, 0);
+      NewItem(nil, 'Make subfolder  (inside this one, by ' + FMName + ')', @HandleSortMakeFolderClick, 1);
+    end
+    else
+    begin
+      NewItem(nil, 'Make folder  (beside this one)', @HandleSortMakeFolderClick, 0);
+      NewItem(nil, 'Make subfolder  (inside this one)', @HandleSortMakeFolderClick, 1);
+    end;
     NewItem(nil, '-', nil);
   end;
   NewItem(nil, 'Choose folder ...', @HandleSortChooseClick);
@@ -2246,14 +2303,33 @@ begin
     FMoveDownItem.Enabled := (FSortMenuSlot >= 0) and (FSortMenuSlot < High_);
 end;
 
+{ 1.4 (user): a folder for a new sort entry. With a file manager that can
+  make folders (Double Commander, not Total Commander) and runs, it makes
+  it (cm_MakeDir), so it is there at once; else (or if that fails) VV
+  does. AByFM: made by the file manager. }
+function MakeSortFolder(const ADir: string; out AByFM: Boolean): Boolean;
+var
+  FM: TFileManager;
+begin
+  AByFM := False;
+  FM := FileManager;
+  if (FM <> nil) and FM.CanMakeFolder and FM.IsRunning and FM.MakeFolder(ADir) then
+  begin
+    AByFM := True;
+    Exit(True);
+  end;
+  Result := DirectoryExists(ADir) or CreateDir(ADir);
+end;
+
 { "<name>_001", "<name>_002" ...: the first free one beside the slot's
   folder (Tag 0) or inside it (Tag 1), made, and added to the list just
   below the slot. }
 procedure TMainForm.HandleSortMakeFolderClick(Sender: TObject);
 var
   Folders: TSortFolders;
-  Base, Where, NewDir: string;
+  Base, Where, NewDir, By: string;
   N, Index: Integer;
+  ByFM: Boolean;
 begin
   if (FMView = nil) or (FSortMenuSlot < 0) then
     Exit;
@@ -2278,15 +2354,18 @@ begin
       NewDir := IncludeTrailingPathDelimiter(Where) + FolderDisplayName(Base) + Format('_%.3d', [N]);
       Break;
     end;
-  if (NewDir = '') or not CreateDir(NewDir) then
+  if (NewDir = '') or not MakeSortFolder(NewDir, ByFM) then
   begin
     FMView.StatusNote('could not make a folder in ' + Where, 3000);
     Exit;
   end;
+  By := '';
+  if ByFM then
+    By := ' (by ' + FMName + ')';
   Index := Folders.SetFolder(Folders.Count, NewDir);
   if Index < 0 then
   begin
-    FMView.StatusNote('made ' + NewDir + ' (the list is full)', 3000);
+    FMView.StatusNote('made ' + NewDir + By + ' (the list is full)', 3000);
     Exit;
   end;
   if Index <> FSortMenuSlot + 1 then
@@ -2295,7 +2374,7 @@ begin
     Index := FSortMenuSlot + 1;
   end;
   FMView.SortFoldersChanged(Index);
-  FMView.StatusNote('made ' + NewDir, 2500);
+  FMView.StatusNote('made ' + NewDir + By, 2500);
 end;
 
 { The folder for the slot the menu is for, or a new slot. }
@@ -2812,8 +2891,6 @@ begin
 end;
 
 procedure TMainForm.HandleToggleFullscreen(Sender: TObject);
-var
-  Wnd: THandle;
 begin
   { Side by side stays on through fullscreen (1.1, user): leaving
     fullscreen puts MView back next to Total Commander (its half, and
@@ -2829,9 +2906,8 @@ begin
     SetFullscreen(False);
     if not PlaceWindow(Handle, FSideLeft) then
       BoundsRect := FSideLeft;
-    Wnd := FindTotalCommanderWindow;
-    if Wnd <> 0 then
-      PlaceWindow(Wnd, FSideRight);
+    if (FileManager <> nil) and FileManager.IsRunning then
+      FileManager.PlaceAt(FSideRight);
     Exit;
   end;
   SetFullscreen(not FFullscreen);
@@ -2888,8 +2964,10 @@ end;
 {$ENDIF}
 
 procedure TMainForm.SetFullscreen(AValue: Boolean);
+{$IFDEF WINDOWS}
 var
   R: TRect;
+{$ENDIF}
 begin
   if AValue = FFullscreen then
     Exit;
@@ -2898,27 +2976,39 @@ begin
   if AValue then
   begin
     FNormalBounds := BoundsRect;
+    {$IFDEF WINDOWS}
     R := Monitor.BoundsRect;           { the screen the window is on }
     if WindowState <> wsNormal then
       WindowState := wsNormal;
-    {$IFDEF WINDOWS}
     SetWindowFrame(Handle, False);
-    {$ELSE}
-    BorderStyle := bsNone;
-    {$ENDIF}
     Inc(R.Bottom);
     BoundsRect := R;
+    {$ELSE}
+    { 1.4, Linux: the window manager's own fullscreen (EWMH
+      _NET_WM_STATE_FULLSCREEN): the frame, the panels and the screen
+      are its business, also under Wayland (GNOME). GTK2: asked of GTK
+      directly - LCL's cached WindowState falls out of step with the
+      asynchronous state under XWayland, and a request was then skipped
+      (middle-click fullscreen did not answer every click). }
+    {$IFDEF LCLGTK2}
+    gtk_window_fullscreen(PGtkWindow(Handle));
+    {$ELSE}
+    WindowState := wsFullScreen;
+    {$ENDIF}
+    {$ENDIF}
   end
   else
   begin
+    {$IFDEF LCLGTK2}
+    gtk_window_unfullscreen(PGtkWindow(Handle));   { the WM restores the size }
+    {$ELSE}
     if WindowState <> wsNormal then
       WindowState := wsNormal;
     {$IFDEF WINDOWS}
     SetWindowFrame(Handle, True);
-    {$ELSE}
-    BorderStyle := bsSizeable;
     {$ENDIF}
     BoundsRect := FNormalBounds;
+    {$ENDIF}
   end;
 end;
 
@@ -2936,12 +3026,18 @@ end;
 procedure TMainForm.ToggleSideBySide(const AFolder: string);
 var
   Work, LeftHalf: TRect;
-  Wnd: THandle;
+  FM: TFileManager;
+  Running: Boolean;
   Exe, Folder: string;
   Mid: Integer;
 begin
   if FMView = nil then
     Exit;
+  if (FileManager = nil) and not FSideBySide then
+  begin
+    FMView.ShowNote(NoFileManagerNote, 6000);
+    Exit;
+  end;
 
   if FSideBySide then
   begin
@@ -2965,7 +3061,7 @@ begin
           SetFullscreen(True);
       end;
       FSideMovedSelf := False;
-      FMView.ShowNote('back from side by side (Total Commander stays where it is)', 4000);
+      FMView.ShowNote('back from side by side (' + FMName + ' stays where it is)', 4000);
       Exit;
     end;
     if FFullscreen then
@@ -2982,15 +3078,18 @@ begin
       if FSideWasFullscreen then
         SetFullscreen(True);
     end;
-    FMView.ShowNote('back from side by side (Total Commander stays where it is)', 4000);
+    FMView.ShowNote('back from side by side (' + FMName + ' stays where it is)', 4000);
     Exit;
   end;
 
-  Wnd := FindTotalCommanderWindow;
-  Exe := TotalCommanderExe(FMView.Config.TotalCommander, Wnd);
-  if (Wnd = 0) and (Exe = '') then
+  FM := FileManager;
+  Running := (FM <> nil) and FM.IsRunning;
+  Exe := '';
+  if FM <> nil then
+    Exe := FM.ProgramPath(FMView.Config.FileManagerProgram);
+  if (not Running) and (Exe = '') then
   begin
-    FMView.ShowNote(EditionText('Total Commander not found: put its path into VersariteViewer.ini, [Sort] TotalCommander='),
+    FMView.ShowNote(EditionText(FMName + ' not found: put its path into VersariteViewer.ini, [FileManager] ' + FMKey + '='),
       10000);
     Exit;
   end;
@@ -3037,7 +3136,7 @@ begin
     Folder := AFolder;      { at the start: the start folder }
   if Exe <> '' then
   begin
-    if not OpenInTotalCommander(Exe, Folder) then
+    if not FM.Open(Exe, Folder) then
     begin
       { Nothing happened: MView goes back as well (two screens: it has
         not moved). }
@@ -3049,17 +3148,17 @@ begin
         if FSideWasFullscreen then
           SetFullscreen(True);
       end;
-      FMView.ShowNote('Total Commander could not be started: ' + Exe, 10000);
+      FMView.ShowNote(FMName + ' could not be started: ' + Exe, 10000);
       Exit;
     end;
   end
   else if Folder <> '' then
-    FMView.ShowNote('Total Commander''s program was not found: it can''t be told the folder '
-      + EditionText('(set [Sort] TotalCommander= in VersariteViewer.ini)'), 8000);
+    FMView.ShowNote(FMName + '''s program was not found: it can''t be told the folder '
+      + EditionText('(set [FileManager] ' + FMKey + '= in VersariteViewer.ini)'), 8000);
 
-  if Wnd <> 0 then
+  if Running then
   begin
-    PlaceTotalCommander(Wnd);
+    PlaceTotalCommander;
     { The running one gets the folder a moment later and may bring
       itself up where it was: placed once more. }
     FSideAgainAt := GetTickCount64 + 600;
@@ -3069,19 +3168,60 @@ begin
     { Just started: its window comes in a moment (the 50 ms timer); an
       unregistered copy shows its reminder first, so wait a while. }
     FSideWaitUntil := GetTickCount64 + 60000;
-    FMView.ShowNote('starting Total Commander ...', 0);
+    FMView.ShowNote('starting ' + FMName + ' ...', 0);
   end;
 end;
 
-procedure TMainForm.PlaceTotalCommander(AWindow: THandle);
+procedure TMainForm.RestoreSideBySide;
+var
+  Work: TRect;
+  Mid: Integer;
+begin
+  if FMView = nil then
+    Exit;
+  if not FSideBySide then
+  begin
+    ToggleSideBySide;
+    Exit;
+  end;
+  if (FileManager = nil) or not FileManager.IsRunning then
+  begin
+    FMView.ShowNote(FMName + ' is not running', 4000);
+    Exit;
+  end;
+  { Two screens: arranged as at the start. }
+  if FSideScreens > 0 then
+  begin
+    PlaceTotalCommander;
+    Exit;
+  end;
+  { The halves of the screen VersariteViewer is on now. }
+  Work := Monitor.WorkareaRect;
+  Mid := Work.Left + (Work.Right - Work.Left) div 2;
+  FSideLeft := Rect(Work.Left, Work.Top, Mid, Work.Bottom);
+  FSideRight := Rect(Mid, Work.Top, Work.Right, Work.Bottom);
+  if FFullscreen then
+    SetFullscreen(False);
+  if WindowState <> wsNormal then
+    WindowState := wsNormal;
+  if not PlaceWindow(Handle, FSideLeft) then
+    BoundsRect := FSideLeft;
+  PlaceTotalCommander;
+end;
+
+procedure TMainForm.PlaceTotalCommander;
 begin
   if FSideScreens > 0 then
-    FMView.ShowNote(ArrangeTwoScreens(AWindow)
+    FMView.ShowNote(ArrangeTwoScreens
       + '   (the same menu entry again: back)', 5000)
-  else if PlaceWindow(AWindow, FSideRight) then
-    FMView.ShowNote('side by side with Total Commander   (the same menu entry again: back)', 5000)
+  else if (FileManager <> nil) and FileManager.PlaceAt(FSideRight) then
+    FMView.ShowNote('side by side with ' + FMName + '   (the same menu entry again: back)', 5000)
+  else if (FileManager <> nil) and FileManager.CanMakeFolder then
+    { Double Commander (Day 39): moved through its remote control, so no
+      question of rights; what went wrong is in its link's info. }
+    FMView.ShowNote(FMName + ' could not be moved: ' + FileManager.Info, 8000)
   else
-    FMView.ShowNote('Total Commander could not be moved (does it run as administrator?)', 8000);
+    FMView.ShowNote(FMName + ' could not be moved (does it run as administrator?)', 8000);
 end;
 
 { Another screen than AMonitor: the main screen if AMonitor isn't it,
@@ -3118,14 +3258,17 @@ begin
   FSideMovedSelf := True;
 end;
 
-function TMainForm.ArrangeTwoScreens(AWindow: THandle): string;
+function TMainForm.ArrangeTwoScreens: string;
 var
   Mine, Theirs, Other: TMonitor;
+  R: TRect;
 begin
   Mine := Monitor;
-  Theirs := Screen.MonitorFromWindow(AWindow, mdNearest);
+  Theirs := nil;
+  if (FileManager <> nil) and FileManager.WindowRect(R) then
+    Theirs := Screen.MonitorFromRect(R, mdNearest);
   if (Mine = nil) or (Theirs = nil) then
-    Exit('Total Commander: its screen is not known');
+    Exit(FMName + ': its screen is not known');
   if Mine <> Theirs then
     Exit('side by side on two screens');
   if FSideScreens = 2 then
@@ -3134,23 +3277,24 @@ begin
     if Other = nil then
       Exit('only one screen');
     MoveSelfToWork(Mine.WorkareaRect, Other.WorkareaRect);
-    Result := EditionTitle + ' on the other screen, Total Commander stays';
+    Result := EditionTitle + ' on the other screen, ' + FMName + ' stays';
   end
   else
   begin
     Other := OtherMonitor(Mine);
     if Other = nil then
       Exit('only one screen');
-    if MoveWindowToWork(AWindow, Mine.WorkareaRect, Other.WorkareaRect) then
-      Result := 'Total Commander on the other screen'
+    if FileManager.MoveToWork(Mine.WorkareaRect, Other.WorkareaRect) then
+      Result := FMName + ' on the other screen'
     else
-      Result := 'Total Commander could not be moved (does it run as administrator?)';
+      Result := FMName + ' could not be moved (does it run as administrator?)';
   end;
 end;
 
 procedure TMainForm.CheckSideBySideWait;
 var
-  Wnd: THandle;
+  FM: TFileManager;
+  Running: Boolean;
 begin
   if (not FSideBySide) or (FMView = nil) then
   begin
@@ -3158,31 +3302,34 @@ begin
     FSideAgainAt := 0;
     Exit;
   end;
-  Wnd := FindTotalCommanderWindow;
+  FM := FileManager;
+  Running := (FM <> nil) and FM.IsRunning;
   if (FSideAgainAt > 0) and (GetTickCount64 >= FSideAgainAt) then
   begin
     FSideAgainAt := 0;
-    if Wnd <> 0 then
+    if Running then
     begin
       if FSideScreens > 0 then
-        ArrangeTwoScreens(Wnd)        { quietly: the note was given }
+        ArrangeTwoScreens            { quietly: the note was given }
       else
-        PlaceWindow(Wnd, FSideRight);   { quietly: the note was given }
+        FM.PlaceAt(FSideRight);      { quietly: the note was given }
     end;
     Exit;
   end;
   if FSideWaitUntil = 0 then
     Exit;
-  if (Wnd <> 0) and IsWindowVisible(Wnd) then
+  if Running and FM.IsShown then
   begin
     FSideWaitUntil := 0;
-    PlaceTotalCommander(Wnd);
+    PlaceTotalCommander;
+    { Once more a moment later: a window just shown may still settle
+      (Double Commander re-applies an early place itself as well). }
     FSideAgainAt := GetTickCount64 + 600;
   end
   else if GetTickCount64 > FSideWaitUntil then
   begin
     FSideWaitUntil := 0;
-    FMView.ShowNote('Total Commander''s window did not appear', 6000);
+    FMView.ShowNote(FMName + '''s window did not appear', 6000);
   end;
 end;
 

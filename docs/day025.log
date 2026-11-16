@@ -158,10 +158,10 @@ M2a: the .lif reader
   scan, active detectors, time taken; one channel's plane; all channels
   in colour, one plane or the maximum projection.
 - A Python reference reader (container only) gave the expected values
-  for sample.lif: 24 images; e.g. Image003 1024 px 0.28409 um/px;
+  for 221107.lif: 24 images; e.g. Image003 1024 px 0.28409 um/px;
   Series009 12 z-planes (its z Length is 0 in the file: no step).
 - test\TestLif.lpr (plain fpc, in build_test.bat): a small .lif made by
-  the test, damaged files, and sample.lif when it is there (it stays
+  the test, damaged files, and 221107.lif when it is there (it stays
   private).
 - Review (independent): no compile errors; all expected values
   recomputed and right. Taken: the XML goes to the parser as raw UTF-8
@@ -171,7 +171,7 @@ M2a: the .lif reader
 
 M2a compiled and tested (user)
 ------------------------------
-build_test.bat: all pass; TestLif 61 checks, sample.lif as the Python
+build_test.bat: all pass; TestLif 61 checks, 221107.lif as the Python
 reference (Series009: 0.1173 um/px, zoom 2.422, 12 z-planes, no z step
 in the file). ("Aum" in the console is only its code page.)
 
@@ -186,10 +186,10 @@ M2b: containers like folders
 Planned with an independent read of the core (folder listing ->
 navigator -> key -> loader -> info line), then built:
 - source\utility\uContainers.pas (new, no LCL): readers' registry;
-  virtual names 'C:\data\sample.lif|Series009' ('|' can't be in a
+  virtual names 'C:\data\221107.lif|Series009' ('|' can't be in a
   Windows path: always virtual, and missed code fails safe); helpers
   ItemDirectory, ItemExists, RealFolderOf, DisplayItemName
-  ('sample.lif › Series009'), ItemBaseName ('sample_Series009').
+  ('221107.lif › Series009'), ItemBaseName ('221107_Series009').
 - Hooks, all no-ops without a reader (MView): uDirectoryTree (a
   container listed with the folders, its entries its images; a
   container root), uDirectoryImages.Scan, uDirectoryScanner.Resolve and
@@ -354,7 +354,7 @@ forces it out.
 
 Stacks in the .lif, a look (user; postponed)
 --------------------------------------------
-sample.lif: only Series009 is a stack - 12 planes x 2 channels filed as z,
+221107.lif: only Series009 is a stack - 12 planes x 2 channels filed as z,
 but z step 0 (Begin = End) and time stamps 2.6 s apart: a time series at
 one plane; the last plane cut off (rows 0-447). User: postpone (more .lif
 files to check), follow the suggestions; the view shows the projection;
@@ -372,8 +372,8 @@ kept and scaled; unchecked: pixels per µm); filled from the main screen
 when a reference measurement is made; the selector at the bottom of the
 left side panel; a settings tab. Exports borrow a matching .lif's scale
 by name; a scale bar's length goes into the saved file's name.
-Checked first: the exported TIFFs (sample_Series084_t242_ch01.tif,
-sample_Image089_ch00.tif) carry no scale (8-bit RGB, 72 dpi).
+Checked first: the exported TIFFs (221119_Series084_t242_ch01.tif,
+221119_Image089_ch00.tif) carry no scale (8-bit RGB, 72 dpi).
 - uCalibrations (new, no LCL): the record, calibrations.ini, µm/px with
   the confocal scaling. TestCalibrations (new, plain fpc).
 - uLifFile: LifExportGuesses / LifImageForExport (an export's name ->

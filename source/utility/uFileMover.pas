@@ -110,6 +110,10 @@ type
     { Day 32: '' = no duplicate check; else where a move of a duplicate
       goes (the deleted-files folder). }
     DuplicateDir: string;
+    { 1.4 (user): one more file of a run sorted one after the other into
+      the same folder (fjSort): a dynamic list doesn't move the folder up
+      again for it. }
+    SameRun: Boolean;
   end;
 
   TFileJobResult = record

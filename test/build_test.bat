@@ -1,14 +1,14 @@
 @echo off
 rem Builds and runs the VersariteViewer tests (TestNavigation.lpr, TestExif.lpr,
-rem TestMouse.lpr, TestSort.lpr, TestFilters.lpr, TestGif.lpi,
-rem TestExtensions.lpi, TestStl.lpi, TestGifJoin.lpi).
+rem TestMouse.lpr, TestSort.lpr, TestFilters.lpr, TestLif.lpr,
+rem TestCalibrations.lpr, TestFileManager.lpr, TestGif.lpi, TestExtensions.lpi, TestStl.lpi, TestGifJoin.lpi).
 rem Double-click this file, or run it from a command prompt.
 rem It uses the Free Pascal compiler that comes with Lazarus, so fpc
 rem does not need to be on the PATH.
 
 setlocal
 set FPC=C:\lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.exe
-rem TestGif and TestExtensions need BGRABitmap, so they are built by
+rem TestGif, TestExtensions and TestStl need BGRABitmap, so they are built by
 rem lazbuild (packages).
 set LAZBUILD=C:\lazarus\lazbuild.exe
 
@@ -43,6 +43,18 @@ echo Compiling TestFilters.lpr ...
 "%FPC%" -FU. -Fu..\source\utility TestFilters.lpr
 if errorlevel 1 goto failed
 
+echo Compiling TestLif.lpr ...
+"%FPC%" -FU. -Fu..\source\microscopy -Fu..\source\core -Fu..\source\utility TestLif.lpr
+if errorlevel 1 goto failed
+
+echo Compiling TestCalibrations.lpr ...
+"%FPC%" -FU. -Fu..\source\microscopy -Fu..\source\utility TestCalibrations.lpr
+if errorlevel 1 goto failed
+
+echo Compiling TestFileManager.lpr ...
+"%FPC%" -FU. -Fu..\source\utility TestFileManager.lpr
+if errorlevel 1 goto failed
+
 set GIFTEST=0
 if exist "%LAZBUILD%" (
   echo Building TestGif.lpi with lazbuild ...
@@ -59,7 +71,7 @@ if exist "%LAZBUILD%" (
   if errorlevel 1 goto failed
   set GIFTEST=1
 ) else (
-  echo lazbuild not found at %LAZBUILD%: TestGif and TestExtensions skipped.
+  echo lazbuild not found at %LAZBUILD%: TestGif, TestExtensions and TestStl skipped.
   echo Edit the LAZBUILD line at the top of this file, or build TestGif.lpi in Lazarus.
 )
 
@@ -73,6 +85,12 @@ echo.
 TestSort.exe
 echo.
 TestFilters.exe
+echo.
+TestLif.exe
+echo.
+TestCalibrations.exe
+echo.
+TestFileManager.exe
 echo.
 if "%GIFTEST%"=="1" TestGif.exe
 echo.

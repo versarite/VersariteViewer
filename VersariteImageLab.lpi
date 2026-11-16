@@ -5,7 +5,7 @@
     <PathDelim Value="\"/>
     <General>
       <SessionStorage Value="InProjectDir"/>
-      <Title Value="MView"/>
+      <Title Value="VersariteImageLab"/>
       <Scaled Value="True"/>
       <ResourceType Value="res"/>
       <UseXPManifest Value="True"/>
@@ -22,12 +22,12 @@
           <Version Value="11"/>
           <PathDelim Value="\"/>
           <Target>
-            <Filename Value="build\MView"/>
+            <Filename Value="build\VersariteImageLab"/>
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="source\main;source\core;source\imaging;source\config;source\mouse;source\navigation;source\rendering;source\cache;source\scripting;source\utility"/>
-            <UnitOutputDirectory Value="build\units\$(TargetCPU)-$(TargetOS)"/>
+            <OtherUnitFiles Value="source\main;source\core;source\imaging;source\config;source\mouse;source\navigation;source\rendering;source\cache;source\scripting;source\utility;source\microscopy"/>
+            <UnitOutputDirectory Value="build\units-lab\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
             <SyntaxOptions>
@@ -62,12 +62,12 @@
           <Version Value="11"/>
           <PathDelim Value="\"/>
           <Target>
-            <Filename Value="build\MView"/>
+            <Filename Value="build\VersariteImageLab"/>
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="source\main;source\core;source\imaging;source\config;source\mouse;source\navigation;source\rendering;source\cache;source\scripting;source\utility"/>
-            <UnitOutputDirectory Value="build\units\$(TargetCPU)-$(TargetOS)"/>
+            <OtherUnitFiles Value="source\main;source\core;source\imaging;source\config;source\mouse;source\navigation;source\rendering;source\cache;source\scripting;source\utility;source\microscopy"/>
+            <UnitOutputDirectory Value="build\units-lab\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
             <SmartLinkUnit Value="True"/>
@@ -114,7 +114,51 @@
     </RequiredPackages>
     <Units>
       <Unit>
-        <Filename Value="MView.lpr"/>
+        <Filename Value="VersariteImageLab.lpr"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\microscopy\uPixelProbe.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\microscopy\uScaleBar.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\microscopy\uSvgExport.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\microscopy\uTextLabel.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\microscopy\uMarkUndo.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\microscopy\uFijiChannel.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\microscopy\uFijiRun.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\microscopy\uMarkStylePanel.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\microscopy\uMarkMemory.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\utility\uEdition.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="source\utility\uExtensions.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
@@ -266,12 +310,12 @@
     <Version Value="11"/>
     <PathDelim Value="\"/>
     <Target>
-      <Filename Value="build\MView"/>
+      <Filename Value="build\VersariteImageLab"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="source\main;source\core;source\imaging;source\config;source\mouse;source\navigation;source\rendering;source\cache;source\scripting;source\utility"/>
-      <UnitOutputDirectory Value="build\units\$(TargetCPU)-$(TargetOS)"/>
+      <OtherUnitFiles Value="source\main;source\core;source\imaging;source\config;source\mouse;source\navigation;source\rendering;source\cache;source\scripting;source\utility;source\microscopy"/>
+      <UnitOutputDirectory Value="build\units-lab\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>
       <Debugging>

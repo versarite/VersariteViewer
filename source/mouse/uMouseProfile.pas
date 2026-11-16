@@ -130,11 +130,14 @@ type
     maRapidSelection, maRapidKey, maPreviewStrip,
     maDirPreviewLonger, maDirPreviewShorter, maSlideShowMode, maDirPreview, maSlideShow,
     maOpenFile,
+    maRestoreSideBySide, maFolderToFM, maSortFromSubdirs, maSortFromSubdirsWithFolder,
     maBack, maExit
   );
 
   { zoRandom (Day 31, user): browsing from the zone shuffles the order. }
-  TZoneOrder = (zoNone, zoDate, zoName, zoRandom);
+  { zoMenu (Day 40, user): the order last chosen from the context menu
+    while the mouse was in this zone (TConfig.ZoneMenuSort). }
+  TZoneOrder = (zoNone, zoDate, zoName, zoRandom, zoMenu);
 
   { Up to MaxActionsPerEvent commands. nil = not set (a zone then uses
     the Anywhere entry); [maNone] = switched off. }
@@ -335,6 +338,8 @@ const
     'RapidSelection', 'RapidKey', 'TogglePreview',
     'DirPreviewLonger', 'DirPreviewShorter', 'SlideShowMode', 'DirPreview', 'SlideShow',
     'OpenFile',
+    'RestoreSideBySide', 'SendFolderToInactive', 'CreateSortFromSubdirs',
+    'CreateSortFromSubdirsWithFolder',
     'Back', 'Exit');
   ActionCaptions: array[TMouseAction] of string = (
     '(nothing)',
@@ -362,9 +367,13 @@ const
     'Total Commander dir preview on / off',
     'Slide show of this folder on / off',
     'Open file ... (a file dialog)',
+    'Side by side: both windows back to the halves',
+    'This folder into Total Commander''s other panel',
+    'New folder list: the subfolders under Total Commander''s cursor',
+    'New folder list: the folder under Total Commander''s cursor and its subfolders',
     'Back (leave a mode, else the settings screen)', 'Exit');
 
-  OrderNames: array[TZoneOrder] of string = ('None', 'Date', 'Name', 'Random');
+  OrderNames: array[TZoneOrder] of string = ('None', 'Date', 'Name', 'Random', 'Menu');
 
 function MouseZoneName(AZone: TMouseZone): string;
 begin

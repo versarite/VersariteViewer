@@ -82,6 +82,10 @@ uses
 const
   StripCloseDelayMs = 1000;
   StripMaxThumbs = 400;
+  { Thumbnails made ahead on either side (1.4, user: on Linux they came
+    only once the mouse was over the bar). 2 x this + 1 stays within
+    what TrimThumbs keeps (StripMaxThumbs * 3 / 4). }
+  StripPreloadRadius = 149;
   { The name under the preview scrolls (when longer than the preview is
     wide) after the mouse has rested this long, at this speed. }
   MarqueeDelayMs = 600;
@@ -134,8 +138,10 @@ type
     procedure SetCurrent(AIndex: Integer);
     { ABitmap becomes the strip's (nil = could not be read). }
     procedure SetThumb(const AFileName: string; ABitmap: TBGRABitmap);
-    { The one under the mouse first, then a few on either side; without
-      those it has. Empty while the mouse is not over the bar. }
+    { The one under the mouse first, then a few on either side; then
+      (1.4) the folder outward from there, or from the current image
+      while the mouse is not over the bar - also while it is hidden, so
+      the thumbnails are made ahead. Without those it has. }
     function WantedFiles: TStringArray;
 
     { APinned: it stays when the mouse leaves (the menu / a key). }
@@ -426,16 +432,35 @@ var
     Inc(Count);
   end;
 
+var
+  Mid, First: Integer;
 begin
   Result := nil;
   Count := 0;
-  if (FHover < 0) or not FVisible then
+  if Length(FFiles) = 0 then
     Exit;
-  Want(FHover);
-  for I := 1 to 3 do
+  if FVisible and (FHover >= 0) then
   begin
-    Want(FHover + I);
-    Want(FHover - I);
+    Want(FHover);
+    for I := 1 to 3 do
+    begin
+      Want(FHover + I);
+      Want(FHover - I);
+    end;
+    Mid := FHover;
+    First := 4;                  { those up to 3 away are listed }
+  end
+  else
+  begin
+    Mid := Max(0, Min(FCurrent, High(FFiles)));
+    Want(Mid);
+    First := 1;
+  end;
+  { Made ahead: outward from there (1.4). }
+  for I := First to StripPreloadRadius do
+  begin
+    Want(Mid + I);
+    Want(Mid - I);
   end;
 end;
 

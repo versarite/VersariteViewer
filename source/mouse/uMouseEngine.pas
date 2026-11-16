@@ -114,7 +114,7 @@ unit uMouseEngine;
   - X1 / X2 act on the press (LCL 4.6 never reports their release).
     Some mice send them as Browser Back / Forward keys; those count as
     X1 / X2, except right after a real side button (the driver's echo).
-  - Navigation from a zone with an order (Date / Name / Random) first switches
+  - Navigation from a zone with an order (Date / Name / Random / Menu) first switches
     to that order (TMView keeps the current image).
   - ZoomMode / RotateMode are switches: while one is on, the wheel
     zooms / turns everywhere; Back (Esc) or the same switch ends it.
@@ -253,6 +253,12 @@ type
     property DoubleClickMs: Integer read FDoubleClickMs write FDoubleClickMs;
     { Counts as input (e.g. after the menu closed), for cursor hiding. }
     procedure NoteActivity(ANowMs: QWord);
+    { 1.4 (Day 40): runs the action of that name (the names of the mouse
+      and key settings: NextImage, SlideShow, SideBySide ...) as if from a
+      key: no zone's sort order, the middle of the view where a place
+      counts. False: no such name (or RapidKey, which needs its digit).
+      Double Commander's cm_ViewerCommand comes in this way. }
+    function RunNamedAction(const AName: string): Boolean;
     { Last input of any kind (cursor hiding). }
     property LastActivityMs: QWord read FLastActivityMs;
     property OnCommand: TCommandEvent read FOnCommand write FOnCommand;
@@ -417,18 +423,35 @@ begin
     Result := FProfile.AnywhereActionsFor(AEvent);
 end;
 
+{ The zone's order as an order of the moment (TMView, cmdSortForZone):
+  it doesn't replace the order chosen in the context menu, which counts
+  with the zones off. A zone without an order leaves it as it is. }
 procedure TMouseEngine.ApplyZoneOrder(AZone: TMouseZone);
 begin
   if not FZonesEnabled then
     Exit;
-  case FProfile.ZoneOrder(AZone) of
-    zoDate: Emit(cmdSortByDate);
-    zoName: Emit(cmdSortByName);
-    zoRandom: Emit(cmdSortRandomKeep);
-  end;
+  if FProfile.ZoneOrder(AZone) <> zoNone then
+    Emit(cmdSortForZone, 0, 0, Ord(AZone));
 end;
 
 { ANotches: for zoom and turn, how far (wheel parts); 1 otherwise. }
+function TMouseEngine.RunNamedAction(const AName: string): Boolean;
+var
+  A: TMouseAction;
+  WasZones: Boolean;
+begin
+  Result := ParseMouseAction(Trim(AName), A) and not (A in [maNone, maRapidKey]);
+  if not Result then
+    Exit;
+  WasZones := FZonesEnabled;
+  FZonesEnabled := False;          { no zone's sort order }
+  try
+    Perform(A, FZone, FWidth div 2, FHeight div 2, 1);
+  finally
+    FZonesEnabled := WasZones;
+  end;
+end;
+
 procedure TMouseEngine.Perform(AAction: TMouseAction; AZone: TMouseZone;
   AX, AY: Integer; ANotches: Double);
 begin
@@ -523,6 +546,10 @@ begin
     maDirPreview:        Emit(cmdDirPreviewOnOff);
     maSlideShow:         Emit(cmdSlideShow);
     maOpenFile:          Emit(cmdOpenFile);
+    maRestoreSideBySide: Emit(cmdSideBySide, 0, 0, 1);
+    maFolderToFM:        Emit(cmdFolderToFM);
+    maSortFromSubdirs:   Emit(cmdSortFromSubdirs, 0, 0, 0);
+    maSortFromSubdirsWithFolder: Emit(cmdSortFromSubdirs, 0, 0, 1);
     { A zoom / rotate mode is the engine's own; everything else (edit
       mode, exit) TMView decides. }
     maBack:

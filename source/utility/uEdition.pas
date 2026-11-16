@@ -60,7 +60,7 @@ unit uEdition;
 interface
 
 const
-  MViewVersion = '1.3';
+  MViewVersion = '1.4';
 
 var
   EditionId: string = 'VersariteViewer';
