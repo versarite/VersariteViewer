@@ -1,15 +1,17 @@
 # Driving VersariteViewer from Double Commander
 
-VersariteViewer (VV) 1.4 and the patched Double Commander (DC) are connected by DC's remote
-control channel. DC toolbar buttons and hotkeys can send commands to VV.
+VersariteViewer (VV) 1.4 and Double Commander (DC) with its remote control addition
+([versarite/doublecmd › remote-control](https://github.com/versarite/doublecmd/tree/remote-control))
+are connected by DC's remote control channel. DC toolbar buttons and hotkeys can send commands to VV.
 
 ## Requirements
 
 - In VersariteViewer.ini, under `[FileManager]`:
   - `DirManager=1` (Double Commander)
-  - `DoubleCommander=` set to the patched doublecmd.exe
-- DC's remote control is on (`<RemoteControl>True</RemoteControl>` in doublecmd.xml), and VV
-  has been allowed once.
+  - `DoubleCommander=` set to the patched doublecmd.exe (Linux: `doublecmd`)
+- DC's remote control is on (`<RemoteControl>True</RemoteControl>` under `<Behaviours>` in
+  doublecmd.xml), `VersariteViewer` is a line of `remoteallow.txt` in DC's settings folder, and VV
+  has been allowed once (DC asks at the first connection).
 - VV is running. It collects DC's messages about twice a second.
 
 ## Making a button
@@ -33,9 +35,11 @@ A hotkey works the same way: Options → Hot keys, the command, and its paramete
 | `cm_ViewerFollowModeOn` | none, or `mode=1` / `mode=2` | VV follows DC: none = its last mode (else 2); 1 = folder only; 2 = folder and the image under DC's cursor |
 | `cm_ViewerFollowModeOff` | none | VV stops following DC |
 | `cm_SendTree` | none | The first-level subfolders of DC's active folder are added to VV's sort panel |
+| `cm_RemoteSendFolderToInactive` | none | VV's folder is shown in DC's other (inactive) panel |
+| `cm_RemoteCreateSortFromSubdirs` | none or `0` / `1` | A new sort list (a new tab of the sort panel) from the subfolders of the folder under DC's cursor; `1`: with that folder itself |
 
-Icons for the two follow buttons are in `C:\projects\doublecmd\icons` (`viewer_follow_on`,
-`viewer_follow_off`; .png, .ico and .svg).
+Icons for DC toolbar buttons (follow on / off, slide show, diagnostics line, and the two remote
+commands) are in [`docs/dc_icons`](dc_icons) (.png; most also .ico and .svg).
 
 ## Names for `cm_ViewerCommand cmd=`
 

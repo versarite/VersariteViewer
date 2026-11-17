@@ -36,3 +36,8 @@ test/images/*
 test/images/gif/animated_*
 test/images/gif/static_*
 test/images/gif/frames/
+
+# Local copies of the source kept while working (source.win, source.current,
+# source.old ...): only source/ is the code
+source.*/
+source_*/

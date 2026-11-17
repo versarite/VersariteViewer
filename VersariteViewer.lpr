@@ -34,16 +34,22 @@ var
 begin
   Result := False;
   OnlyOne := True;
-  Config := TConfig.Create;
-  try
+  { 1.4 fix: only an ini that is there is read. TConfig.Load writes a new
+    one on the very first start, and the main form then no longer saw a
+    first start, so the welcome picture never showed. }
+  if FileExists(EditionIniFileName) or FileExists(EditionOldIniFileName) then
+  begin
+    Config := TConfig.Create;
     try
-      Config.Load;
-      OnlyOne := Config.OnlyOneInstance;
-    except
-      { Unreadable ini: the default. }
+      try
+        Config.Load;
+        OnlyOne := Config.OnlyOneInstance;
+      except
+        { Unreadable ini: the default. }
+      end;
+    finally
+      Config.Free;
     end;
-  finally
-    Config.Free;
   end;
   if not OnlyOne then
     Exit;
