@@ -34,9 +34,7 @@ of an earlier version are taken over).
 
 **VersariteViewer and Double Commander together** (1 min 40 s):
 
-<!-- To make the video play inline on GitHub: edit this file on github.com, drag
-     docs/VersariteViewer_DoubleCommander.mp4 into the editor (under 10 MB), and put the
-     https://github.com/user-attachments/assets/... line GitHub inserts in place of the next line. -->
+
 https://github.com/user-attachments/assets/REPLACE-WITH-UPLOADED-VIDEO
 
 ([the video as a file](docs/VersariteViewer_DoubleCommander.mp4))
