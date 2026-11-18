@@ -35,9 +35,6 @@ of an earlier version are taken over).
 **VersariteViewer and Double Commander together** (1 min 40 s):
 
 
-https://github.com/user-attachments/assets/REPLACE-WITH-UPLOADED-VIDEO
-
-([the video as a file](docs/VersariteViewer_DoubleCommander.mp4))
 
 ![VersariteViewer 1.4 welcome screen: a map of the window over a confocal image - the filter panel at the left edge, the sort panel at the right edge with its folder lists, the four mouse zones (Edit, Browse by name, Browse by date, Inspect), the icon preview, the scan bar with a thumbnail, the info and diagnostics lines and the DC badge of the file manager link, with the mouse controls below](docs/VersariteViewer_welcome.png)
 
