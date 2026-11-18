@@ -42,10 +42,10 @@ of an earlier version are taken over).
 > 2006 and its source was never published, so its bugs could never be fixed. VersariteViewer carries its
 > ideas forward in code anyone can read, fix and extend.
 > See [From Hamana to VersariteViewer](docs/From_Hamana_to_VersariteViewer.md).
-**VersariteViewer and Double Commander together** (1 min 40 s):
-https://github.com/user-attachments/assets/REPLACE-WITH-UPLOADED-VIDEO
-([the video as a file](docs/VersariteViewer_DoubleCommander.mp4))    
 
+**VersariteViewer and Double Commander together** (1 min 40 s):
+https://github.com/user-attachments/assets/51d4252d-0e09-4e7e-b5c4-178712619f69
+([the video as a file](docs/VersariteViewer_DoubleCommander.mp4))
 
 ## What 1.4 brings
 
