@@ -48,7 +48,7 @@ of an earlier version are taken over).
 
 https://github.com/user-attachments/assets/51d4252d-0e09-4e7e-b5c4-178712619f69
 
-([the video as a file](docs/VersariteViewer_DoubleCommander.mp4))
+([the video as a file](docs/VersariteViewer_DoubleCommander.mp4?raw=true))
 
 ## What 1.4 brings
 
