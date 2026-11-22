@@ -532,7 +532,7 @@ the GNU General Public License, version 3 (see `LICENSE`).
 It is built with the Free Pascal runtime and the Lazarus LCL (modified LGPL), BGRABitmap
 (modified LGPL) and pasjpeg (Independent JPEG Group licence).
 
-Double Commander is a separate program (GNU GPL v2) by Alexander Koblov and its contributors; the
+Double Commander is a separate program (GNU GPL v2 or later) by Alexander Koblov and its contributors; the
 remote control branch is published under its licence in
 [versarite/doublecmd](https://github.com/versarite/doublecmd/tree/remote-control).
 

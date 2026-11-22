@@ -1,6 +1,6 @@
 ---
-title: "VersariteViewer 1.3 — Architecture"
-subtitle: "Units, dependencies and how they work together (release 1.3, Day 35, 2026-10-28)"
+title: "VersariteViewer 1.4 — Architecture"
+subtitle: "Units, dependencies and how they work together (release 1.4, 2026-11-17; pictures redrawn 2026-11-22)"
 ---
 
 # How to read this
@@ -62,16 +62,30 @@ layering: no unit uses one in a higher layer, still no cycles.
   uGifJoin joins two animated GIFs one frame at a time. TMView runs two new threads: the sharp
   picture of a model (TStlPictureThread) and the joining of GIFs (TGifJoinThread), both picked up
   by the delivery pump.
+- **Release 1.4** (Days 36 to 40): four new units, so the dependency picture (redrawn for 1.4)
+  shows 70 units and 220 uses. uFileManager is the file manager layer: everything the viewer asks
+  of a file manager (running, its folder and cursor, its panels, open a folder, place its window)
+  goes through one class, with uTotalCommander (+ uTCFollow) and uDoubleCommander behind it,
+  chosen by `[FileManager] DirManager`. uDoubleCommander talks to Double Commander's remote control
+  (a proposed addition, published as a branch of its fork) through a named pipe on Windows and a
+  Unix socket on Linux, in both directions. uDriveHealth keeps VV from reading ahead on a failing
+  drive; uPngQuick gives large PNGs a quick view on Linux, where Windows' codecs are missing. The
+  same source builds for Linux (GTK2): the Windows-only parts have a Linux branch inside their own
+  unit (uGLRenderer, uMemoryGuard, uImageCache, uStopwatch, uWatchdog, uSingleInstance,
+  uClipboardImage, uMView, uMainForm). One pair now uses each other in their implementation
+  sections: uTotalCommander and uTCFollow (allowed in Pascal; the only such pair).
 
 # Picture 1 — unit dependencies
 
 ![VersariteViewer unit dependencies](mview_unit_dependencies.png){width=100%}
 
 Arrows point from a unit to the units it uses. The layers (L0 at the bottom to L7 at the top) are the
-dependency depth: a unit only uses units in lower layers, so there are **no cycles**. uMainForm is the
+dependency depth: a unit only uses units in lower layers. The one exception is a pair that uses each
+other in their implementation sections (uTotalCommander and uTCFollow); there is no cycle through
+any interface section. uMainForm is the
 only unit that sees everything; the imaging units never see the window, and the utility units see
 nothing of the viewer at all. Layers with many units are drawn as two staggered rows. Units marked
-NEW came after 1.2 (the list above). Versarite Image Lab's own units (`source\microscopy\`) sit on
+NEW came after 1.3 (the list above). Versarite Image Lab's own units (`source\microscopy\`) sit on
 top of these and are not drawn.
 
 # Picture 2 — at run time
@@ -87,15 +101,20 @@ a shutdown hangs.
 
 The sort and filter panels and the magnifier lens live on the UI thread and are drawn by the
 renderers on top of the image; copies and moves run on the file mover thread, icon files are read on
-a loader thread of their own; the Total Commander follower asks Total Commander five times a second
-through window messages; a second instance hands its path to the running one through a hidden
-message window and ends.
+a loader thread of their own; the file manager link asks Total Commander (window messages) or
+Double Commander (its remote control channel) for its folder and cursor, and in the other direction
+tells Double Commander which folder to show; a second instance hands its path to the running one
+through a hidden message window (Linux: a Unix socket) and ends.
 
-New in 1.3 (the bottom band, NEW): a 3D model is drawn live on the UI thread by the GPU renderer
+New in 1.4 (the bottom band, NEW): the file manager link on the UI thread, with Double Commander as
+a two-way partner; drive health, consulted by the decode workers before they read ahead; and the
+Linux build of the same source.
+
+New in 1.3 (the band above it): a 3D model is drawn live on the UI thread by the GPU renderer
 (uGLStlDraw), with its controls in the filter panel (uStlPanel); its sharp picture and the joining
 of two GIFs run on threads of their own, polled by the delivery pump.
 
-Added in 1.1 (the band above it): the scan bar's thumbnails, a container's entries and
+Added in 1.1 (the "More threads" band): the scan bar's thumbnails, a container's entries and
 thumbnails (ZIP / CBZ; .lif in Image Lab) and the dir peek each run on threads of their own and
 hand their results back with `TThread.Queue`; the settings are written on the UI thread through
 uSafeFile.
@@ -123,7 +142,8 @@ uSafeFile.
 | imaging | uJpegHeader | JPEG header and EXIF thumbnail without reading the whole file. | workers |
 | imaging | uExifOrientation | The EXIF orientation value. | workers |
 | imaging | uTiffQuick | Fast TIFF: only the needed rows of raw TIFFs, own parallel LZW. | workers (+ helpers) |
-| imaging | uWicDecoder | Decoding through Windows WIC, in bands for huge PNG / TIFF / BMP. | workers |
+| imaging | uWicDecoder | Decoding through Windows WIC, in bands for huge PNG / TIFF / BMP (Windows only). | workers |
+| imaging | uPngQuick | **1.4** The quick view of a large PNG on Linux: the system's zlib, rows unfiltered one at a time, blocks averaged on the way. | workers |
 | imaging | uGifDecoder | Own GIF decoder: first frame fast, all frames on demand. | workers |
 | imaging | uGifJoin | **1.3** Joins two animated GIFs (original sizes, or scaled to the larger), one frame at a time, with progress and cancel. | own thread |
 | imaging | uStlModel | **1.3** STL models (binary and ASCII): reading, the view (turn, tilt, section), the software picture. | workers, own thread, UI |
@@ -160,16 +180,19 @@ uSafeFile.
 | utility | uIconFile | .ico files: read the directory and pictures, write multi-size icons. | any |
 | utility | uFilters | The display filters' maths: tone table, colour, Auto levels, names. | any |
 | utility | uFilterImage | Filters, sharpening and turns applied to a bitmap; histograms. | UI |
-| utility | uTCFollow | Follows Total Commander: asks for its folder and the file under its cursor. | UI |
-| utility | uTotalCommander | Finds and starts Total Commander, side by side. | UI |
-| utility | uSingleInstance | Only one instance: a second one hands its path over through a message window. | UI |
-| utility | uClipboardImage | **1.1** Copy image: the picture on the clipboard as every program takes it (CF_DIB). | UI |
+| utility | uFileManager | **1.4** The file manager layer: one class for what the viewer asks of a file manager; the implementation registers itself. | UI |
+| utility | uTotalCommander | Finds and starts Total Commander, side by side; 1.4: Total Commander as the file manager (TTotalCommanderLink). | UI |
+| utility | uTCFollow | Follows Total Commander: asks for its folder and the file under its cursor (used by uTotalCommander). | UI |
+| utility | uDoubleCommander | **1.4** Double Commander as the file manager, both ways, through its remote control (named pipe on Windows, Unix socket on Linux). | UI |
+| utility | uDriveHealth | **1.4** A drive with media errors or stuck reads is left alone for a while: no reading ahead from it, a message names it. | any |
+| utility | uSingleInstance | Only one instance: a second one hands its path over through a message window (1.4, Linux: a Unix socket, same user only). | UI |
+| utility | uClipboardImage | **1.1** Copy image: the picture on the clipboard as every program takes it (CF_DIB; 1.4, Linux: PNG). | UI |
 | utility | uImageFileScale | **1.1** A saved TIFF / PNG keeps its scale (ImageJ-style TIFF, a PNG text chunk). | any |
 | utility | uEdition | **1.1** Which program this is (VersariteViewer or Versarite Image Lab): its settings file, names and version. | any |
 | utility | uExtensions | **1.1** The plug-in points for an edition (menu entries, layers, panel rows, settings pages); empty in VersariteViewer. | UI |
 | utility | uContainers | **1.1** Files holding several images, browsed as one-time folders (ZIP / CBZ in both editions; .lif in Image Lab). | any |
 | utility | uSafeFile | **1.1** Settings files written in one step (.tmp, flush, replace), the end line, exact file times. | any |
-| utility | uDirPeek | **1.1** Counts a folder's images and subfolders for the Total Commander dir preview; the newest request wins. | own threads |
+| utility | uDirPeek | **1.1** Counts a folder's images and subfolders for the file manager's dir preview; the newest request wins. | own threads |
 
 # Rules the structure follows
 
@@ -182,6 +205,9 @@ uSafeFile.
 - **Shared data is locked in exactly four places:** the job queue, the image cache, the directory
   scanner and the I/O gate — plus the file mover's and the icon loader's request queues and the
   state the thumbnail threads and the dir peek share with their owners.
+- **Platform code stays in its unit.** A Windows-only part has its Linux branch next to it
+  (`{$IFDEF WINDOWS}` / `{$ELSE}`) inside the same unit; the rest of the program doesn't know
+  which system it runs on. The file manager is reached only through uFileManager.
 - **Panels are pictures.** The sort and filter panels draw themselves into a bitmap; the renderers
   only put that bitmap on top (a texture on the GPU), so both renderers show them the same way.
 
@@ -200,5 +226,6 @@ uSafeFile.
 **Versarite Image Lab** (metadata, calibration, measuring, scale bar, movies, image editing, Fiji
 through Fiji itself) is a second program built from this same source tree: its own project file
 (VersariteImageLab.lpi), its units in `source\microscopy\`, plugged in through uEdition, uExtensions and
-uContainers. It is in development and not part of this repository. Planned there: RAR archives,
-Nikon .nd2 files. Planned for 1.2: a CBZ read as one continuous strip, a true lossless crop.
+uContainers. It is in development in this same repository (a first pre-release is out). Planned there: a
+plug-in scheme (decoder plug-ins and Fiji-style plug-ins), Nikon .nd2 files (NIS-Elements, the
+Ti2), RAR archives. VersariteViewer itself is final with 1.4: fixes only from here.
