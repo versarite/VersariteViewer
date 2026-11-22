@@ -32,15 +32,6 @@ several folder lists, Rapid Sorting, single keys, the scan bar, many more image 
 archives, the dir preview and lossless JPEG rotation, and the new name VersariteViewer (the settings
 of an earlier version are taken over).
 
-**VersariteViewer and Double Commander together** (1 min 40 s):
-
-<!-- To make the video play inline on GitHub: edit this file on github.com, drag
-     docs/VersariteViewer_DoubleCommander.mp4 into the editor (under 10 MB), and put the
-     https://github.com/user-attachments/assets/... line GitHub inserts in place of the next line. -->
-https://github.com/user-attachments/assets/REPLACE-WITH-UPLOADED-VIDEO
-
-([the video as a file](docs/VersariteViewer_DoubleCommander.mp4))
-
 ![VersariteViewer 1.4 welcome screen: a map of the window over a confocal image - the filter panel at the left edge, the sort panel at the right edge with its folder lists, the four mouse zones (Edit, Browse by name, Browse by date, Inspect), the icon preview, the scan bar with a thumbnail, the info and diagnostics lines and the DC badge of the file manager link, with the mouse controls below](docs/VersariteViewer_welcome.png)
 
 > **Dedicated to Hamana** - written by Makito Miyano (last version 1.48, 2006),
@@ -51,6 +42,13 @@ https://github.com/user-attachments/assets/REPLACE-WITH-UPLOADED-VIDEO
 > 2006 and its source was never published, so its bugs could never be fixed. VersariteViewer carries its
 > ideas forward in code anyone can read, fix and extend.
 > See [From Hamana to VersariteViewer](docs/From_Hamana_to_VersariteViewer.md).
+
+
+**VersariteViewer and Double Commander together** (1 min 40 s):
+
+https://github.com/user-attachments/assets/51d4252d-0e09-4e7e-b5c4-178712619f69
+
+([the video as a file](docs/VersariteViewer_DoubleCommander.mp4?raw=true))
 
 ## What 1.4 brings
 
